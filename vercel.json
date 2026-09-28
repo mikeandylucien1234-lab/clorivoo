@@ -3,5 +3,8 @@
     "deploymentEnabled": {
       "main": true
     }
-  }
+  },
+  "rewrites": [
+    { "source": "/", "destination": "/Clorivo.html" }
+  ]
 }
