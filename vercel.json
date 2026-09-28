@@ -1,0 +1,11 @@
+{
+  "buildCommand": false,
+  "cleanUrls": false,
+  "rewrites": [{ "source": "/", "destination": "/Clorivo.html" }],
+  "headers": [
+    {
+      "source": "/(.*).jsx",
+      "headers": [{ "key": "Content-Type", "value": "text/babel; charset=utf-8" }]
+    }
+  ]
+}
