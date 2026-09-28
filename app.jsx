@@ -203,7 +203,7 @@ function AppInner() {
   const { dark } = useTheme();
 
   return (
-    <div className={`clorivo-frame${dark ? ' dark' : ''}`} style={{ width:'100%', minHeight:'100vh', display:'flex', flexDirection:'column', background: dark ? '#0F0C1E' : C.paper }}>
+    <div className={`clorivo-frame${dark ? ' dark' : ''}`} style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', background: dark ? '#0F0C1E' : C.paper }}>
       <DesktopNav />
       <div style={{ flex:1, position:'relative' }}>
         <ScreenRouter />

@@ -93,12 +93,14 @@
     input:focus { outline: none; }
     button { -webkit-tap-highlight-color: transparent; }
 
-    /* ── Page-level center layout ── */
+    /* ── Page-level layout ──
+       Uses the html/body/#root height:100% chain rather than 100vh:
+       on mobile browsers, 100vh is the height of the layout viewport
+       (ignores the address bar), which pushes bottom-fixed content
+       (the tab bar) below the visible area. Percentage heights track
+       the real visual viewport instead. */
     #root {
       display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
     }
   </style>
 </head>
