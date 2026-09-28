@@ -188,17 +188,6 @@ function ChatScreen({ params = {} }) {
 }
 window.ChatScreen = ChatScreen;
 
-// ─── IOS FRAME ───────────────────────────────────────────────
-function IOSFrame({ children, dark }) {
-  return (
-    <div style={{ width:FRAME_W, height:FRAME_H, borderRadius:50, background: dark ? '#0F0C1E' : C.paper, overflow:'hidden', position:'relative', boxShadow:'0 40px 80px rgba(0,0,0,0.45), 0 0 0 1.5px rgba(255,255,255,0.1), inset 0 0 0 1px rgba(255,255,255,0.06)', flexShrink:0 }}>
-      {children}
-      {/* Home indicator */}
-      <div style={{ position:'absolute', bottom:9, left:'50%', transform:'translateX(-50%)', width:130, height:5, borderRadius:3, background: dark ? 'rgba(255,255,255,0.25)' : 'rgba(14,11,31,0.18)', zIndex:300, pointerEvents:'none' }} />
-    </div>
-  );
-}
-
 // ─── MAIN APP ─────────────────────────────────────────────────
 function App() {
   return (
@@ -212,31 +201,12 @@ function App() {
 
 function AppInner() {
   const { dark } = useTheme();
-  const [scale, setScale] = React.useState(1);
-
-  React.useEffect(() => {
-    function computeScale() {
-      const padding = 24;
-      const vw = window.innerWidth  - padding * 2;
-      const vh = window.innerHeight - padding * 2;
-      const s = Math.min(vw / FRAME_W, vh / FRAME_H, 1.4);
-      setScale(s > 0 ? s : 1);
-    }
-    computeScale();
-    window.addEventListener('resize', computeScale);
-    window.addEventListener('orientationchange', computeScale);
-    return () => {
-      window.removeEventListener('resize', computeScale);
-      window.removeEventListener('orientationchange', computeScale);
-    };
-  }, []);
 
   return (
-    <div className={`clorivo-frame${dark ? ' dark' : ''}`} style={{ width:'100vw', height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#12101E' }}>
-      <div style={{ width:FRAME_W, height:FRAME_H, transform:`scale(${scale})`, flexShrink:0 }}>
-        <IOSFrame dark={dark}>
-          <ScreenRouter />
-        </IOSFrame>
+    <div className={`clorivo-frame${dark ? ' dark' : ''}`} style={{ width:'100%', minHeight:'100vh', display:'flex', flexDirection:'column', background: dark ? '#0F0C1E' : C.paper }}>
+      <DesktopNav />
+      <div style={{ flex:1, position:'relative' }}>
+        <ScreenRouter />
       </div>
     </div>
   );

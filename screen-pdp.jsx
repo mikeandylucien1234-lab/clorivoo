@@ -2,6 +2,7 @@
 
 function ProductDetailsScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
   const product  = params.product || PRODUCTS[0];
   const p        = product;
 
@@ -36,10 +37,12 @@ function ProductDetailsScreen({ params = {} }) {
       <StatusBar />
 
       {/* Scrollable area */}
-      <div style={{ flex:1, overflowY:'auto', paddingTop: STATUS_H, paddingBottom: 90 }}>
+      <div style={{ flex:1, overflowY:'auto', paddingTop: STATUS_H, paddingBottom: isDesktop ? 40 : 90 }}>
+        <div style={{ maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined, padding: isDesktop ? '24px 32px 0' : undefined, display: isDesktop ? 'flex' : 'block', gap: isDesktop ? 48 : 0, alignItems: 'flex-start' }}>
+        <div style={{ flex: isDesktop ? '0 0 50%' : undefined, position: isDesktop ? 'sticky' : undefined, top: isDesktop ? 16 : undefined }}>
 
         {/* Gallery */}
-        <div style={{ position:'relative', height:320 }}>
+        <div style={{ position:'relative', height:320, borderRadius: isDesktop ? 16 : 0, overflow: isDesktop ? 'hidden' : 'visible' }}>
           <Img label={p.label} tint={p.id % 5} style={{ width:'100%', height:320, borderRadius:0 }} />
           {/* Overlaid controls */}
           <div style={{ position:'absolute', top:12, left:16, right:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -70,9 +73,10 @@ function ProductDetailsScreen({ params = {} }) {
             ))}
           </div>
         </div>
+        </div>
 
         {/* Info section */}
-        <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:16 }}>
+        <div style={{ padding: isDesktop ? '0' : '16px 20px', display:'flex', flexDirection:'column', gap:16, flex: isDesktop ? '0 0 50%' : undefined }}>
 
           {/* Price + title */}
           <div>
@@ -140,6 +144,22 @@ function ProductDetailsScreen({ params = {} }) {
             ))}
           </div>
 
+          {/* Buy box — inline on desktop (no fixed bottom bar) */}
+          {isDesktop && (
+            <div style={{ display:'flex', gap:10, alignItems:'center', paddingTop:4 }}>
+              <button onClick={() => navigate('chat')} style={{ width:52, height:52, borderRadius:12, border:`1.5px solid ${C.hairline}`, background:C.white, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, flexShrink:0 }}>
+                <Icon name="message" size={19} color={C.mute} />
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.mute }}>Chat</span>
+              </button>
+              <Btn variant="secondary" size="lg" style={{ flex:1 }} onClick={addToCart}>
+                {addedToCart ? <><Icon name="check" size={16} color={C.primary} /> Ajouté !</> : 'Ajouter au panier'}
+              </Btn>
+              <Btn variant="primary" size="lg" style={{ flex:1 }} onClick={() => navigate('cart')}>
+                Acheter
+              </Btn>
+            </div>
+          )}
+
           {/* Tabs */}
           <div>
             <div style={{ display:'flex', borderBottom:`1px solid ${C.hairline}`, marginBottom:14 }}>
@@ -199,9 +219,11 @@ function ProductDetailsScreen({ params = {} }) {
             )}
           </div>
         </div>
+        </div>
       </div>
 
-      {/* Sticky CTA */}
+      {/* Sticky CTA — mobile only */}
+      {!isDesktop && (
       <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'12px 20px 28px', background:C.white, borderTop:`1px solid ${C.hairline}`, display:'flex', gap:10, alignItems:'center' }}>
         <button onClick={() => navigate('chat')} style={{ width:50, height:50, borderRadius:12, border:`1.5px solid ${C.hairline}`, background:C.white, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, flexShrink:0 }}>
           <Icon name="message" size={19} color={C.mute} />
@@ -214,6 +236,7 @@ function ProductDetailsScreen({ params = {} }) {
           Acheter
         </Btn>
       </div>
+      )}
     </div>
   );
 }

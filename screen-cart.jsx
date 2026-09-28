@@ -3,6 +3,7 @@
 // ─── CART ────────────────────────────────────────────────────
 function CartScreen() {
   const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
   const [items, setItems] = React.useState([
     { id:1, name:'iPhone 14 Pro Max',  variant:'256GB, Deep Purple', price:1099, oldPrice:1299, qty:1, inStock:true, seller:'TechZone Haiti',  checked:true },
     { id:2, name:'Sony WH-1000XM5',    variant:'Wireless Headphone',  price:299,  oldPrice:349,  qty:1, inStock:true, seller:'TechZone Haiti',  checked:true },
@@ -40,6 +41,7 @@ function CartScreen() {
 
       {/* Header */}
       <div style={{ paddingTop:STATUS_H, background:C.white, flexShrink:0 }}>
+        {!isDesktop && (
         <div style={{ padding:'10px 20px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           {/* Greeting + name */}
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -61,8 +63,9 @@ function CartScreen() {
             </button>
           </div>
         </div>
+        )}
 
-        {/* Delivery address strip */}
+        {!isDesktop && (
         <div onClick={() => navigate('profile')} style={{ margin:'0 20px 12px', display:'flex', alignItems:'center', gap:8, background:C.primarySoft, borderRadius:10, padding:'8px 12px', cursor:'pointer' }}>
           <Icon name="mapPin" size={15} color={C.primary} />
           <div style={{ flex:1, minWidth:0 }}>
@@ -71,16 +74,19 @@ function CartScreen() {
           </div>
           <Icon name="chevronRight" size={14} color={C.primary} />
         </div>
+        )}
 
         {/* Title */}
-        <div style={{ padding:'0 20px 12px' }}>
+        <div style={{ padding: isDesktop ? '24px 32px 12px' : '0 20px 12px', maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined, width: isDesktop ? '100%' : undefined }}>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:C.ink, letterSpacing:'-0.03em' }}>Mon panier ({items.length})</div>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, marginTop:2 }}>{items.length} article{items.length > 1 ? 's' : ''} dans le panier</div>
         </div>
       </div>
 
       {/* Scrollable content */}
-      <div style={{ flex:1, overflowY:'auto', paddingBottom: NAV_H + HOME_H + 80 }}>
+      <div style={{ flex:1, overflowY:'auto', paddingBottom: isDesktop ? 40 : NAV_H + HOME_H + 80 }}>
+        <div style={{ maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined, padding: isDesktop ? '0 32px' : undefined, display: isDesktop ? 'flex' : 'block', gap: isDesktop ? 32 : 0, alignItems: 'flex-start' }}>
+        <div style={{ flex: isDesktop ? '1 1 auto' : undefined, minWidth: 0 }}>
 
         {/* Free shipping banner */}
         <div style={{ margin:'10px 16px', background:C.primarySoft, borderRadius:10, padding:'10px 14px', display:'flex', alignItems:'center', gap:8 }}>
@@ -170,9 +176,38 @@ function CartScreen() {
             ))}
           </div>
         </div>
+
+        </div>
+
+        {/* Order summary — sidebar on desktop */}
+        {isDesktop && (
+          <div style={{ width:340, flexShrink:0, position:'sticky', top:16, background:C.white, borderRadius:16, padding:20, boxShadow:'0 2px 16px rgba(14,11,31,0.08)' }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:700, color:C.ink, marginBottom:14 }}>Résumé de la commande</div>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Sous-total ({checkedItems.length} articles)</span>
+              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, color:C.ink }}>${subtotal.toLocaleString()}</span>
+            </div>
+            {discount > 0 && (
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.success }}>Réduction</span>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, color:C.success }}>-${discount.toLocaleString()}</span>
+              </div>
+            )}
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:14, paddingTop:10, borderTop:`1px solid ${C.hairline}` }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>Total</span>
+              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:800, color:C.primary }}>${total.toLocaleString()}</span>
+            </div>
+            <Btn variant="primary" size="md" wide onClick={() => navigate('checkout')}>
+              Commander ({checkedItems.length})
+              <Icon name="arrowLeft" size={15} color="#fff" style={{ transform:'rotate(180deg)' }} />
+            </Btn>
+          </div>
+        )}
+        </div>
       </div>
 
-      {/* Sticky bottom CTA */}
+      {/* Sticky bottom CTA — mobile only */}
+      {!isDesktop && (
       <div style={{ position:'absolute', bottom: NAV_H + HOME_H - 12, left:0, right:0, padding:'10px 16px', background:C.white, borderTop:`1px solid ${C.hairline}`, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
         <div>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Total ({checkedItems.length} articles)</div>
@@ -183,6 +218,7 @@ function CartScreen() {
           <Icon name="arrowLeft" size={15} color="#fff" style={{ transform:'rotate(180deg)' }} />
         </Btn>
       </div>
+      )}
 
       <BottomNav active={2} onTab={(i) => {
         if (i === 0) navigate('home');
@@ -196,6 +232,7 @@ function CartScreen() {
 // ─── CHECKOUT (Résumé commande) ────────────────────────────────
 function CheckoutScreen() {
   const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
   const [promoCode, setPromoCode]   = React.useState('');
   const [promoApplied, setPromoApplied] = React.useState(false);
   const [loading, setLoading]       = React.useState(false);
@@ -227,7 +264,7 @@ function CheckoutScreen() {
 
       {/* Header */}
       <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
-        <div style={{ padding:'14px 20px', display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ maxWidth: isDesktop ? 640 : undefined, margin: isDesktop ? '0 auto' : undefined, padding: isDesktop ? '20px 0' : '14px 20px', display:'flex', alignItems:'center', gap:10 }}>
           <button onClick={goBack} style={{ width:36, height:36, borderRadius:9999, border:`1.5px solid ${C.hairline}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
             <Icon name="arrowLeft" size={18} color={C.ink} />
           </button>
@@ -235,7 +272,7 @@ function CheckoutScreen() {
         </div>
       </div>
 
-      <div style={{ flex:1, overflowY:'auto', padding:'14px 16px', display:'flex', flexDirection:'column', gap:12, paddingBottom:120 }}>
+      <div style={{ flex:1, overflowY:'auto', padding: isDesktop ? '24px 0' : '14px 16px', display:'flex', flexDirection:'column', gap:12, paddingBottom: isDesktop ? 24 : 120, maxWidth: isDesktop ? 640 : undefined, margin: isDesktop ? '0 auto' : undefined, width: isDesktop ? '100%' : undefined }}>
 
         {/* Order summary card */}
         <div style={{ background:C.white, borderRadius:16, padding:'16px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
@@ -360,7 +397,8 @@ function CheckoutScreen() {
       </div>
 
       {/* Sticky CTA */}
-      <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'12px 16px 28px', background:C.white, borderTop:`1px solid ${C.hairline}` }}>
+      <div style={{ position:'absolute', bottom:0, left:0, right:0, padding: isDesktop ? '16px 0 24px' : '12px 16px 28px', background:C.white, borderTop:`1px solid ${C.hairline}` }}>
+        <div style={{ maxWidth: isDesktop ? 640 : undefined, margin: isDesktop ? '0 auto' : undefined }}>
         <Btn variant="primary" size="lg" wide onClick={placeOrder} disabled={loading || !hasAddress}>
           {loading ? 'Traitement…' : 'Aller au paiement'}
           {!loading && <Icon name="arrowLeft" size={17} color="#fff" style={{ transform:'rotate(180deg)' }} />}
@@ -368,6 +406,7 @@ function CheckoutScreen() {
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, marginTop:8 }}>
           <Icon name="lock" size={12} color={C.mute} />
           <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Protection des données garantie</span>
+        </div>
         </div>
       </div>
     </div>

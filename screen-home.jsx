@@ -2,6 +2,7 @@
 
 function HomeScreen() {
   const { navigate } = useNav();
+  const isDesktop = useIsDesktop();
   const [activeTab, setActiveTab]           = React.useState(0);
   const [activeCategory, setActiveCategory] = React.useState(0);
   const [cartCount, setCartCount]           = React.useState(window.CART_ITEMS.length);
@@ -54,6 +55,7 @@ function HomeScreen() {
       <StatusBar />
 
       {/* Top bar */}
+      {!isDesktop && (
       <div style={{ paddingTop: STATUS_H, background: C.white, borderBottom: `1px solid ${C.hairline}`, flexShrink: 0 }}>
         <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {/* Greeting + name */}
@@ -106,9 +108,21 @@ function HomeScreen() {
           )}
         </div>
       </div>
+      )}
+
+      {isDesktop && (
+        <div style={{ background: C.white, borderBottom: `1px solid ${C.hairline}`, flexShrink: 0 }}>
+          <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', gap: 8, padding: '14px 32px', overflowX: 'auto' }}>
+            {categories.map((c, i) =>
+            <Chip key={i} active={activeCategory === i} onClick={() => navigate('category', { category: c })}>{c}</Chip>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Scrollable content */}
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: NAV_H + HOME_H }}>
+        <div style={{ maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined }}>
 
         {/* Hero banner */}
         <div style={{ padding: '16px 20px 0' }}>
@@ -263,7 +277,7 @@ function HomeScreen() {
         {/* Category Tiles */}
         <div style={{ padding: '20px 20px 0' }}>
           <SectionHeader title="Catégories populaires" style={{ marginBottom: 12 }} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(4, 1fr)' : '1fr 1fr', gap: 10 }}>
             {[
             { label: 'Maison & Déco', tint: 0, sub: '1 200+ articles', cat:'Maison' },
             { label: 'Mode & Style', tint: 1, sub: '3 400+ articles', cat:'Mode' },
@@ -328,7 +342,7 @@ function HomeScreen() {
               <Icon name="chevronRight" size={14} color={C.primary} />
             </button>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          <div style={{ display:'grid', gridTemplateColumns: isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap:12 }}>
             {PRODUCTS.map((p, i) => (
               <div key={p.id} style={{ position:'relative' }}>
                 <ProductCard product={p} size="md" tint={i % 5} onPress={() => navigate('pdp', { product: p })} />
@@ -394,11 +408,12 @@ function HomeScreen() {
         {/* For You */}
         <div style={{ padding: '20px 20px 16px' }}>
           <SectionHeader title="Rien que pour vous" onSeeAll={() => {}} style={{ marginBottom: 12 }} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap: 12 }}>
             {forYou.map((p, i) =>
             <ProductCard key={p.id} product={p} size="md" tint={i + 2} onPress={() => navigate('pdp', { product: p })} />
             )}
           </div>
+        </div>
         </div>
       </div>
 
