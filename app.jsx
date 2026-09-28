@@ -212,12 +212,32 @@ function App() {
 
 function AppInner() {
   const { dark } = useTheme();
+  const [scale, setScale] = React.useState(1);
+
+  React.useEffect(() => {
+    function computeScale() {
+      const padding = 24;
+      const vw = window.innerWidth  - padding * 2;
+      const vh = window.innerHeight - padding * 2;
+      const s = Math.min(vw / FRAME_W, vh / FRAME_H, 1.4);
+      setScale(s > 0 ? s : 1);
+    }
+    computeScale();
+    window.addEventListener('resize', computeScale);
+    window.addEventListener('orientationchange', computeScale);
+    return () => {
+      window.removeEventListener('resize', computeScale);
+      window.removeEventListener('orientationchange', computeScale);
+    };
+  }, []);
 
   return (
-    <div className={`clorivo-frame${dark ? ' dark' : ''}`} style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:24, background:'#12101E' }}>
-      <IOSFrame dark={dark}>
-        <ScreenRouter />
-      </IOSFrame>
+    <div className={`clorivo-frame${dark ? ' dark' : ''}`} style={{ width:'100vw', height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#12101E' }}>
+      <div style={{ width:FRAME_W, height:FRAME_H, transform:`scale(${scale})`, flexShrink:0 }}>
+        <IOSFrame dark={dark}>
+          <ScreenRouter />
+        </IOSFrame>
+      </div>
     </div>
   );
 }
