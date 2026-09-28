@@ -159,33 +159,15 @@ function NavBar({ title, onBack, right, transparent, light, style={} }) {
 }
 
 // ─── STATUS BAR ─────────────────────────────────────────────
-function StatusBar({ light }) {
-  const col = light ? 'rgba(255,255,255,0.92)' : C.ink;
-  return (
-    <div style={{ position:'absolute', top:0, left:0, right:0, height:STATUS_H, pointerEvents:'none', zIndex:200 }}>
-      <div style={{ position:'absolute', top:8, left:'50%', transform:'translateX(-50%)', width:126, height:34, background:'#000', borderRadius:20, zIndex:201 }} />
-      <div style={{ position:'absolute', bottom:6, left:22, fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:col, letterSpacing:'-0.03em' }}>9:41</div>
-      <div style={{ position:'absolute', bottom:6, right:20, display:'flex', gap:6, alignItems:'center' }}>
-        <svg width="17" height="11" viewBox="0 0 17 11" fill={col}>
-          <rect x="0" y="7" width="3" height="4" rx="0.5"/><rect x="4.5" y="4.5" width="3" height="6.5" rx="0.5"/><rect x="9" y="2" width="3" height="9" rx="0.5"/><rect x="13.5" y="0" width="3" height="11" rx="0.5"/>
-        </svg>
-        <svg width="16" height="11" viewBox="0 0 16 11" fill="none" stroke={col} strokeWidth="1.4" strokeLinecap="round">
-          <circle cx="8" cy="9.5" r="1.3" fill={col} stroke="none"/>
-          <path d="M4.5 6.2a4.8 4.8 0 0 1 7 0"/><path d="M1.5 3a8.8 8.8 0 0 1 13 0"/>
-        </svg>
-        <div style={{ display:'flex', alignItems:'center' }}>
-          <div style={{ width:23, height:11, border:`1.5px solid ${col}`, borderRadius:3, padding:'1.5px', display:'flex', opacity:0.9 }}>
-            <div style={{ width:'75%', background:col, borderRadius:1 }} />
-          </div>
-          <div style={{ width:2.5, height:5, background:col, borderRadius:'0 1.5px 1.5px 0', opacity:0.35 }} />
-        </div>
-      </div>
-    </div>
-  );
+// Clorivo is a real site, not a phone mockup — no fake device status bar.
+function StatusBar() {
+  return null;
 }
 
-// ─── BOTTOM NAV ─────────────────────────────────────────────
+// ─── BOTTOM NAV (mobile only) ────────────────────────────────
 function BottomNav({ active = 0, onTab }) {
+  const isDesktop = useIsDesktop();
+  if (isDesktop) return null;
   const tabs = [
     { icon:'home',     label:'Accueil'    },
     { icon:'grid',     label:'Catégories' },
@@ -194,7 +176,7 @@ function BottomNav({ active = 0, onTab }) {
     { icon:'user',     label:'Profil'     },
   ];
   return (
-    <div style={{ position:'absolute', bottom:0, left:0, right:0, height:NAV_H, background:C.white, borderTop:`1px solid ${C.hairline}`, display:'flex', alignItems:'center', justifyContent:'space-around', paddingBottom:HOME_H - 12, zIndex:100 }}>
+    <div style={{ position:'absolute', bottom:0, left:0, right:0, height:NAV_H, background:C.white, borderTop:`1px solid ${C.hairline}`, display:'flex', alignItems:'center', justifyContent:'space-around', paddingBottom:HOME_H, zIndex:100 }}>
       {tabs.map((t, i) => {
         const isActive = i === active;
         return (
@@ -204,6 +186,73 @@ function BottomNav({ active = 0, onTab }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// ─── DESKTOP TOP NAV (desktop only, global) ──────────────────
+function DesktopNav() {
+  const isDesktop = useIsDesktop();
+  const { current, navigate } = useNav();
+  if (!isDesktop) return null;
+
+  const screen = current?.screen;
+  const hideOn = ['splash', 'onboarding', 'login', 'register'];
+  if (hideOn.includes(screen)) return null;
+
+  const links = [
+    { key:'home',     label:'Accueil',    icon:'home'  },
+    { key:'category', label:'Catégories', icon:'grid'  },
+    { key:'tracking', label:'Commandes',  icon:'package' },
+    { key:'profile',  label:'Profil',     icon:'user'  },
+  ];
+  const cartCount = (window.CART_ITEMS || []).reduce((n, it) => n + (it.qty || 1), 0);
+
+  return (
+    <div style={{ height:72, flexShrink:0, background:C.white, borderBottom:`1px solid ${C.hairline}`, display:'flex', alignItems:'center', position:'sticky', top:0, zIndex:500 }}>
+      <div style={{ width:'100%', maxWidth:1280, margin:'0 auto', padding:'0 32px', display:'flex', alignItems:'center', gap:32 }}>
+        <div onClick={() => navigate('home')} style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:C.primary, letterSpacing:'-0.03em', cursor:'pointer', flexShrink:0 }}>
+          clorivo
+        </div>
+
+        <nav style={{ display:'flex', alignItems:'center', gap:4, flex:1 }}>
+          {links.map(l => {
+            const isActive = screen === l.key;
+            return (
+              <button key={l.key} onClick={() => navigate(l.key)} style={{
+                display:'flex', alignItems:'center', gap:7, border:'none', cursor:'pointer',
+                background: isActive ? C.primarySoft : 'transparent',
+                color: isActive ? C.primaryDeep : C.mute,
+                fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600,
+                padding:'9px 16px', borderRadius:9999, transition:'background 0.15s',
+              }}>
+                <Icon name={l.icon} size={17} color={isActive ? C.primaryDeep : C.mute} sw={isActive ? 2 : 1.5} />
+                {l.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div style={{ flex:1, maxWidth:420 }}>
+          <div style={{ height:40, display:'flex', alignItems:'center', gap:8, padding:'0 14px', borderRadius:9999, background:C.paper, border:`1.5px solid ${C.hairline}` }}>
+            <Icon name="search" size={16} color={C.mute} />
+            <input placeholder="Rechercher sur clorivo…" style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink }} />
+          </div>
+        </div>
+
+        <button onClick={() => navigate('notifications')} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', padding:8, borderRadius:10, color:C.mute, flexShrink:0 }}>
+          <Icon name="bell" size={20} />
+        </button>
+
+        <button onClick={() => navigate('cart')} style={{ position:'relative', border:'none', background:'none', cursor:'pointer', display:'flex', padding:8, borderRadius:10, color: screen === 'cart' ? C.primary : C.mute, flexShrink:0 }}>
+          <Icon name="cart" size={20} color={screen === 'cart' ? C.primary : C.mute} sw={screen === 'cart' ? 2 : 1.5} />
+          {cartCount > 0 && (
+            <span style={{ position:'absolute', top:2, right:2, minWidth:16, height:16, borderRadius:9999, background:C.primary, color:'#fff', fontSize:10, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 3px', fontFamily:"'Inter',sans-serif" }}>
+              {cartCount}
+            </span>
+          )}
+        </button>
+      </div>
     </div>
   );
 }
@@ -317,6 +366,6 @@ function Badge({ count, style={} }) {
 
 Object.assign(window, {
   Img, Btn, Input, Chip, NavBar, StatusBar,
-  BottomNav, ProductCard, ProductCardWide,
+  BottomNav, DesktopNav, ProductCard, ProductCardWide,
   Avatar, SectionHeader, Divider, Stars, Badge,
 });

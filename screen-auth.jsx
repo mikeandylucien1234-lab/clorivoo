@@ -92,6 +92,7 @@ function OnboardingScreen() {
 // ─── LOGIN ────────────────────────────────────────────────────
 function LoginScreen() {
   const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
   const [email, setEmail]    = React.useState('');
   const [pass, setPass]      = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -107,9 +108,10 @@ function LoginScreen() {
   }
 
   return (
-    <div style={{ position:'absolute', inset:0, background:C.white, display:'flex', flexDirection:'column' }}>
+    <div style={{ position:'absolute', inset:0, background: isDesktop ? C.paper : C.white, display:'flex', flexDirection:'column' }}>
       <StatusBar />
-      <div style={{ paddingTop: STATUS_H, flex:1, overflowY:'auto', padding:`${STATUS_H + 8}px 24px 40px` }}>
+      <div style={{ paddingTop: STATUS_H, flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems: isDesktop ? 'center' : 'stretch' }}>
+      <div style={{ width:'100%', maxWidth: isDesktop ? 440 : undefined, background: isDesktop ? C.white : undefined, borderRadius: isDesktop ? 20 : undefined, boxShadow: isDesktop ? '0 4px 32px rgba(14,11,31,0.08)' : undefined, margin: isDesktop ? '40px 0' : undefined, padding:`${isDesktop ? 32 : STATUS_H + 8}px 24px 40px` }}>
         {/* Back */}
         <button onClick={goBack} style={{ border:'none', background:'none', cursor:'pointer', padding:'0 0 24px', display:'flex', alignItems:'center', gap:6, color:C.mute }}>
           <Icon name="arrowLeft" size={20} color={C.mute} />
@@ -185,6 +187,7 @@ function LoginScreen() {
           </button>
         </div>
       </div>
+      </div>
     </div>
   );
 }
@@ -192,6 +195,7 @@ function LoginScreen() {
 // ─── REGISTER ────────────────────────────────────────────────
 function RegisterScreen() {
   const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
   const [name, setName]      = React.useState('');
   const [email, setEmail]    = React.useState('');
   const [pass, setPass]      = React.useState('');
@@ -216,9 +220,10 @@ function RegisterScreen() {
   }
 
   return (
-    <div style={{ position:'absolute', inset:0, background:C.white, display:'flex', flexDirection:'column' }}>
+    <div style={{ position:'absolute', inset:0, background: isDesktop ? C.paper : C.white, display:'flex', flexDirection:'column' }}>
       <StatusBar />
-      <div style={{ paddingTop: STATUS_H, flex:1, overflowY:'auto', padding:`${STATUS_H + 8}px 24px 40px` }}>
+      <div style={{ paddingTop: STATUS_H, flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems: isDesktop ? 'center' : 'stretch' }}>
+      <div style={{ width:'100%', maxWidth: isDesktop ? 440 : undefined, background: isDesktop ? C.white : undefined, borderRadius: isDesktop ? 20 : undefined, boxShadow: isDesktop ? '0 4px 32px rgba(14,11,31,0.08)' : undefined, margin: isDesktop ? '40px 0' : undefined, padding:`${isDesktop ? 32 : STATUS_H + 8}px 24px 40px` }}>
         <button onClick={goBack} style={{ border:'none', background:'none', cursor:'pointer', padding:'0 0 24px', display:'flex', color:C.mute }}>
           <Icon name="arrowLeft" size={20} color={C.mute} />
         </button>
@@ -275,6 +280,7 @@ function RegisterScreen() {
           Déjà un compte ?{' '}
           <button onClick={() => navigate('login')} style={{ border:'none', background:'none', cursor:'pointer', color:C.primary, fontWeight:600, fontFamily:"'Inter',sans-serif", fontSize:14 }}>Se connecter</button>
         </div>
+      </div>
       </div>
     </div>
   );

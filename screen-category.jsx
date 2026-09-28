@@ -2,6 +2,7 @@
 
 function CategoryScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
   const initial = params.category || 'Tout';
 
   const categories = ['Tout','Maison','Tech','Beauté','Mode','Enfants','Sport','Cuisine'];
@@ -34,6 +35,7 @@ function CategoryScreen({ params = {} }) {
 
       {/* Header */}
       <div style={{ paddingTop:STATUS_H, background:C.white, flexShrink:0, borderBottom:`1px solid ${C.hairline}` }}>
+        {!isDesktop && (
         <div style={{ padding:'8px 12px', display:'flex', alignItems:'center', gap:8 }}>
           <button onClick={goBack} style={{ width:40, height:40, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
             <Icon name="arrowLeft" size={22} color={C.ink} />
@@ -48,9 +50,10 @@ function CategoryScreen({ params = {} }) {
             <Badge count={window.CART_ITEMS.length} />
           </button>
         </div>
+        )}
 
         {/* Category tabs */}
-        <div style={{ display:'flex', gap:8, padding:'2px 12px 10px', overflowX:'auto' }}>
+        <div style={{ maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined, display:'flex', gap:8, padding: isDesktop ? '14px 32px' : '2px 12px 10px', overflowX:'auto' }}>
           {categories.map((c, i) => (
             <Chip key={i} active={active === c} onClick={() => { setActive(c); setActiveSub(0); }}>{c}</Chip>
           ))}
@@ -58,6 +61,7 @@ function CategoryScreen({ params = {} }) {
       </div>
 
       <div style={{ flex:1, overflowY:'auto', paddingBottom: NAV_H + HOME_H }}>
+        <div style={{ maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined }}>
 
         {/* Category hero */}
         <div style={{ margin:'12px 16px 0', borderRadius:16, overflow:'hidden', position:'relative', height:96 }}>
@@ -95,12 +99,13 @@ function CategoryScreen({ params = {} }) {
         </div>
 
         {/* Product grid */}
-        <div style={{ padding:'0 16px', display:'grid', gridTemplateColumns: view === 'grid' ? '1fr 1fr' : '1fr', gap:12 }}>
+        <div style={{ padding:'0 16px', display:'grid', gridTemplateColumns: view !== 'grid' ? '1fr' : isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap:12 }}>
           {products.map((p, i) => (
             <ProductCard key={p.id} product={p} size="md" tint={i % 5} onPress={() => navigate('pdp', { product: p })} />
           ))}
         </div>
         <div style={{ height:20 }} />
+        </div>
       </div>
 
       <BottomNav active={1} onTab={(i) => {

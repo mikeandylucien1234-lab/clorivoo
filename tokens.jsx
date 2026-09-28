@@ -15,12 +15,28 @@ const C = {
   warning:     '#C68A00',
 };
 
-// Frame layout constants (iPhone 14 Pro)
-const FRAME_W  = 390;
-const FRAME_H  = 844;
-const STATUS_H = 52;   // includes dynamic island
-const HOME_H   = 34;   // home indicator
-const NAV_H    = 64;   // bottom nav
+// Layout constants
+const STATUS_H = 0;    // no fake device status bar — real site, not a phone mockup
+const HOME_H   = 8;    // small bottom breathing room (was iOS home indicator space)
+const NAV_H    = 64;   // bottom tab bar (mobile only)
+const DESKTOP_BP = 900; // px — viewport width at which the desktop layout kicks in
+
+// ─── RESPONSIVE HELPER ───────────────────────────────────────
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = React.useState(
+    typeof window !== 'undefined' && window.innerWidth >= DESKTOP_BP
+  );
+  React.useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${DESKTOP_BP}px)`);
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener ? mq.addEventListener('change', update) : mq.addListener(update);
+    return () => {
+      mq.removeEventListener ? mq.removeEventListener('change', update) : mq.removeListener(update);
+    };
+  }, []);
+  return isDesktop;
+}
 
 // Demo product data
 const PRODUCTS = [
@@ -105,6 +121,6 @@ function useTheme() { return React.useContext(ThemeContext); }
 
 Object.assign(window, {
   C, PRODUCTS, ICONS, Icon,
-  FRAME_W, FRAME_H, STATUS_H, HOME_H, NAV_H,
+  STATUS_H, HOME_H, NAV_H, DESKTOP_BP, useIsDesktop,
   NavContext, ThemeContext, useNav, useTheme,
 });

@@ -188,17 +188,6 @@ function ChatScreen({ params = {} }) {
 }
 window.ChatScreen = ChatScreen;
 
-// ─── IOS FRAME ───────────────────────────────────────────────
-function IOSFrame({ children, dark }) {
-  return (
-    <div style={{ width:FRAME_W, height:FRAME_H, borderRadius:50, background: dark ? '#0F0C1E' : C.paper, overflow:'hidden', position:'relative', boxShadow:'0 40px 80px rgba(0,0,0,0.45), 0 0 0 1.5px rgba(255,255,255,0.1), inset 0 0 0 1px rgba(255,255,255,0.06)', flexShrink:0 }}>
-      {children}
-      {/* Home indicator */}
-      <div style={{ position:'absolute', bottom:9, left:'50%', transform:'translateX(-50%)', width:130, height:5, borderRadius:3, background: dark ? 'rgba(255,255,255,0.25)' : 'rgba(14,11,31,0.18)', zIndex:300, pointerEvents:'none' }} />
-    </div>
-  );
-}
-
 // ─── MAIN APP ─────────────────────────────────────────────────
 function App() {
   return (
@@ -214,10 +203,11 @@ function AppInner() {
   const { dark } = useTheme();
 
   return (
-    <div className={`clorivo-frame${dark ? ' dark' : ''}`} style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:24, background:'#12101E' }}>
-      <IOSFrame dark={dark}>
+    <div className={`clorivo-frame${dark ? ' dark' : ''}`} style={{ width:'100%', minHeight:'100vh', display:'flex', flexDirection:'column', background: dark ? '#0F0C1E' : C.paper }}>
+      <DesktopNav />
+      <div style={{ flex:1, position:'relative' }}>
         <ScreenRouter />
-      </IOSFrame>
+      </div>
     </div>
   );
 }
