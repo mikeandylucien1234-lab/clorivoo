@@ -97,6 +97,8 @@ const SCREENS = {
   'admin-banners':  () => window.AdminBannersScreen,
   // Notifications + Messages
   'notifications':  () => window.NotificationsScreen,
+  'notification-detail':   () => window.NotificationDetailScreen,
+  'notification-settings': () => window.NotificationSettingsScreen,
   'messages-list':  () => window.MessagesListScreen,
   'categories':     () => window.CategoriesScreen,
   'category':       () => window.CategoryScreen,
