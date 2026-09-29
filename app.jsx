@@ -90,6 +90,7 @@ const SCREENS = {
   // Notifications + Messages
   'notifications':  () => window.NotificationsScreen,
   'messages-list':  () => window.MessagesListScreen,
+  'categories':     () => window.CategoriesScreen,
   'category':       () => window.CategoryScreen,
 };
 

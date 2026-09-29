@@ -222,6 +222,7 @@ function CartScreen() {
 
       <BottomNav active={2} onTab={(i) => {
         if (i === 0) navigate('home');
+        else if (i === 1) navigate('categories');
         else if (i === 3) navigate('tracking');
         else if (i === 4) navigate('profile');
       }} />

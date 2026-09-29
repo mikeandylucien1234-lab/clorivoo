@@ -45,6 +45,7 @@ function WishlistScreen() {
 
       <BottomNav active={4} onTab={(i) => {
         if (i === 0) navigate('home');
+        else if (i === 1) navigate('categories');
         else if (i === 2) navigate('cart');
         else if (i === 3) navigate('tracking');
       }} />
@@ -186,6 +187,7 @@ function ProfileScreen() {
 
       <BottomNav active={4} onTab={(i) => {
         if (i === 0) navigate('home');
+        else if (i === 1) navigate('categories');
         else if (i === 2) navigate('cart');
         else if (i === 3) navigate('tracking');
       }} />

@@ -203,7 +203,7 @@ function DesktopNav() {
 
   const links = [
     { key:'home',     label:'Home',       icon:'home'  },
-    { key:'category', label:'Categories', icon:'grid'  },
+    { key:'categories', label:'Categories', icon:'grid'  },
     { key:'tracking', label:'Orders',     icon:'package' },
     { key:'profile',  label:'Profile',    icon:'user'  },
   ];
@@ -218,7 +218,7 @@ function DesktopNav() {
 
         <nav style={{ display:'flex', alignItems:'center', gap:4, flex:1 }}>
           {links.map(l => {
-            const isActive = screen === l.key;
+            const isActive = screen === l.key || (l.key === 'categories' && screen === 'category');
             return (
               <button key={l.key} onClick={() => navigate(l.key)} style={{
                 display:'flex', alignItems:'center', gap:7, border:'none', cursor:'pointer',
@@ -259,7 +259,7 @@ function DesktopNav() {
 }
 
 // ─── PRODUCT CARD ────────────────────────────────────────────
-function ProductCard({ product, size='md', onPress, tint }) {
+function ProductCard({ product, size='md', onPress, tint, specs, onAddToCart }) {
   const p = product;
   const w = size === 'sm' ? 140 : 170;
   const imgH = size === 'sm' ? 140 : 170;
@@ -269,7 +269,7 @@ function ProductCard({ product, size='md', onPress, tint }) {
       <div style={{ position:'relative' }}>
         <Img label={p.label} tint={tint || (p.id % 5)} style={{ width:w, height:imgH }} />
         {p.discount && (
-          <div style={{ position:'absolute', top:8, left:8, background:C.primarySoft, color:C.primaryDeep, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, padding:'2px 7px', borderRadius:9999 }}>-{p.discount}%</div>
+          <div style={{ position:'absolute', top:8, left:8, background:C.danger, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, padding:'2px 7px', borderRadius:9999 }}>-{p.discount}%</div>
         )}
         <button onClick={e => { e.stopPropagation(); setLiked(l => !l); }} style={{ position:'absolute', top:6, right:6, width:30, height:30, borderRadius:9999, background:'rgba(255,255,255,0.9)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
           <Icon name={liked ? 'heartFill' : 'heart'} size={15} color={liked ? C.danger : C.mute} filled={liked} />
@@ -277,9 +277,23 @@ function ProductCard({ product, size='md', onPress, tint }) {
       </div>
       <div style={{ padding:'8px 10px 10px' }}>
         <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:400, color:C.ink, lineHeight:1.3, marginBottom:4, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' }}>{p.title}</div>
-        <div style={{ display:'flex', alignItems:'baseline', gap:5 }}>
-          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:600, color:C.primary }}>${p.price.toFixed(2)}</span>
-          {p.oldPrice && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:400, color:C.mute, textDecoration:'line-through' }}>${p.oldPrice}</span>}
+        {specs && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute, marginBottom:4, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis' }}>{specs}</div>}
+        {p.rating && (
+          <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:4 }}>
+            <Icon name="star" size={11} color="#F59E0B" filled />
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{p.rating}{p.reviews ? ` (${p.reviews})` : ''}</span>
+          </div>
+        )}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:6 }}>
+          <div style={{ display:'flex', alignItems:'baseline', gap:5, minWidth:0 }}>
+            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:600, color:C.primary }}>${p.price.toFixed(2)}</span>
+            {p.oldPrice && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:400, color:C.mute, textDecoration:'line-through' }}>${p.oldPrice}</span>}
+          </div>
+          {onAddToCart && (
+            <button onClick={e => { e.stopPropagation(); onAddToCart(); }} style={{ width:26, height:26, borderRadius:8, background:C.primarySoft, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <Icon name="cart" size={13} color={C.primary} />
+            </button>
+          )}
         </div>
         {p.sold && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute, marginTop:2 }}>{p.sold}</div>}
       </div>

@@ -43,7 +43,7 @@ function HomeScreen() {
   const userInitials = user?.user_metadata?.full_name?.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() ?? 'AM';
 
   function goTab(i) {
-    if (i === 1) navigate('category');
+    if (i === 1) navigate('categories');
     else if (i === 2) navigate('cart');
     else if (i === 3) navigate('tracking');
     else if (i === 4) navigate('profile');
