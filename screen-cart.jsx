@@ -2,7 +2,7 @@
 
 // ─── CART ────────────────────────────────────────────────────
 function CartScreen() {
-  const { navigate, goBack } = useNav();
+  const { navigate } = useNav();
   const isDesktop = useIsDesktop();
   const [items, setItems] = React.useState([
     { id:1, name:'iPhone 14 Pro Max',  variant:'256GB, Deep Purple', price:1099, oldPrice:1299, qty:1, inStock:true, seller:'TechZone Haiti',  checked:true },
@@ -32,6 +32,12 @@ function CartScreen() {
   function removeItem(id) {
     setItems(prev => prev.filter(i => i.id !== id));
   }
+  function toggleWishlist(id) {
+    setItems(prev => prev.map(i => i.id === id ? { ...i, wishlisted: !i.wishlisted } : i));
+  }
+  function clearSelected() {
+    setItems(prev => prev.filter(i => !i.checked));
+  }
 
   const youMayLike = PRODUCTS.slice(4);
 
@@ -43,18 +49,14 @@ function CartScreen() {
       <div style={{ paddingTop:STATUS_H, background:C.white, flexShrink:0 }}>
         {!isDesktop && (
         <div style={{ padding:'10px 20px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          {/* Greeting + name */}
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <button onClick={goBack} style={{ width:36, height:36, borderRadius:9999, border:`1.5px solid ${C.hairline}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <Icon name="arrowLeft" size={18} color={C.ink} />
-            </button>
-            <div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, lineHeight:1.2 }}>Hello 👋</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:17, color:C.ink, letterSpacing:'-0.03em', lineHeight:1.2 }}>Alex Martin</div>
+          <div onClick={() => navigate('home')} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+            <div style={{ width:28, height:28, borderRadius:9, background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <Icon name="shoppingBag" size={15} color="#fff" sw={2} />
             </div>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:18, fontWeight:800, color:C.primary, letterSpacing:'-0.02em' }}>CLORIVO</span>
           </div>
           <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-            <button style={{ width:40, height:40, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <button onClick={() => navigate('wishlist')} style={{ width:40, height:40, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Icon name="heart" size={22} color={C.mute} />
             </button>
             <button onClick={() => navigate('cart')} style={{ width:40, height:40, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', position:'relative' }}>
@@ -62,17 +64,6 @@ function CartScreen() {
               <Badge count={checkedItems.length} />
             </button>
           </div>
-        </div>
-        )}
-
-        {!isDesktop && (
-        <div onClick={() => navigate('profile')} style={{ margin:'0 20px 12px', display:'flex', alignItems:'center', gap:8, background:C.primarySoft, borderRadius:10, padding:'8px 12px', cursor:'pointer' }}>
-          <Icon name="mapPin" size={15} color={C.primary} />
-          <div style={{ flex:1, minWidth:0 }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Deliver to · </span>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:C.primaryDeep }}>14 Roquette Street, 75011 Paris</span>
-          </div>
-          <Icon name="chevronRight" size={14} color={C.primary} />
         </div>
         )}
 
@@ -102,7 +93,7 @@ function CartScreen() {
             </div>
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:500, color:C.ink }}>Select all ({items.length})</span>
           </label>
-          <button style={{ display:'flex', alignItems:'center', gap:4, border:'none', background:'none', cursor:'pointer' }}>
+          <button onClick={clearSelected} disabled={!checkedItems.length} style={{ display:'flex', alignItems:'center', gap:4, border:'none', background:'none', cursor: checkedItems.length ? 'pointer' : 'default', opacity: checkedItems.length ? 1 : 0.4 }}>
             <Icon name="x" size={14} color={C.danger} />
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.danger }}>Clear</span>
           </button>
@@ -130,9 +121,9 @@ function CartScreen() {
                       <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight:700, color:C.primary }}>${item.price.toFixed(2)}</span>
                       {item.oldPrice && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:C.mute, textDecoration:'line-through' }}>${item.oldPrice.toFixed(2)}</span>}
                     </div>
-                    <div style={{ display:'inline-flex', alignItems:'center', gap:4, background:'#ECFDF5', borderRadius:6, padding:'2px 8px', marginBottom:8 }}>
-                      <div style={{ width:6, height:6, borderRadius:9999, background:C.success }} />
-                      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:C.success }}>In stock</span>
+                    <div style={{ display:'inline-flex', alignItems:'center', gap:4, background: item.inStock ? '#ECFDF5' : '#FFFBEB', borderRadius:6, padding:'2px 8px', marginBottom:8 }}>
+                      <div style={{ width:6, height:6, borderRadius:9999, background: item.inStock ? C.success : C.warning }} />
+                      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color: item.inStock ? C.success : C.warning }}>{item.inStock ? 'In Stock' : 'Limited Stock'}</span>
                     </div>
                     {/* Qty stepper */}
                     <div style={{ display:'flex', alignItems:'center', gap:0, border:`1.5px solid ${C.hairline}`, borderRadius:9999, width:'fit-content' }}>
@@ -146,8 +137,8 @@ function CartScreen() {
                     <button onClick={() => removeItem(item.id)} style={{ width:30, height:30, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                       <Icon name="x" size={18} color={C.mute} />
                     </button>
-                    <button style={{ width:30, height:30, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                      <Icon name="heart" size={18} color={C.mute} />
+                    <button onClick={() => toggleWishlist(item.id)} style={{ width:30, height:30, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name={item.wishlisted ? 'heartFill' : 'heart'} size={18} color={item.wishlisted ? C.danger : C.mute} filled={item.wishlisted} />
                     </button>
                   </div>
                 </div>
@@ -193,13 +184,17 @@ function CartScreen() {
                 <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, color:C.success }}>-${discount.toLocaleString()}</span>
               </div>
             )}
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Taxes</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Calculated at checkout</span>
+            </div>
             <div style={{ display:'flex', justifyContent:'space-between', marginBottom:14, paddingTop:10, borderTop:`1px solid ${C.hairline}` }}>
               <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>Total</span>
               <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:800, color:C.primary }}>${total.toLocaleString()}</span>
             </div>
-            <Btn variant="primary" size="md" wide onClick={() => navigate('checkout')}>
-              Checkout ({checkedItems.length})
-              <Icon name="arrowLeft" size={15} color="#fff" style={{ transform:'rotate(180deg)' }} />
+            <Btn variant="primary" size="md" wide onClick={() => navigate('checkout')} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 8px 20px rgba(108,77,255,0.3)' }}>
+              <Icon name="lock" size={14} color="#fff" />
+              Proceed to Checkout
             </Btn>
           </div>
         )}
@@ -213,9 +208,9 @@ function CartScreen() {
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Total ({checkedItems.length} items)</div>
           <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:20, fontWeight:800, color:C.primary }}>${total.toLocaleString()}</div>
         </div>
-        <Btn variant="primary" size="md" style={{ flex:1, maxWidth:200 }} onClick={() => navigate('checkout')}>
-          Checkout ({checkedItems.length})
-          <Icon name="arrowLeft" size={15} color="#fff" style={{ transform:'rotate(180deg)' }} />
+        <Btn variant="primary" size="md" style={{ flex:1, maxWidth:220, background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 8px 20px rgba(108,77,255,0.3)' }} onClick={() => navigate('checkout')}>
+          <Icon name="lock" size={14} color="#fff" />
+          Proceed to Checkout
         </Btn>
       </div>
       )}
@@ -238,6 +233,7 @@ function CheckoutScreen() {
   const [promoApplied, setPromoApplied] = React.useState(false);
   const [loading, setLoading]       = React.useState(false);
   const [hasAddress, setHasAddress] = React.useState(true);
+  const [paymentMethod, setPaymentMethod] = React.useState('mastercard');
 
   const subtotal  = 1566.00;
   const discount  = promoApplied ? 156.60 : 0;
@@ -251,7 +247,7 @@ function CheckoutScreen() {
       items: [],
       shippingAddress: { line1: '14 Roquette Street', city: 'Paris', country: 'FR', zip: '75011' },
       shippingMethod: 'standard',
-      paymentMethod: 'card',
+      paymentMethod,
       subtotal, discount, shippingFee: shipping, total,
       promoCode: promoApplied ? promoCode : null,
     });
@@ -289,9 +285,14 @@ function CheckoutScreen() {
               <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:600, color:C.danger }}>-${discount > 0 ? discount.toFixed(2) : '0.00'}</span>
             </div>
             {/* Shipping */}
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', paddingBottom:12, borderBottom:`1px solid ${C.hairline}` }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.ink }}>Shipping</span>
               <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.success }}>Free</span>
+            </div>
+            {/* Taxes */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', paddingBottom:12, borderBottom:`1px solid ${C.hairline}` }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.ink }}>Taxes</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Calculated at checkout</span>
             </div>
             {/* Total */}
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -316,6 +317,7 @@ function CheckoutScreen() {
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.primaryDeep }}>Shop with confidence</span>
           </div>
           {[
+            { icon:'checkCircle', text:'Secure shopping guaranteed' },
             { icon:'truck',  text:'Free shipping on all orders' },
             { icon:'package',text:'Easy returns within 7 days' },
             { icon:'lock',   text:'100% secure payment' },
@@ -381,18 +383,80 @@ function CheckoutScreen() {
         <div style={{ background:C.white, borderRadius:16, padding:'14px 16px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>Payment Method</div>
-            <button style={{ border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.primary }}>Edit</button>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Select one</span>
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 12px', border:`1.5px solid ${C.hairline}`, borderRadius:12 }}>
-            {/* Mastercard logo */}
-            <div style={{ display:'flex', flexShrink:0 }}>
-              <div style={{ width:20, height:20, borderRadius:9999, background:'#EB001B' }} />
-              <div style={{ width:20, height:20, borderRadius:9999, background:'#F79E1B', marginLeft:-8 }} />
-            </div>
-            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, color:C.ink, flex:1 }}>•••• •••• •••• 4242</span>
-            <div style={{ width:24, height:24, borderRadius:9999, background:C.primary, display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <Icon name="check" size={13} color="#fff" sw={2.5} />
-            </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {[
+              { id:'visa',       label:'Visa',            sub:'•••• •••• •••• 4242',   logo:(
+                <div style={{ width:40, height:26, borderRadius:6, background:'#1A1F71', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:800, color:'#fff', fontStyle:'italic' }}>VISA</span>
+                </div>
+              ) },
+              { id:'mastercard', label:'Mastercard',      sub:'•••• •••• •••• 8931',   logo:(
+                <div style={{ display:'flex', flexShrink:0, width:40, justifyContent:'center' }}>
+                  <div style={{ width:20, height:20, borderRadius:9999, background:'#EB001B' }} />
+                  <div style={{ width:20, height:20, borderRadius:9999, background:'#F79E1B', marginLeft:-8 }} />
+                </div>
+              ) },
+              { id:'paypal',     label:'PayPal',          sub:'Pay with your PayPal account', logo:(
+                <div style={{ width:40, height:26, borderRadius:6, background:'#003087', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:800, color:'#00A0E4', fontStyle:'italic' }}>Pay<span style={{ color:'#fff' }}>Pal</span></span>
+                </div>
+              ) },
+              { id:'applepay',   label:'Apple Pay',       sub:'Pay using Face ID',     logo:(
+                <div style={{ width:40, height:26, borderRadius:6, background:'#000', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:9.5, fontWeight:700, color:'#fff' }}> Pay</span>
+                </div>
+              ) },
+              { id:'googlepay',  label:'Google Pay',      sub:'Pay with Google Pay',   logo:(
+                <div style={{ width:40, height:26, borderRadius:6, background:'#fff', border:`1px solid ${C.hairline}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, color:'#5F6368' }}>G <span style={{ color:'#4285F4' }}>Pay</span></span>
+                </div>
+              ) },
+              { id:'moncash',    label:'MonCash',         sub:'Pay with your MonCash wallet',  featured:true, logo:(
+                <div style={{ width:40, height:26, borderRadius:6, background:'linear-gradient(135deg,#EE3831 0%,#F58220 100%)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:8.5, fontWeight:800, color:'#fff' }}>MonCash</span>
+                </div>
+              ) },
+              { id:'natcash',    label:'NatCash',         sub:'Pay with your NatCash wallet',  featured:true, logo:(
+                <div style={{ width:40, height:26, borderRadius:6, background:'linear-gradient(135deg,#0072BC 0%,#00A651 100%)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:8.5, fontWeight:800, color:'#fff' }}>NatCash</span>
+                </div>
+              ) },
+              { id:'cod',        label:'Cash on Delivery',sub:'Pay when your order arrives', logo:(
+                <div style={{ width:40, height:26, borderRadius:6, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <Icon name="package" size={14} color={C.primary} />
+                </div>
+              ) },
+            ].map(pm => {
+              const active = paymentMethod === pm.id;
+              return (
+                <div
+                  key={pm.id}
+                  onClick={() => setPaymentMethod(pm.id)}
+                  style={{
+                    display:'flex', alignItems:'center', gap:12, padding:'10px 12px',
+                    border: active ? `1.5px solid ${C.primary}` : `1.5px solid ${C.hairline}`,
+                    background: active ? C.primarySoft : (pm.featured ? 'rgba(238,56,49,0.03)' : C.white),
+                    borderRadius:12, cursor:'pointer', transition:'all .15s'
+                  }}
+                >
+                  {pm.logo}
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink }}>{pm.label}</span>
+                      {pm.featured && (
+                        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:800, color:C.primary, background:C.primarySoft, borderRadius:6, padding:'2px 6px', textTransform:'uppercase', letterSpacing:'0.03em' }}>Haiti</span>
+                      )}
+                    </div>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{pm.sub}</span>
+                  </div>
+                  <div style={{ width:22, height:22, borderRadius:9999, border: active ? 'none' : `1.5px solid ${C.hairline}`, background: active ? C.primary : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    {active && <Icon name="check" size={12} color="#fff" sw={2.5} />}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -400,9 +464,8 @@ function CheckoutScreen() {
       {/* Sticky CTA */}
       <div style={{ position:'absolute', bottom:0, left:0, right:0, padding: isDesktop ? '16px 0 24px' : '12px 16px 28px', background:C.white, borderTop:`1px solid ${C.hairline}` }}>
         <div style={{ maxWidth: isDesktop ? 640 : undefined, margin: isDesktop ? '0 auto' : undefined }}>
-        <Btn variant="primary" size="lg" wide onClick={placeOrder} disabled={loading || !hasAddress}>
-          {loading ? 'Processing…' : 'Proceed to Payment'}
-          {!loading && <Icon name="arrowLeft" size={17} color="#fff" style={{ transform:'rotate(180deg)' }} />}
+        <Btn variant="primary" size="lg" wide onClick={placeOrder} disabled={loading || !hasAddress} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 8px 20px rgba(108,77,255,0.3)' }}>
+          {loading ? 'Processing…' : (<><Icon name="lock" size={15} color="#fff" /> Place Order</>)}
         </Btn>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, marginTop:8 }}>
           <Icon name="lock" size={12} color={C.mute} />
