@@ -83,6 +83,7 @@ const SCREENS = {
   'kyc-selfie':          () => window.KycSelfieScreen,
   'kyc-review':          () => window.KycReviewScreen,
   'kyc-success':         () => window.KycSuccessScreen,
+  'store':          () => window.SellerStoreScreen,
   'seller-home':    () => window.SellerDashboardScreen,
   'seller-orders':  () => window.SellerOrdersScreen,
   'shop-customize': () => window.ShopCustomizeScreen,

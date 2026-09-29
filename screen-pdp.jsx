@@ -204,7 +204,7 @@ Dimensions: Ø 12 × H 22 cm · Weight: 680 g · Material: premium certified mat
           </div>
 
           {/* Seller strip */}
-          <div onClick={() => {}} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', border:`1.5px solid ${C.hairline}`, borderRadius:12, cursor:'pointer' }}>
+          <div onClick={() => navigate('store', { shopName: p.seller })} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', border:`1.5px solid ${C.hairline}`, borderRadius:12, cursor:'pointer' }}>
             <Avatar size={40} initials={p.seller ? p.seller[0].toUpperCase() : 'L'} />
             <div style={{ flex:1 }}>
               <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
