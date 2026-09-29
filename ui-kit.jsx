@@ -74,10 +74,10 @@ function Input({ label, placeholder, value, onChange, type='text', iconLeft, ico
   const isPassword = type === 'password';
   const inputType  = isPassword ? (show ? 'text' : 'password') : type;
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:5, ...style }}>
+    <div style={{ display:'flex', flexDirection:'column', gap:5, minWidth:0, ...style }}>
       {label && <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.mute, letterSpacing:'-0.01em' }}>{label}</span>}
       <div style={{
-        height:50, display:'flex', alignItems:'center', gap:10,
+        height:50, display:'flex', alignItems:'center', gap:10, minWidth:0,
         border:`1.5px solid ${error ? C.danger : focused ? C.primary : C.hairline}`,
         borderRadius:12,
         padding:'0 14px',
@@ -94,7 +94,7 @@ function Input({ label, placeholder, value, onChange, type='text', iconLeft, ico
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           style={{
-            flex:1, border:'none', outline:'none', background:'transparent',
+            flex:1, minWidth:0, width:'100%', border:'none', outline:'none', background:'transparent',
             fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:400,
             color:C.ink, '::placeholder':{ color:C.mute },
           }}
