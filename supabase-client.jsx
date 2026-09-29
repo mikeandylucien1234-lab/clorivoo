@@ -264,6 +264,16 @@ async function sbGetOrders(userId) {
   return data ?? [];
 }
 
+async function sbCancelOrder(orderId) {
+  if (!_sb || !orderId) return { data: { id: orderId, status: 'cancelled' }, error: null };
+  const { data, error } = await _sb.from('orders')
+    .update({ status: 'cancelled' })
+    .eq('id', orderId)
+    .select()
+    .single();
+  return { data, error };
+}
+
 // ─── MESSAGES ────────────────────────────────────────────────────
 async function sbGetConversations(userId) {
   if (!_sb || !userId) return { data: _DEMO_CONVERSATIONS, error: null };
@@ -493,7 +503,7 @@ Object.assign(window, {
   sbGetShops, sbGetShop,
   sbGetBanners, sbUpsertBanner, sbDeleteBanner, sbGetSignupBanner,
   sbGetCart, sbUpsertCartItem, sbClearCart,
-  sbCreateOrder, sbGetOrder, sbGetOrders,
+  sbCreateOrder, sbGetOrder, sbGetOrders, sbCancelOrder,
   sbGetConversations, sbGetMessages, sbSendMessage,
   sbSubscribeToMessages, sbMarkConversationRead, sbGetOrCreateConversation,
   sbGetNotifications, sbMarkNotificationRead,

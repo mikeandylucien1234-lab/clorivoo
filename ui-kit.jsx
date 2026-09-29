@@ -377,6 +377,25 @@ function Modal({ open, title, onClose, children }) {
   );
 }
 
+// ─── TOAST ──────────────────────────────────────────────────
+function Toast({ toast, onClose }) {
+  React.useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(onClose, 2800);
+    return () => clearTimeout(t);
+  }, [toast]);
+  if (!toast) return null;
+  const isError = toast.type === 'error';
+  return (
+    <div style={{ position:'fixed', left:'50%', bottom:100, transform:'translateX(-50%)', zIndex:3000, animation:'toastIn 0.25s cubic-bezier(0.25,0.46,0.45,0.94)' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, background: isError ? C.danger : C.ink, color:'#fff', borderRadius:9999, padding:'12px 20px', boxShadow:'0 8px 24px rgba(14,11,31,0.28)', maxWidth:320 }}>
+        <Icon name={isError ? 'xCircle' : 'checkCircle'} size={17} color="#fff" />
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13.5, fontWeight:600 }}>{toast.message}</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── RATING STARS ────────────────────────────────────────────
 function Stars({ rating = 5, size = 13 }) {
   return (
@@ -403,5 +422,5 @@ function Badge({ count, style={} }) {
 Object.assign(window, {
   Img, Btn, Input, Chip, NavBar, StatusBar,
   BottomNav, DesktopNav, ProductCard, ProductCardWide,
-  Avatar, SectionHeader, Divider, Stars, Badge, Modal,
+  Avatar, SectionHeader, Divider, Stars, Badge, Modal, Toast,
 });
