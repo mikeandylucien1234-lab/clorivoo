@@ -120,8 +120,8 @@ function ChatScreen({ params = {} }) {
     sbGetMessages(convId).then(({ data }) => {
       if (data?.length) setMessages(data);
       else setMessages([
-        { id:'dm1', sender_id:'seller', content:"Bonjour ! Oui ce modèle est disponible. Autre question ?", created_at: new Date(Date.now()-3600000).toISOString() },
-        { id:'dm2', sender_id:'buyer',  content:"Vous l'avez en olive foncé ?", created_at: new Date(Date.now()-1800000).toISOString() },
+        { id:'dm1', sender_id:'seller', content:"Hi! Yes, this model is available. Any other questions?", created_at: new Date(Date.now()-3600000).toISOString() },
+        { id:'dm2', sender_id:'buyer',  content:"Do you have it in dark olive?", created_at: new Date(Date.now()-1800000).toISOString() },
       ]);
     });
     const unsub = sbSubscribeToMessages(convId, msg => {
@@ -153,13 +153,13 @@ function ChatScreen({ params = {} }) {
       <StatusBar />
       <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}` }}>
         <NavBar title={shopName} onBack={goBack}
-          right={<div style={{ display:'flex', alignItems:'center', gap:5 }}><div style={{ width:8, height:8, borderRadius:9999, background:C.success }} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.success, fontWeight:500 }}>En ligne</span></div>}
+          right={<div style={{ display:'flex', alignItems:'center', gap:5 }}><div style={{ width:8, height:8, borderRadius:9999, background:C.success }} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.success, fontWeight:500 }}>Online</span></div>}
         />
       </div>
       {/* Safety banner */}
       <div style={{ margin:'10px 16px 0', padding:'10px 14px', background:'#FFFBEB', borderRadius:10, border:`1px solid #F59E0B`, display:'flex', gap:8, alignItems:'flex-start' }}>
         <Icon name="zap" size={14} color="#D97706" style={{ marginTop:1, flexShrink:0 }} />
-        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'#92400E', lineHeight:1.4 }}>Restez sur clorivo. Ne payez jamais en dehors de la plateforme.</span>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'#92400E', lineHeight:1.4 }}>Stay on clorivo. Never pay outside the platform.</span>
       </div>
       {/* Messages */}
       <div ref={scrollRef} style={{ flex:1, padding:'14px 16px', overflowY:'auto', display:'flex', flexDirection:'column', gap:10, paddingBottom:20 }}>
@@ -179,7 +179,7 @@ function ChatScreen({ params = {} }) {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder="Écrivez un message…"
+            placeholder="Write a message…"
             style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:14, color:C.ink }}
           />
         </div>

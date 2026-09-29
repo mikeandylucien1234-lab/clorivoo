@@ -55,7 +55,7 @@ const PRODUCTS = [
 // Cart state (shared across screens via window)
 window.CART_ITEMS = window.CART_ITEMS || [
   { product: PRODUCTS[0], qty: 1, variant: 'M · terracotta', seller: 'luna.studio' },
-  { product: PRODUCTS[6], qty: 2, variant: 'lavande', seller: 'waxcraft' },
+  { product: PRODUCTS[6], qty: 2, variant: 'lavender', seller: 'waxcraft' },
 ];
 
 // Icons — Lucide-compatible (24×24 viewBox, stroke paths)

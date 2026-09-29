@@ -296,7 +296,7 @@ function SellerDashboardScreen() {
     { k:'Rating',      v: stats ? String(stats.rating ?? 4.9) : '4.9', delta:'stable', up:true },
   ];
   const data = [120, 185, 142, 210, 175, 260, 230];
-  const days = ['L','M','M','J','V','S','D'];
+  const days = ['M','T','W','T','F','S','S'];
   const maxV = Math.max(...data);
   const W = 310, H = 80;
   const pts = data.map((v, i) => [(i / (data.length-1)) * W, H - (v/maxV)*(H-10) - 5]);

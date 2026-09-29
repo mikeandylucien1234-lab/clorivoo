@@ -26,7 +26,7 @@ window._supabase = _sb;
 
 // ─── AUTH HELPERS ─────────────────────────────────────────────────
 async function sbSignUp(email, password, fullName) {
-  if (!_sb) return { error: { message: 'Supabase non configuré' } };
+  if (!_sb) return { error: { message: 'Supabase not configured' } };
   const { data, error } = await _sb.auth.signUp({
     email, password,
     options: { data: { full_name: fullName } },
@@ -35,7 +35,7 @@ async function sbSignUp(email, password, fullName) {
 }
 
 async function sbSignIn(email, password) {
-  if (!_sb) return { error: { message: 'Supabase non configuré' } };
+  if (!_sb) return { error: { message: 'Supabase not configured' } };
   const { data, error } = await _sb.auth.signInWithPassword({ email, password });
   return { data, error };
 }
@@ -82,7 +82,7 @@ async function sbGetProfile(userId) {
 }
 
 async function sbUpdateProfile(userId, updates) {
-  if (!_sb) return { error: { message: 'Non configuré' } };
+  if (!_sb) return { error: { message: 'Not configured' } };
   const { data, error } = await _sb.from('profiles').update(updates).eq('id', userId).select().single();
   return { data, error };
 }
@@ -148,13 +148,13 @@ async function sbGetSignupBanner() {
 }
 
 async function sbUpsertBanner(banner) {
-  if (!_sb) return { error: { message: 'Non configuré' } };
+  if (!_sb) return { error: { message: 'Not configured' } };
   const { data, error } = await _sb.from('banners').upsert(banner).select().single();
   return { data, error };
 }
 
 async function sbDeleteBanner(id) {
-  if (!_sb) return { error: { message: 'Non configuré' } };
+  if (!_sb) return { error: { message: 'Not configured' } };
   const { error } = await _sb.from('banners').delete().eq('id', id);
   return { error };
 }
@@ -414,7 +414,7 @@ async function sbAdminUpdateKyc(id, status, notes) {
 
 // ─── FILE UPLOADS ─────────────────────────────────────────────────
 async function sbUploadFile(bucket, path, file) {
-  if (!_sb) return { url: null, error: { message: 'Non configuré' } };
+  if (!_sb) return { url: null, error: { message: 'Not configured' } };
   const { data, error } = await _sb.storage.from(bucket).upload(path, file, { upsert: true });
   if (error) return { url: null, error };
   const { data: { publicUrl } } = _sb.storage.from(bucket).getPublicUrl(path);
@@ -451,33 +451,33 @@ const _DEMO_SHOPS = [
 ];
 
 const _DEMO_BANNERS = [
-  { id:'demo-b1', title:"Jusqu'à 70% offerts sur Maison & Cuisine", subtitle:"Offre printemps", cta_text:"Acheter maintenant", bg_color:'#6C4DFF', position:1 },
-  { id:'demo-b2', title:'Nouvelle collection Mode', subtitle:'Tendances printemps-été', cta_text:'Découvrir', bg_color:'#059669', position:2 },
-  { id:'demo-b3', title:'Tech à petits prix', subtitle:'Smartphones et accessoires', cta_text:'Explorer', bg_color:'#D97706', position:3 },
+  { id:'demo-b1', title:"Up to 70% off Home & Kitchen", subtitle:"Spring offer", cta_text:"Shop now", bg_color:'#6C4DFF', position:1 },
+  { id:'demo-b2', title:'New Fashion collection', subtitle:'Spring-summer trends', cta_text:'Discover', bg_color:'#059669', position:2 },
+  { id:'demo-b3', title:'Tech at low prices', subtitle:'Smartphones and accessories', cta_text:'Explore', bg_color:'#D97706', position:3 },
 ];
 
 const _DEMO_CONVERSATIONS = [
-  { id:'demo-c1', shops:{ name:'Luxe Store', brand_color:'#1A1A2E', is_verified:true }, last_message:"Thank you! 🙏 Si vous avez d'autres questions…", last_message_at: new Date(Date.now()-86400000).toISOString(), buyer_unread:1 },
-  { id:'demo-c2', shops:{ name:'TechZone Haiti', brand_color:'#4A6FD4', is_verified:true }, last_message:"Merci ! Je vais vérifier et revenir vers vous…", last_message_at: new Date(Date.now()-172800000).toISOString(), buyer_unread:1 },
-  { id:'demo-c3', shops:{ name:'Fashion House', brand_color:'#9B59B6', is_verified:true }, last_message:"📦 Commande #CLV789456 — Expédiée", last_message_at: new Date(Date.now()-259200000).toISOString(), buyer_unread:0 },
+  { id:'demo-c1', shops:{ name:'Luxe Store', brand_color:'#1A1A2E', is_verified:true }, last_message:"Thank you! 🙏 If you have any other questions…", last_message_at: new Date(Date.now()-86400000).toISOString(), buyer_unread:1 },
+  { id:'demo-c2', shops:{ name:'TechZone Haiti', brand_color:'#4A6FD4', is_verified:true }, last_message:"Thanks! I'll check and get back to you…", last_message_at: new Date(Date.now()-172800000).toISOString(), buyer_unread:1 },
+  { id:'demo-c3', shops:{ name:'Fashion House', brand_color:'#9B59B6', is_verified:true }, last_message:"📦 Order #CLV789456 — Shipped", last_message_at: new Date(Date.now()-259200000).toISOString(), buyer_unread:0 },
 ];
 
 const _DEMO_MESSAGES = [
-  { id:'dm1', sender_id:'seller', content:"Bonjour ! Comment puis-je vous aider ?", created_at: new Date(Date.now()-3600000).toISOString() },
-  { id:'dm2', sender_id:'buyer',  content:"Bonjour, le produit est-il disponible en taille L ?", created_at: new Date(Date.now()-3000000).toISOString() },
-  { id:'dm3', sender_id:'seller', content:"Oui, nous l'avons en L ! Délai de livraison : 3-5 jours.", created_at: new Date(Date.now()-2400000).toISOString() },
+  { id:'dm1', sender_id:'seller', content:"Hello! How can I help you?", created_at: new Date(Date.now()-3600000).toISOString() },
+  { id:'dm2', sender_id:'buyer',  content:"Hi, is the product available in size L?", created_at: new Date(Date.now()-3000000).toISOString() },
+  { id:'dm3', sender_id:'seller', content:"Yes, we have it in L! Delivery time: 3-5 days.", created_at: new Date(Date.now()-2400000).toISOString() },
 ];
 
 const _DEMO_NOTIFICATIONS = [
-  { id:'dn1', type:'order', title:'Commande expédiée', body:'Votre commande #CLV001 est en route', read_at: null, created_at: new Date(Date.now()-3600000).toISOString() },
-  { id:'dn2', type:'promo', title:'Vente flash — 2h restantes', body:'Jusqu\'à -70% sur la sélection', read_at: null, created_at: new Date(Date.now()-7200000).toISOString() },
-  { id:'dn3', type:'system', title:'Bienvenue sur Clorivo 🎉', body:'Découvrez des milliers de produits', read_at: new Date().toISOString(), created_at: new Date(Date.now()-86400000).toISOString() },
+  { id:'dn1', type:'order', title:'Order shipped', body:'Your order #CLV001 is on its way', read_at: null, created_at: new Date(Date.now()-3600000).toISOString() },
+  { id:'dn2', type:'promo', title:'Flash sale — 2h left', body:'Up to -70% on selected items', read_at: null, created_at: new Date(Date.now()-7200000).toISOString() },
+  { id:'dn3', type:'system', title:'Welcome to Clorivo 🎉', body:'Discover thousands of products', read_at: new Date().toISOString(), created_at: new Date(Date.now()-86400000).toISOString() },
 ];
 
 const _DEMO_SELLER_STATS = { orders: 127, products: 34, revenue: 5248.00, followers: 2400, rating: 4.9 };
 const _DEMO_SELLER_ORDERS = [
-  { id:'so1', title:'Vase Terracotta', quantity:1, price:24.50, orders:{ status:'pending', created_at: new Date(Date.now()-3600000).toISOString() } },
-  { id:'so2', title:'Mug Céramique', quantity:2, price:14.99, orders:{ status:'processing', created_at: new Date(Date.now()-86400000).toISOString() } },
+  { id:'so1', title:'Terracotta Vase', quantity:1, price:24.50, orders:{ status:'pending', created_at: new Date(Date.now()-3600000).toISOString() } },
+  { id:'so2', title:'Ceramic Mug', quantity:2, price:14.99, orders:{ status:'processing', created_at: new Date(Date.now()-86400000).toISOString() } },
 ];
 const _DEMO_ADMIN_STATS = { users: 12480, sellers: 843, orders: 5621, gmv: 284920, pendingKyc: 14 };
 const _DEMO_KYC_REQUESTS = [
