@@ -77,7 +77,7 @@ function ProfileScreen() {
     },
     {
       items: [
-        { icon:'store', label:'Become a seller', detail:'Earn on clorivo', action: () => navigate('become-seller'), accent:true },
+        { icon:'store', label:'Become a seller', detail:'Earn on clorivo', action: () => navigate('seller-welcome'), accent:true },
       ],
     },
     {

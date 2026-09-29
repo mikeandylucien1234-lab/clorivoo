@@ -1,23 +1,24 @@
-// screen-seller.jsx — Become Seller · KYC · Seller Dashboard · Orders
+// screen-seller.jsx — Seller Welcome · Registration · Identity Verification · Dashboard · Orders
 
 // ─── STEPPER COMPONENT ───────────────────────────────────────
 function KycStepper({ step }) {
-  const steps = ['Profile', 'KYC', 'Shop'];
+  const steps = ['Account', 'Verification', 'Face Scan', 'Complete'];
   return (
     <div style={{ padding:'10px 20px 14px', background:C.white, borderBottom:`1px solid ${C.hairline}` }}>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:C.mute, textAlign:'center', marginBottom:8 }}>Step {step + 1} of {steps.length}</div>
       <div style={{ display:'flex', alignItems:'center' }}>
         {steps.map((s, i) => (
           <React.Fragment key={i}>
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-              <div style={{ width:26, height:26, borderRadius:9999, background: i < step ? C.success : i === step ? C.primary : C.hairline, display:'flex', alignItems:'center', justifyContent:'center', transition:'background 0.3s' }}>
+              <div style={{ width:24, height:24, borderRadius:9999, background: i < step ? C.success : i === step ? C.primary : C.hairline, display:'flex', alignItems:'center', justifyContent:'center', transition:'background 0.3s' }}>
                 {i < step
-                  ? <Icon name="check" size={13} color="#fff" sw={2.5} />
-                  : <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color: i === step ? '#fff' : C.mute }}>{i+1}</span>}
+                  ? <Icon name="check" size={12} color="#fff" sw={2.5} />
+                  : <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, color: i === step ? '#fff' : C.mute }}>{i+1}</span>}
               </div>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color: i <= step ? C.primary : C.mute, fontWeight: i === step ? 600 : 400 }}>{s}</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:9.5, color: i <= step ? C.primary : C.mute, fontWeight: i === step ? 600 : 400, whiteSpace:'nowrap' }}>{s}</span>
             </div>
             {i < steps.length - 1 && (
-              <div style={{ flex:1, height:2, borderRadius:1, background: i < step ? C.success : C.hairline, margin:'0 6px', marginBottom:16, transition:'background 0.3s' }} />
+              <div style={{ flex:1, height:2, borderRadius:1, background: i < step ? C.success : C.hairline, margin:'0 4px', marginBottom:16, transition:'background 0.3s' }} />
             )}
           </React.Fragment>
         ))}
@@ -26,40 +27,105 @@ function KycStepper({ step }) {
   );
 }
 
-// ─── BECOME SELLER — Step 1 ───────────────────────────────────
+// ─── SELLER WELCOME ───────────────────────────────────────────
+function SellerWelcomeScreen() {
+  const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
+  const benefits = [
+    { icon:'store',   text:'Millions of buyers' },
+    { icon:'zap',     text:'Fast, secure payments' },
+    { icon:'checkCircle', text:'Free registration' },
+    { icon:'help',    text:'24/7 support' },
+  ];
+  return (
+    <div style={{ position:'absolute', inset:0, background:C.white, display:'flex', flexDirection:'column' }}>
+      <StatusBar />
+      <div style={{ paddingTop:STATUS_H, flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems: isDesktop ? 'center' : 'stretch' }}>
+      <div style={{ width:'100%', maxWidth: isDesktop ? 460 : undefined, padding:'8px 24px 40px' }}>
+        <button onClick={goBack} style={{ border:'none', background:'none', cursor:'pointer', padding:'8px 0 16px', display:'flex', color:C.mute }}>
+          <Icon name="arrowLeft" size={20} color={C.mute} />
+        </button>
+
+        <div style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', height:190, marginBottom:8 }}>
+          <div style={{ position:'absolute', top:-10, left:'10%', width:150, height:150, borderRadius:9999, background:'radial-gradient(circle, rgba(108,77,255,0.14) 0%, transparent 70%)' }} />
+          <div style={{ position:'absolute', bottom:-20, right:'8%', width:170, height:170, borderRadius:9999, background:'radial-gradient(circle, rgba(138,107,255,0.12) 0%, transparent 70%)' }} />
+          <div style={{ width:120, height:120, borderRadius:9999, background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 16px 40px rgba(108,77,255,0.32)' }}>
+            <Icon name="store" size={54} color="#fff" sw={1.6} />
+          </div>
+        </div>
+
+        <div style={{ textAlign:'center', marginBottom:8 }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:26, fontWeight:800, color:C.ink, letterSpacing:'-0.03em' }}>Sell on CLORIVO</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, color:C.mute, marginTop:8, lineHeight:1.5, maxWidth:320, margin:'8px auto 0' }}>
+            Create your shop and start selling products worldwide.
+          </div>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:10, marginTop:28 }}>
+          {benefits.map((b, i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', background:C.paper, borderRadius:12 }}>
+              <div style={{ width:36, height:36, borderRadius:9999, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <Icon name={b.icon} size={17} color={C.primary} />
+              </div>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:500, color:C.ink }}>{b.text}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:12, marginTop:28 }}>
+          <Btn variant="primary" size="lg" wide onClick={() => navigate('become-seller')} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 10px 28px rgba(108,77,255,0.35)' }}>
+            Start Selling
+          </Btn>
+          <Btn variant="secondary" size="lg" wide onClick={() => navigate('seller-home')}>
+            I Already Have an Account
+          </Btn>
+        </div>
+      </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── BECOME SELLER — Step 1: Account ──────────────────────────
 function BecomeSellerScreen() {
   const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
+  const [form, setForm] = React.useState({
+    firstName:'', lastName:'', dob:'', email:'', countryCode:'+1', phone:'', nationality:'', country:'', shopName:'',
+  });
+  function set(key) { return e => setForm(f => ({ ...f, [key]: e.target.value })); }
+
   return (
     <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
       <StatusBar />
       <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
-        <NavBar title="Become a Seller" onBack={goBack} />
+        <NavBar title="Create Seller Account" onBack={goBack} />
         <KycStepper step={0} />
       </div>
-      <div style={{ flex:1, overflowY:'auto', padding:'18px 20px 40px', display:'flex', flexDirection:'column', gap:14 }}>
+      <div style={{ flex:1, overflowY:'auto', padding:'18px 20px 40px', display:'flex', flexDirection:'column', gap:14, maxWidth: isDesktop ? 600 : undefined, width:'100%', margin: isDesktop ? '0 auto' : undefined }}>
         <div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', marginBottom:4 }}>Tell us about yourself</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', marginBottom:4 }}>Personal information</div>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute }}>This information stays private and secure.</div>
         </div>
         <div style={{ display:'flex', gap:10 }}>
-          <Input label="First name" placeholder="Alex" style={{ flex:1 }} />
-          <Input label="Last name" placeholder="Martin" style={{ flex:1 }} />
+          <Input label="First Name" placeholder="Alex" value={form.firstName} onChange={set('firstName')} style={{ flex:1 }} />
+          <Input label="Last Name" placeholder="Martin" value={form.lastName} onChange={set('lastName')} style={{ flex:1 }} />
         </div>
-        <Input label="Date of birth" placeholder="DD / MM / YYYY" />
-        <Input label="Email address" placeholder="you@mail.com" type="email" iconLeft={<Icon name="mail" size={16} color={C.mute} />} />
+        <Input label="Date of Birth" placeholder="DD / MM / YYYY" value={form.dob} onChange={set('dob')} iconLeft={<Icon name="package" size={16} color={C.mute} />} />
+        <Input label="Email Address" placeholder="you@mail.com" type="email" value={form.email} onChange={set('email')} iconLeft={<Icon name="mail" size={16} color={C.mute} />} />
         <div style={{ display:'flex', gap:10 }}>
-          <Input label="Country code" placeholder="+1" style={{ width:80 }} />
-          <Input label="Phone" placeholder="555 123 4567" style={{ flex:1 }} />
+          <Input label="Code" placeholder="+1" value={form.countryCode} onChange={set('countryCode')} style={{ width:80 }} />
+          <Input label="Phone Number" placeholder="555 123 4567" value={form.phone} onChange={set('phone')} style={{ flex:1 }} />
         </div>
-        <Input label="Nationality" placeholder="American" />
-        <Input label="Country of residence" placeholder="United States" iconLeft={<Icon name="mapPin" size={16} color={C.mute} />} />
+        <Input label="Nationality" placeholder="American" value={form.nationality} onChange={set('nationality')} />
+        <Input label="Current Country" placeholder="United States" value={form.country} onChange={set('country')} iconLeft={<Icon name="mapPin" size={16} color={C.mute} />} />
         <Divider style={{ margin:'4px 0' }} />
         <div>
-          <Input label="Your shop name" placeholder="Atelier Lune" iconLeft={<Icon name="store" size={16} color={C.mute} />} />
+          <Input label="Shop Name" placeholder="Atelier Lune" value={form.shopName} onChange={set('shopName')} iconLeft={<Icon name="store" size={16} color={C.mute} />} />
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:5 }}>This is what buyers will see</div>
         </div>
-        <Btn variant="primary" size="lg" wide onClick={() => navigate('kyc-doc')}>
-          Continue — ID Verification
+        <Btn variant="primary" size="lg" wide onClick={() => navigate('kyc-verify-identity', { form })} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 10px 28px rgba(108,77,255,0.35)' }}>
+          Continue
           <Icon name="arrowLeft" size={16} color="#fff" style={{ transform:'rotate(180deg)' }} />
         </Btn>
       </div>
@@ -67,115 +133,199 @@ function BecomeSellerScreen() {
   );
 }
 
-// ─── KYC — Doc front (camera, dark) ──────────────────────────
-function KycDocScreen() {
+// ─── KYC — Step 2a: Verify Identity (document type) ───────────
+function KycVerifyIdentityScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
-  const [captured, setCaptured] = React.useState(false);
-  return (
-    <div style={{ position:'absolute', inset:0, background:'#0A0812', display:'flex', flexDirection:'column' }}>
-      <StatusBar light />
-      <div style={{ paddingTop:STATUS_H, flexShrink:0 }}>
-        <NavBar title="Verify Your Identity" onBack={goBack} transparent light />
-        {/* Dark stepper */}
-        <div style={{ padding:'6px 20px 12px', display:'flex', gap:6 }}>
-          {[0,1,2].map(i => <div key={i} style={{ flex:1, height:3, borderRadius:9999, background: i === 0 ? C.primary : 'rgba(255,255,255,0.15)', transition:'background 0.3s' }} />)}
-        </div>
-      </div>
-      <div style={{ flex:1, padding:'0 20px', display:'flex', flexDirection:'column', gap:14 }}>
-        <div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:20, fontWeight:800, color:'#fff', letterSpacing:'-0.02em' }}>Front of your ID document</div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.6)', marginTop:4 }}>Position your passport or ID card within the frame</div>
-        </div>
-        {/* Viewfinder */}
-        <div style={{ flex:1, border:`2px dashed ${captured ? C.success : C.primary}`, borderRadius:14, position:'relative', background:'rgba(255,255,255,0.04)', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', transition:'border-color 0.3s' }}>
-          {/* Corner brackets */}
-          {[['top','left'],['top','right'],['bottom','left'],['bottom','right']].map(([y,x], i) => (
-            <div key={i} style={{ position:'absolute', [y]:10, [x]:10, width:24, height:24, borderTop: y==='top' ? `3px solid ${captured ? C.success : C.primary}` : 'none', borderBottom: y==='bottom' ? `3px solid ${captured ? C.success : C.primary}` : 'none', borderLeft: x==='left' ? `3px solid ${captured ? C.success : C.primary}` : 'none', borderRight: x==='right' ? `3px solid ${captured ? C.success : C.primary}` : 'none', transition:'border-color 0.3s' }} />
-          ))}
-          {captured
-            ? <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
-                <div style={{ width:56, height:56, borderRadius:9999, background:'rgba(31,138,91,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  <Icon name="check" size={28} color={C.success} sw={2.5} />
-                </div>
-                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.success, fontWeight:600 }}>Photo captured</span>
-              </div>
-            : <div style={{ textAlign:'center' }}>
-                <div style={{ fontSize:36, marginBottom:8, opacity:0.3 }}>▭</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.5)', lineHeight:1.4 }}>Align all 4 corners<br/>Avoid glare</div>
-              </div>
-          }
-        </div>
-        {/* Security note */}
-        <div style={{ background:'rgba(255,255,255,0.07)', borderRadius:10, padding:'10px 14px', display:'flex', gap:8, alignItems:'flex-start' }}>
-          <Icon name="lock" size={14} color='rgba(255,255,255,0.5)' style={{ marginTop:1, flexShrink:0 }} />
-          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.5)', lineHeight:1.4 }}>Encrypted upload. Clorivo never shares your documents with sellers.</span>
-        </div>
-        <Btn variant="primary" size="lg" wide onClick={() => { if (!captured) { setCaptured(true); } else { navigate('kyc-back'); } }}>
-          <Icon name="camera" size={17} color="#fff" />
-          {captured ? 'Continue →' : 'Open camera'}
-        </Btn>
-        <div style={{ height:20 }} />
-      </div>
-    </div>
-  );
-}
+  const isDesktop = useIsDesktop();
+  const [docType, setDocType] = React.useState(null);
+  const docTypes = [
+    { key:'passport', icon:'mail',     label:'Passport',           detail:'Official travel document' },
+    { key:'id',       icon:'user',     label:'National ID',        detail:'National or state ID card' },
+    { key:'work',     icon:'store',    label:'Work Permit',        detail:'Proof of work or business permit' },
+    { key:'license',  icon:'creditCard', label:'Driver License',   detail:'Permit, license or authorization' },
+  ];
+  const notes = [
+    'Documents must be valid (not expired)',
+    'All information must be clearly visible',
+    'No screenshots allowed',
+    'Photos must be real-time captures',
+  ];
 
-// ─── KYC — Doc back (upload) ─────────────────────────────────
-function KycBackScreen() {
-  const { navigate, goBack } = useNav();
-  const [uploaded, setUploaded] = React.useState(false);
   return (
     <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
       <StatusBar />
       <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
         <NavBar title="Verify Your Identity" onBack={goBack} />
-        <div style={{ padding:'6px 20px 12px', display:'flex', gap:6 }}>
-          {[0,1,2].map(i => <div key={i} style={{ flex:1, height:3, borderRadius:9999, background: i <= 1 ? C.primary : C.hairline }} />)}
-        </div>
+        <KycStepper step={1} />
       </div>
-      <div style={{ flex:1, padding:'18px 20px 40px', display:'flex', flexDirection:'column', gap:14 }}>
+      <div style={{ flex:1, overflowY:'auto', padding:'18px 20px 40px', display:'flex', flexDirection:'column', gap:16, maxWidth: isDesktop ? 600 : undefined, width:'100%', margin: isDesktop ? '0 auto' : undefined }}>
         <div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:20, fontWeight:800, color:C.ink, letterSpacing:'-0.02em' }}>Back of your ID document</div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, marginTop:4 }}>Both sides are required for verification</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', marginBottom:4 }}>Verify Your Identity</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute, lineHeight:1.5 }}>For the safety of buyers and sellers, identity verification is required.</div>
         </div>
-        {/* Already uploaded card */}
-        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', background:'#EFF9F4', borderRadius:12, border:`1.5px solid ${C.success}` }}>
-          <Img label="" tint={0} style={{ width:48, height:34, borderRadius:6, flexShrink:0 }} />
-          <div style={{ flex:1 }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>Front · captured</div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>passport_front.jpg · 1.2 MB</div>
+
+        <div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink, marginBottom:10 }}>Choose document type</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {docTypes.map(d => (
+              <button key={d.key} onClick={() => setDocType(d.key)} style={{
+                display:'flex', alignItems:'center', gap:12, padding:'14px', borderRadius:14, cursor:'pointer', textAlign:'left',
+                border:`1.5px solid ${docType === d.key ? C.primary : C.hairline}`,
+                background: docType === d.key ? C.primarySoft : C.white,
+                boxShadow: docType === d.key ? `0 4px 16px rgba(108,77,255,0.14)` : '0 1px 4px rgba(14,11,31,0.04)',
+                transition:'all 0.15s',
+              }}>
+                <div style={{ width:42, height:42, borderRadius:9999, background: docType === d.key ? C.primary : C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <Icon name={d.icon} size={19} color={docType === d.key ? '#fff' : C.primary} />
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14.5, fontWeight:700, color:C.ink }}>{d.label}</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:1 }}>{d.detail}</div>
+                </div>
+                <Icon name="chevronRight" size={17} color={docType === d.key ? C.primary : C.mute} />
+              </button>
+            ))}
           </div>
-          <Icon name="checkCircle" size={20} color={C.success} />
         </div>
-        {/* Upload zone */}
-        <div onClick={() => setUploaded(true)} style={{ flex:1, border:`2px dashed ${uploaded ? C.success : C.hairline}`, borderRadius:16, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:10, cursor:'pointer', background: uploaded ? '#EFF9F4' : C.white, transition:'all 0.2s', minHeight:160 }}>
-          {uploaded
-            ? <><Icon name="checkCircle" size={36} color={C.success} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, color:C.success }}>Back uploaded!</span></>
-            : <>
-                <div style={{ width:52, height:52, borderRadius:9999, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  <Icon name="camera" size={24} color={C.primary} />
-                </div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:600, color:C.ink }}>Tap to upload the back</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>jpg, png · max 5 MB</div>
-                <div style={{ display:'flex', gap:8 }}>
-                  <Chip active>📷 Camera</Chip>
-                  <Chip>🖼 Gallery</Chip>
-                </div>
-              </>
-          }
+
+        <div style={{ background:C.primarySoft, borderRadius:12, padding:'12px 14px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+            <Icon name="help" size={14} color={C.primaryDeep} />
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, color:C.primaryDeep }}>Important notes</span>
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {notes.map((n, i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:7 }}>
+                <Icon name="check" size={12} color={C.primaryDeep} sw={2.5} />
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.primaryDeep }}>{n}</span>
+              </div>
+            ))}
+          </div>
         </div>
-        <Btn variant="primary" size="lg" wide onClick={() => navigate('kyc-selfie')} disabled={!uploaded}>
-          Continue →
+
+        <Btn variant="primary" size="lg" wide disabled={!docType} onClick={() => navigate('kyc-doc', { ...params, docType })} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow: docType ? '0 10px 28px rgba(108,77,255,0.35)' : 'none' }}>
+          Continue
         </Btn>
       </div>
     </div>
   );
 }
 
-// ─── KYC — Selfie liveness ────────────────────────────────────
-function KycSelfieScreen() {
+// ─── KYC — Step 2b: Upload documents (front + back) ───────────
+function KycDocScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
+  const [front, setFront] = React.useState(false);
+  const [back, setBack]   = React.useState(false);
+  const docLabels = { passport:'Passport', id:'National ID', work:'Work Permit', license:'Driver License' };
+  const docLabel = docLabels[params.docType] || 'ID document';
+
+  function UploadZone({ label, done, onCapture }) {
+    return (
+      <div onClick={onCapture} style={{ border:`2px dashed ${done ? C.success : C.hairline}`, borderRadius:16, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', background: done ? '#EFF9F4' : C.white, transition:'all 0.2s', minHeight:150, padding:16 }}>
+        {done ? (
+          <>
+            <Icon name="checkCircle" size={32} color={C.success} />
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.success }}>Photo captured</span>
+          </>
+        ) : (
+          <>
+            <div style={{ width:46, height:46, borderRadius:9999, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Icon name="camera" size={20} color={C.primary} />
+            </div>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.ink, textAlign:'center' }}>Click the camera to take a photo</span>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
+      <StatusBar />
+      <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
+        <NavBar title="Upload Documents" onBack={goBack} />
+        <KycStepper step={1} />
+      </div>
+      <div style={{ flex:1, overflowY:'auto', padding:'18px 20px 40px', display:'flex', flexDirection:'column', gap:16, maxWidth: isDesktop ? 600 : undefined, width:'100%', margin: isDesktop ? '0 auto' : undefined }}>
+        <div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Selected document</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:19, fontWeight:800, color:C.ink, letterSpacing:'-0.02em' }}>{docLabel}</div>
+        </div>
+
+        <div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink, marginBottom:8 }}>Front side {docLabel !== 'Passport' ? '(ID page)' : ''}</div>
+          <UploadZone label="front" done={front} onCapture={() => setFront(true)} />
+        </div>
+
+        <div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink, marginBottom:8 }}>Back side {docLabel === 'Passport' ? '(optional)' : ''}</div>
+          <UploadZone label="back" done={back} onCapture={() => setBack(true)} />
+        </div>
+
+        <div style={{ background:C.paper, borderRadius:10, padding:'10px 14px', display:'flex', gap:8, alignItems:'flex-start' }}>
+          <Icon name="lock" size={14} color={C.mute} style={{ marginTop:1, flexShrink:0 }} />
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, lineHeight:1.4 }}>Encrypted upload. Clorivo never shares your documents with buyers or other sellers.</span>
+        </div>
+
+        <Btn variant="primary" size="lg" wide disabled={!front || !back} onClick={() => navigate('kyc-selfie-intro', params)} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow: (front && back) ? '0 10px 28px rgba(108,77,255,0.35)' : 'none' }}>
+          Continue
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+// ─── KYC — Step 3a: Face Verification Intro ───────────────────
+function KycSelfieIntroScreen({ params = {} }) {
+  const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
+  const rules = [
+    { icon:'camera',  text:'Use real-time camera only' },
+    { icon:'user',    text:'Ensure your face is clearly visible' },
+    { icon:'x',       text:'Remove sunglasses or masks' },
+    { icon:'lock',    text:'Gallery uploads are not allowed' },
+  ];
+  return (
+    <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
+      <StatusBar />
+      <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
+        <NavBar title="Face Verification" onBack={goBack} />
+        <KycStepper step={2} />
+      </div>
+      <div style={{ flex:1, overflowY:'auto', padding:'18px 20px 40px', display:'flex', flexDirection:'column', gap:20, alignItems:'center', textAlign:'center', maxWidth: isDesktop ? 500 : undefined, width:'100%', margin: isDesktop ? '0 auto' : undefined }}>
+        <div style={{ width:100, height:100, borderRadius:9999, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', marginTop:8, animation:'floatY 3.2s ease-in-out infinite' }}>
+          <Icon name="camera" size={44} color={C.primary} />
+        </div>
+        <div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', marginBottom:6 }}>Live Face Verification</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute, lineHeight:1.5, maxWidth:300 }}>We'll take a quick live selfie to confirm you match your ID document.</div>
+        </div>
+        <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:10, textAlign:'left' }}>
+          {rules.map((r, i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', background:C.white, border:`1px solid ${C.hairline}`, borderRadius:12 }}>
+              <div style={{ width:32, height:32, borderRadius:9999, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <Icon name={r.icon} size={15} color={C.primary} />
+              </div>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink, fontWeight:500 }}>{r.text}</span>
+            </div>
+          ))}
+        </div>
+        <Btn variant="primary" size="lg" wide onClick={() => navigate('kyc-selfie', params)} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 10px 28px rgba(108,77,255,0.35)' }}>
+          <Icon name="camera" size={17} color="#fff" />
+          Start Camera
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+// ─── KYC — Step 3b: Live selfie camera ─────────────────────────
+function KycSelfieScreen({ params = {} }) {
+  const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
   const [progress, setProgress] = React.useState(0);
+  const [flash, setFlash] = React.useState(false);
 
   React.useEffect(() => {
     const t = setInterval(() => setProgress(p => { if (p >= 4) { clearInterval(t); return 4; } return p + 1; }), 800);
@@ -194,19 +344,22 @@ function KycSelfieScreen() {
     <div style={{ position:'absolute', inset:0, background:'#0A0812', display:'flex', flexDirection:'column' }}>
       <StatusBar light />
       <div style={{ paddingTop:STATUS_H, flexShrink:0 }}>
-        <NavBar title="Liveness Check" onBack={goBack} transparent light />
-        <div style={{ padding:'6px 20px 12px', display:'flex', gap:6 }}>
-          {[0,1,2].map(i => <div key={i} style={{ flex:1, height:3, borderRadius:9999, background: C.primary }} />)}
+        <NavBar title="Face Verification" onBack={goBack} transparent light />
+        <div style={{ padding:'6px 20px 4px' }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10.5, fontWeight:600, color:'rgba(255,255,255,0.5)', textAlign:'center', marginBottom:6 }}>Step 3 of 4</div>
+          <div style={{ display:'flex', gap:6 }}>
+            {[0,1,2,3].map(i => <div key={i} style={{ flex:1, height:3, borderRadius:9999, background: i <= 2 ? C.primary : 'rgba(255,255,255,0.15)' }} />)}
+          </div>
         </div>
       </div>
-      <div style={{ flex:1, padding:'0 20px', display:'flex', flexDirection:'column', gap:14 }}>
+      <div style={{ flex:1, padding:'10px 20px 0', display:'flex', flexDirection:'column', gap:14, maxWidth: isDesktop ? 480 : undefined, width:'100%', margin: isDesktop ? '0 auto' : undefined }}>
         <div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:20, fontWeight:800, color:'#fff' }}>Look at the camera</div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.6)', marginTop:4 }}>Follow the dot, then blink slowly</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:20, fontWeight:800, color:'#fff' }}>Position your face in the circle</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.6)', marginTop:4 }}>Follow the instructions, then blink slowly</div>
         </div>
         {/* Face oval */}
         <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', position:'relative' }}>
-          <div style={{ width:200, height:250, borderRadius:'50%', border:`3px solid ${progress >= 4 ? C.success : C.primary}`, position:'relative', display:'flex', alignItems:'center', justifyContent:'center', transition:'border-color 0.5s' }}>
+          <div style={{ width:200, height:250, borderRadius:'50%', border:`3px solid ${progress >= 4 ? C.success : C.primary}`, position:'relative', display:'flex', alignItems:'center', justifyContent:'center', transition:'border-color 0.5s', boxShadow: progress >= 4 ? `0 0 0 6px rgba(31,138,91,0.18)` : `0 0 0 6px rgba(108,77,255,0.15)` }}>
             <div style={{ position:'absolute', inset:-10, borderRadius:'50%', border:`2px dashed ${C.primary}`, opacity:0.3 }} />
             <svg viewBox="0 0 80 100" style={{ width:'60%', opacity:0.35 }}>
               <ellipse cx="40" cy="45" rx="26" ry="34" fill="none" stroke="#fff" strokeWidth="1.5"/>
@@ -232,36 +385,165 @@ function KycSelfieScreen() {
             </div>
           ))}
         </div>
-        <Btn variant="primary" size="lg" wide onClick={() => navigate('kyc-success')} disabled={progress < 4}>
-          {progress < 4 ? 'Verifying…' : 'Finish setting up my seller account'}
+        {/* Camera controls */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:32, padding:'6px 0 10px' }}>
+          <button onClick={() => setFlash(f => !f)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:5, border:'none', background:'none', cursor:'pointer' }}>
+            <div style={{ width:44, height:44, borderRadius:9999, background: flash ? C.primary : 'rgba(255,255,255,0.1)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Icon name="zap" size={18} color="#fff" />
+            </div>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'rgba(255,255,255,0.6)' }}>Flash</span>
+          </button>
+          <div style={{ width:64, height:64, borderRadius:9999, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 0 0 3px rgba(255,255,255,0.25)' }}>
+            <div style={{ width:52, height:52, borderRadius:9999, background: progress >= 4 ? C.success : C.primary, display:'flex', alignItems:'center', justifyContent:'center', transition:'background 0.3s' }}>
+              <Icon name="camera" size={22} color="#fff" />
+            </div>
+          </div>
+          <button style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:5, border:'none', background:'none', cursor:'pointer' }}>
+            <div style={{ width:44, height:44, borderRadius:9999, background:'rgba(255,255,255,0.1)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            </div>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'rgba(255,255,255,0.6)' }}>Flip</span>
+          </button>
+        </div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.35)', textAlign:'center' }}>Gallery uploads not accepted</div>
+        <Btn variant="primary" size="lg" wide onClick={() => navigate('kyc-review', params)} disabled={progress < 4} style={{ background: progress >= 4 ? `linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)` : undefined }}>
+          {progress < 4 ? 'Verifying…' : 'Continue'}
         </Btn>
-        <div style={{ height:20 }} />
+        <div style={{ height:16 }} />
       </div>
     </div>
   );
 }
 
-// ─── KYC — Success ────────────────────────────────────────────
-function KycSuccessScreen() {
-  const { navigate } = useNav();
+// ─── KYC — Step 4: Review & Submit ─────────────────────────────
+function KycReviewScreen({ params = {} }) {
+  const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
+  const [submitting, setSubmitting] = React.useState(false);
+  const f = params.form || {};
+  const rows = [
+    ['First Name', f.firstName || '—'],
+    ['Last Name',  f.lastName  || '—'],
+    ['Date of Birth', f.dob    || '—'],
+    ['Email', f.email || '—'],
+    ['Phone', f.phone ? `${f.countryCode || ''} ${f.phone}` : '—'],
+    ['Nationality', f.nationality || '—'],
+    ['Country', f.country || '—'],
+    ['Shop Name', f.shopName || '—'],
+  ];
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    const user = await sbGetUser();
+    if (user) {
+      await sbUpdateProfile(user.id, { role: 'seller' });
+    }
+    setTimeout(() => { setSubmitting(false); navigate('kyc-success'); }, 900);
+  }
+
   return (
-    <div style={{ position:'absolute', inset:0, background:C.white, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:32 }}>
+    <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
       <StatusBar />
-      <div style={{ width:80, height:80, borderRadius:9999, background:'#EFF9F4', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:20 }}>
-        <Icon name="checkCircle" size={40} color={C.success} />
+      <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
+        <NavBar title="Review & Submit" onBack={goBack} />
+        <KycStepper step={3} />
       </div>
-      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:24, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', textAlign:'center', marginBottom:10 }}>Application submitted!</div>
-      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, color:C.mute, textAlign:'center', lineHeight:1.5, marginBottom:32 }}>Your verification is being processed. You'll receive a confirmation within 24–48h.</div>
-      <div style={{ background:C.primarySoft, borderRadius:12, padding:'14px 16px', width:'100%', marginBottom:24 }}>
-        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-          <Icon name="bell" size={18} color={C.primary} />
-          <div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.primaryDeep }}>Notifications enabled</div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>We'll let you know as soon as you're approved</div>
+      <div style={{ flex:1, overflowY:'auto', padding:'18px 20px 40px', display:'flex', flexDirection:'column', gap:16, maxWidth: isDesktop ? 600 : undefined, width:'100%', margin: isDesktop ? '0 auto' : undefined }}>
+        <div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', marginBottom:4 }}>Review your information</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute }}>Make sure everything is correct before submitting.</div>
+        </div>
+
+        <div style={{ background:C.white, borderRadius:14, border:`1px solid ${C.hairline}`, overflow:'hidden' }}>
+          {rows.map(([label, value], i) => (
+            <div key={label} style={{ display:'flex', justifyContent:'space-between', padding:'12px 16px', borderTop: i > 0 ? `1px solid ${C.hairline}` : 'none' }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>{label}</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink, textAlign:'right' }}>{value}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display:'flex', gap:10 }}>
+          <div style={{ flex:1, display:'flex', alignItems:'center', gap:10, padding:'12px 14px', background:'#EFF9F4', borderRadius:12 }}>
+            <Icon name="checkCircle" size={20} color={C.success} />
+            <div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, color:C.success }}>ID Verified</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Document confirmed</div>
+            </div>
+          </div>
+          <div style={{ flex:1, display:'flex', alignItems:'center', gap:10, padding:'12px 14px', background:'#EFF9F4', borderRadius:12 }}>
+            <Icon name="checkCircle" size={20} color={C.success} />
+            <div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, color:C.success }}>Face Verified</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Liveness confirmed</div>
+            </div>
           </div>
         </div>
+
+        <div style={{ flex:1 }} />
+        <div style={{ display:'flex', alignItems:'center', gap:6, justifyContent:'center' }}>
+          <Icon name="lock" size={12} color={C.mute} />
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Your information is secured with Clorivo</span>
+        </div>
+        <Btn variant="primary" size="lg" wide onClick={handleSubmit} disabled={submitting} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 10px 28px rgba(108,77,255,0.35)' }}>
+          {submitting ? 'Submitting…' : 'Submit Application'}
+        </Btn>
       </div>
-      <Btn variant="primary" size="lg" wide onClick={() => navigate('home')}>Back to home</Btn>
+    </div>
+  );
+}
+
+// ─── KYC — Success / Pending Approval ──────────────────────────
+function KycSuccessScreen() {
+  const { navigate } = useNav();
+  const isDesktop = useIsDesktop();
+  return (
+    <div style={{ position:'absolute', inset:0, background:`linear-gradient(160deg, #12102A 0%, ${C.primaryDeep} 55%, ${C.primary} 100%)`, display:'flex', flexDirection:'column', alignItems:'center', overflow:'hidden' }}>
+      <StatusBar light />
+      {/* Confetti dots */}
+      {[...Array(16)].map((_, i) => (
+        <div key={i} style={{ position:'absolute', top: `${(i * 37) % 100}%`, left: `${(i * 53) % 100}%`, width: 5 + (i % 3) * 3, height: 5 + (i % 3) * 3, borderRadius:9999, background: ['#fff','#FFD166','#8A6BFF','#4ADE80'][i % 4], opacity:0.5 }} />
+      ))}
+      <div style={{ width:'100%', maxWidth: isDesktop ? 440 : undefined, flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:32, position:'relative', zIndex:1 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, position:'absolute', top: STATUS_H + 12 }}>
+          <Icon name="shoppingBag" size={18} color="#fff" />
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:800, color:'#fff', letterSpacing:'-0.02em' }}>CLORIVO</span>
+        </div>
+
+        <div style={{ width:96, height:96, borderRadius:9999, background:'rgba(255,255,255,0.15)', backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:24 }}>
+          <div style={{ width:72, height:72, borderRadius:9999, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <Icon name="check" size={34} color={C.primary} sw={3} />
+          </div>
+        </div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:23, fontWeight:800, color:'#fff', letterSpacing:'-0.03em', textAlign:'center', marginBottom:10, lineHeight:1.3 }}>Your Application Has Been Submitted</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14.5, color:'rgba(255,255,255,0.8)', textAlign:'center', lineHeight:1.5, marginBottom:28, maxWidth:300 }}>We are reviewing your information.</div>
+
+        <div style={{ background:'rgba(255,255,255,0.1)', backdropFilter:'blur(6px)', borderRadius:16, padding:'16px', width:'100%', marginBottom:16, display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ width:38, height:38, borderRadius:9999, background:'rgba(255,255,255,0.15)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <Icon name="package" size={17} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:'rgba(255,255,255,0.65)' }}>Application Status</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:'#fff' }}>Under Review</div>
+            </div>
+          </div>
+          <div style={{ height:1, background:'rgba(255,255,255,0.15)' }} />
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ width:38, height:38, borderRadius:9999, background:'rgba(255,255,255,0.15)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <Icon name="bell" size={17} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:'rgba(255,255,255,0.65)' }}>Estimated Review Time</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:'#fff' }}>24 – 48 Hours</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:'rgba(255,255,255,0.7)', textAlign:'center', marginBottom:24 }}>We'll send you an email once your account is active.</div>
+
+        <Btn variant="dark" size="lg" wide onClick={() => navigate('home')} style={{ background:'#fff', color:C.primary }}>Go to Dashboard</Btn>
+      </div>
     </div>
   );
 }
@@ -458,6 +740,8 @@ function SellerOrdersScreen() {
 }
 
 Object.assign(window, {
-  BecomeSellerScreen, KycDocScreen, KycBackScreen, KycSelfieScreen, KycSuccessScreen,
+  SellerWelcomeScreen, BecomeSellerScreen,
+  KycVerifyIdentityScreen, KycDocScreen, KycSelfieIntroScreen, KycSelfieScreen,
+  KycReviewScreen, KycSuccessScreen,
   SellerDashboardScreen, SellerOrdersScreen,
 });

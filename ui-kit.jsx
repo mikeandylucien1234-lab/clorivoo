@@ -197,7 +197,8 @@ function DesktopNav() {
   if (!isDesktop) return null;
 
   const screen = current?.screen;
-  const hideOn = ['splash', 'onboarding', 'login', 'register', 'forgot-password', 'otp-verify', 'reset-password', 'auth-success'];
+  const hideOn = ['splash', 'onboarding', 'login', 'register', 'forgot-password', 'otp-verify', 'reset-password', 'auth-success',
+    'seller-welcome', 'become-seller', 'kyc-verify-identity', 'kyc-doc', 'kyc-selfie-intro', 'kyc-selfie', 'kyc-review', 'kyc-success'];
   if (hideOn.includes(screen)) return null;
 
   const links = [
