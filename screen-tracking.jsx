@@ -195,10 +195,10 @@ function OrderCardSkeleton() {
 }
 
 // ─── MY ORDERS (LIST) ─────────────────────────────────────────
-function OrdersListScreen() {
+function OrdersListScreen({ params = {} }) {
   const { navigate } = useNav();
   const isDesktop = useIsDesktop();
-  const [tab, setTab] = React.useState('all');
+  const [tab, setTab] = React.useState(params.tab || 'all');
   const [orders, setOrders] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -586,6 +586,9 @@ function OrderDetailScreen({ params = {} }) {
 
         {/* Actions */}
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <Btn variant="secondary" size="md" wide onClick={() => setToast({ type:'success', message:'Invoice downloaded' })}>
+            <Icon name="download" size={16} color={C.ink} /> Download Invoice
+          </Btn>
           {cancellable && !confirmCancel && (
             <Btn variant="secondary" size="md" wide onClick={() => setConfirmCancel(true)} style={{ color:C.danger, borderColor:'#FCA5A5' }}>
               <Icon name="xCircle" size={16} color={C.danger} /> Cancel Order

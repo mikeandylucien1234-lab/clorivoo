@@ -96,6 +96,17 @@ const SCREENS = {
   'messages-list':  () => window.MessagesListScreen,
   'categories':     () => window.CategoriesScreen,
   'category':       () => window.CategoryScreen,
+  // V2 — Account & Profile
+  'personal-info':    () => window.PersonalInfoScreen,
+  'edit-profile':     () => window.EditProfileScreen,
+  'addresses':        () => window.AddressesScreen,
+  'payment-methods':  () => window.PaymentMethodsScreen,
+  'wallet':           () => window.WalletScreen,
+  'settings':         () => window.SettingsScreen,
+  'security':         () => window.SecurityScreen,
+  'support':          () => window.SupportTicketsScreen,
+  'premium':          () => window.PremiumScreen,
+  'invite':           () => window.InviteFriendsScreen,
 };
 
 function ScreenRouter() {

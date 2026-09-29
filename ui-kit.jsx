@@ -377,6 +377,24 @@ function Modal({ open, title, onClose, children }) {
   );
 }
 
+// ─── SWITCH (toggle) ──────────────────────────────────────────
+function Switch({ checked, onChange, disabled }) {
+  return (
+    <button
+      onClick={() => !disabled && onChange && onChange(!checked)}
+      disabled={disabled}
+      style={{
+        width:44, height:26, borderRadius:9999, border:'none', padding:2, flexShrink:0,
+        background: checked ? C.primary : C.hairline, cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.5 : 1, transition:'background 0.2s', display:'flex', alignItems:'center',
+        justifyContent: checked ? 'flex-end' : 'flex-start',
+      }}
+    >
+      <div style={{ width:22, height:22, borderRadius:9999, background:'#fff', boxShadow:'0 1px 3px rgba(14,11,31,0.25)', transition:'transform 0.2s' }} />
+    </button>
+  );
+}
+
 // ─── TOAST ──────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
   React.useEffect(() => {
@@ -422,5 +440,5 @@ function Badge({ count, style={} }) {
 Object.assign(window, {
   Img, Btn, Input, Chip, NavBar, StatusBar,
   BottomNav, DesktopNav, ProductCard, ProductCardWide,
-  Avatar, SectionHeader, Divider, Stars, Badge, Modal, Toast,
+  Avatar, SectionHeader, Divider, Stars, Badge, Modal, Toast, Switch,
 });
