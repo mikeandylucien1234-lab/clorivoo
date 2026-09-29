@@ -169,11 +169,11 @@ function BottomNav({ active = 0, onTab }) {
   const isDesktop = useIsDesktop();
   if (isDesktop) return null;
   const tabs = [
-    { icon:'home',     label:'Accueil'    },
-    { icon:'grid',     label:'Catégories' },
-    { icon:'cart',     label:'Panier'     },
-    { icon:'package',  label:'Commandes'  },
-    { icon:'user',     label:'Profil'     },
+    { icon:'home',     label:'Home'       },
+    { icon:'grid',     label:'Categories' },
+    { icon:'cart',     label:'Cart'       },
+    { icon:'package',  label:'Orders'     },
+    { icon:'user',     label:'Profile'    },
   ];
   return (
     <div style={{ position:'absolute', bottom:0, left:0, right:0, height:NAV_H, background:C.white, borderTop:`1px solid ${C.hairline}`, display:'flex', alignItems:'center', justifyContent:'space-around', paddingBottom:HOME_H, zIndex:100 }}>
@@ -197,14 +197,14 @@ function DesktopNav() {
   if (!isDesktop) return null;
 
   const screen = current?.screen;
-  const hideOn = ['splash', 'onboarding', 'login', 'register'];
+  const hideOn = ['splash', 'onboarding', 'login', 'register', 'forgot-password', 'otp-verify', 'reset-password', 'auth-success'];
   if (hideOn.includes(screen)) return null;
 
   const links = [
-    { key:'home',     label:'Accueil',    icon:'home'  },
-    { key:'category', label:'Catégories', icon:'grid'  },
-    { key:'tracking', label:'Commandes',  icon:'package' },
-    { key:'profile',  label:'Profil',     icon:'user'  },
+    { key:'home',     label:'Home',       icon:'home'  },
+    { key:'category', label:'Categories', icon:'grid'  },
+    { key:'tracking', label:'Orders',     icon:'package' },
+    { key:'profile',  label:'Profile',    icon:'user'  },
   ];
   const cartCount = (window.CART_ITEMS || []).reduce((n, it) => n + (it.qty || 1), 0);
 
@@ -236,7 +236,7 @@ function DesktopNav() {
         <div style={{ flex:1, maxWidth:420 }}>
           <div style={{ height:40, display:'flex', alignItems:'center', gap:8, padding:'0 14px', borderRadius:9999, background:C.paper, border:`1.5px solid ${C.hairline}` }}>
             <Icon name="search" size={16} color={C.mute} />
-            <input placeholder="Rechercher sur clorivo…" style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink }} />
+            <input placeholder="Search on clorivo…" style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink }} />
           </div>
         </div>
 
@@ -328,7 +328,7 @@ function SectionHeader({ title, onSeeAll, style={} }) {
       <span style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:700, color:C.ink, letterSpacing:'-0.02em' }}>{title}</span>
       {onSeeAll && (
         <button onClick={onSeeAll} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:2, color:C.primary }}>
-          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500 }}>Voir tout</span>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500 }}>See all</span>
           <Icon name="chevronRight" size={14} color={C.primary} />
         </button>
       )}
@@ -339,6 +339,27 @@ function SectionHeader({ title, onSeeAll, style={} }) {
 // ─── DIVIDER ────────────────────────────────────────────────
 function Divider({ style={} }) {
   return <div style={{ height:1, background:C.hairline, ...style }} />;
+}
+
+// ─── MODAL ──────────────────────────────────────────────────
+function Modal({ open, title, onClose, children }) {
+  if (!open) return null;
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(14,11,31,0.55)', backdropFilter:'blur(2px)', zIndex:1000, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width:'100%', maxWidth:480, maxHeight:'80vh', background:C.white, borderRadius:'20px 20px 0 0', padding:'20px 20px 28px', display:'flex', flexDirection:'column', boxShadow:'0 -8px 40px rgba(14,11,31,0.2)', animation:'sheetIn 0.25s cubic-bezier(0.25,0.46,0.45,0.94)' }}>
+        <div style={{ width:36, height:4, borderRadius:2, background:C.hairline, margin:'0 auto 16px' }} />
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:800, color:C.ink, letterSpacing:'-0.02em' }}>{title}</span>
+          <button onClick={onClose} style={{ width:32, height:32, borderRadius:9999, border:'none', background:C.paper, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <Icon name="x" size={16} color={C.mute} />
+          </button>
+        </div>
+        <div style={{ overflowY:'auto', fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute, lineHeight:1.6 }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── RATING STARS ────────────────────────────────────────────
@@ -367,5 +388,5 @@ function Badge({ count, style={} }) {
 Object.assign(window, {
   Img, Btn, Input, Chip, NavBar, StatusBar,
   BottomNav, DesktopNav, ProductCard, ProductCardWide,
-  Avatar, SectionHeader, Divider, Stars, Badge,
+  Avatar, SectionHeader, Divider, Stars, Badge, Modal,
 });

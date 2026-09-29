@@ -16,8 +16,8 @@ function ProductDetailsScreen({ params = {} }) {
   const colors  = ['#C97B5A','#3B3730','#E6E1D4','#7A8A6A'];
   const sizes   = ['XS','S','M','L','XL'];
   const reviews = [
-    { name:'Marie L.', rating:5, text:'Qualité impeccable, exactement comme sur les photos. Livraison rapide.', date:'il y a 3 jours' },
-    { name:'Thomas R.', rating:4, text:'Très beau produit, finitions soignées. Je recommande.', date:'il y a 1 semaine' },
+    { name:'Marie L.', rating:5, text:'Impeccable quality, exactly like the photos. Fast shipping.', date:'3 days ago' },
+    { name:'Thomas R.', rating:4, text:'Beautiful product, careful finishing. I recommend it.', date:'1 week ago' },
   ];
 
   async function addToCart() {
@@ -88,7 +88,7 @@ function ProductDetailsScreen({ params = {} }) {
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:600, color:C.ink, letterSpacing:'-0.02em', lineHeight:1.3, marginBottom:8 }}>{p.title}</div>
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
               <Stars rating={p.rating || 4.8} />
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>{p.rating || 4.8} · {(p.reviews || 2341).toLocaleString()} avis</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>{p.rating || 4.8} · {(p.reviews || 2341).toLocaleString()} reviews</span>
               {p.sold && <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>· {p.sold}</span>}
             </div>
           </div>
@@ -96,7 +96,7 @@ function ProductDetailsScreen({ params = {} }) {
           {/* Color picker */}
           <div>
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink, marginBottom:10 }}>
-              Couleur · <span style={{ fontWeight:400, color:C.mute }}>terracotta</span>
+              Color · <span style={{ fontWeight:400, color:C.mute }}>terracotta</span>
             </div>
             <div style={{ display:'flex', gap:10 }}>
               {colors.map((c, i) => (
@@ -107,7 +107,7 @@ function ProductDetailsScreen({ params = {} }) {
 
           {/* Size picker */}
           <div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink, marginBottom:10 }}>Taille</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink, marginBottom:10 }}>Size</div>
             <div style={{ display:'flex', gap:8 }}>
               {sizes.map((s, i) => (
                 <button key={i} onClick={() => setSelectedSize(i)} style={{ width:44, height:44, borderRadius:10, border:`1.5px solid ${i === selectedSize ? C.primary : C.hairline}`, background: i === selectedSize ? C.primarySoft : C.white, color: i === selectedSize ? C.primaryDeep : C.mute, fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight: i === selectedSize ? 700 : 400, cursor:'pointer', transition:'all 0.15s' }}>{s}</button>
@@ -123,10 +123,10 @@ function ProductDetailsScreen({ params = {} }) {
                 <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, color:C.ink }}>{p.seller || 'luna.studio'}</span>
                 <div style={{ background:'#EFF9F4', borderRadius:9999, padding:'2px 7px', display:'flex', alignItems:'center', gap:3 }}>
                   <Icon name="check" size={11} color={C.success} sw={2.5} />
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:C.success }}>Vérifié</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:C.success }}>Verified</span>
                 </div>
               </div>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>2.4k abonnés · 99% d'avis positifs</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>2.4k followers · 99% positive reviews</span>
             </div>
             <Icon name="chevronRight" size={18} color={C.mute} />
           </div>
@@ -134,8 +134,8 @@ function ProductDetailsScreen({ params = {} }) {
           {/* Delivery info */}
           <div style={{ display:'flex', gap:16 }}>
             {[
-              { icon:'truck', text:'Livraison gratuite dès $30' },
-              { icon:'package', text:'Expédition sous 2 jours' },
+              { icon:'truck', text:'Free shipping from $30' },
+              { icon:'package', text:'Ships within 2 days' },
             ].map((info, i) => (
               <div key={i} style={{ flex:1, display:'flex', alignItems:'center', gap:8, padding:'10px 12px', background:C.paper, borderRadius:10 }}>
                 <Icon name={info.icon} size={16} color={C.primary} />
@@ -152,10 +152,10 @@ function ProductDetailsScreen({ params = {} }) {
                 <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.mute }}>Chat</span>
               </button>
               <Btn variant="secondary" size="lg" style={{ flex:1 }} onClick={addToCart}>
-                {addedToCart ? <><Icon name="check" size={16} color={C.primary} /> Ajouté !</> : 'Ajouter au panier'}
+                {addedToCart ? <><Icon name="check" size={16} color={C.primary} /> Added!</> : 'Add to Cart'}
               </Btn>
               <Btn variant="primary" size="lg" style={{ flex:1 }} onClick={() => navigate('cart')}>
-                Acheter
+                Buy Now
               </Btn>
             </div>
           )}
@@ -163,15 +163,15 @@ function ProductDetailsScreen({ params = {} }) {
           {/* Tabs */}
           <div>
             <div style={{ display:'flex', borderBottom:`1px solid ${C.hairline}`, marginBottom:14 }}>
-              {['Description','Avis ('+( p.reviews||234 )+')', 'Livraison'].map((t, i) => (
+              {['Description','Reviews ('+( p.reviews||234 )+')', 'Shipping'].map((t, i) => (
                 <button key={i} onClick={() => setActiveTab(i)} style={{ flex:1, height:40, border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight: i === activeTab ? 600 : 400, color: i === activeTab ? C.ink : C.mute, borderBottom: i === activeTab ? `2px solid ${C.primary}` : '2px solid transparent', transition:'all 0.2s', marginBottom:-1 }}>{t}</button>
               ))}
             </div>
             {activeTab === 0 && (
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, color:C.mute, lineHeight:1.6 }}>
-                Façonné à la main par des artisans, ce vase en terracotta nervurée marie robustesse et élégance minimaliste. Sa forme organique s'adapte à toutes les compositions florales. Produit d'origine certifiée.
+                Handcrafted by artisans, this ribbed terracotta vase blends sturdiness with minimalist elegance. Its organic shape suits any flower arrangement. Certified origin product.
                 <br /><br />
-                Dimensions : Ø 12 × H 22 cm · Poids : 680 g · Matière : terracotta naturelle
+                Dimensions: Ø 12 × H 22 cm · Weight: 680 g · Material: natural terracotta
               </div>
             )}
             {activeTab === 1 && (
@@ -180,7 +180,7 @@ function ProductDetailsScreen({ params = {} }) {
                   <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:32, fontWeight:700, color:C.ink }}>{p.rating || 4.8}</div>
                   <div>
                     <Stars rating={p.rating || 4.8} size={16} />
-                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, marginTop:2 }}>{(p.reviews || 234).toLocaleString()} avis vérifiés</div>
+                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, marginTop:2 }}>{(p.reviews || 234).toLocaleString()} verified reviews</div>
                   </div>
                 </div>
                 {reviews.map((r, i) => (
@@ -201,8 +201,8 @@ function ProductDetailsScreen({ params = {} }) {
             {activeTab === 2 && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 {[
-                  { icon:'truck', title:'Standard', detail:'5 à 8 jours ouvrés', price:'$3.99' },
-                  { icon:'zap', title:'Express',  detail:'2 à 3 jours ouvrés', price:'$8.99' },
+                  { icon:'truck', title:'Standard', detail:'5 to 8 business days', price:'$3.99' },
+                  { icon:'zap', title:'Express',  detail:'2 to 3 business days', price:'$8.99' },
                 ].map((m, i) => (
                   <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', border:`1.5px solid ${C.hairline}`, borderRadius:12 }}>
                     <div style={{ width:36, height:36, borderRadius:9999, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -230,10 +230,10 @@ function ProductDetailsScreen({ params = {} }) {
           <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.mute }}>Chat</span>
         </button>
         <Btn variant="secondary" size="md" style={{ flex:1 }} onClick={addToCart}>
-          {addedToCart ? <><Icon name="check" size={16} color={C.primary} /> Ajouté !</> : 'Ajouter au panier'}
+          {addedToCart ? <><Icon name="check" size={16} color={C.primary} /> Added!</> : 'Add to Cart'}
         </Btn>
         <Btn variant="primary" size="md" style={{ flex:1 }} onClick={() => navigate('cart')}>
-          Acheter
+          Buy Now
         </Btn>
       </div>
       )}

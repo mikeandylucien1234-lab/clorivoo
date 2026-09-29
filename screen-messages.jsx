@@ -5,7 +5,7 @@ function MessagesListScreen() {
   const [activeTab, setActiveTab] = React.useState(0);
   const [search, setSearch]       = React.useState('');
 
-  const tabs = ['Tous','Commandes','Vendeurs','Non lus'];
+  const tabs = ['All','Orders','Sellers','Unread'];
   const [conversations, setConversations] = React.useState([]);
 
   React.useEffect(() => {
@@ -14,8 +14,8 @@ function MessagesListScreen() {
       if (data?.length) {
         setConversations(data.map(c => ({
           id: c.id,
-          shop: c.shops?.name ?? 'Boutique',
-          initial: (c.shops?.name?.[0] ?? 'B').toUpperCase(),
+          shop: c.shops?.name ?? 'Shop',
+          initial: (c.shops?.name?.[0] ?? 'S').toUpperCase(),
           color: c.shops?.brand_color ?? '#6C4DFF',
           verified: c.shops?.is_verified ?? false,
           crown: false,
@@ -33,16 +33,16 @@ function MessagesListScreen() {
     if (!iso) return '';
     const d = new Date(iso), now = new Date();
     const diff = (now - d) / 1000;
-    if (diff < 60) return 'maintenant';
+    if (diff < 60) return 'now';
     if (diff < 3600) return Math.floor(diff/60) + 'min';
     if (diff < 86400) return Math.floor(diff/3600) + 'h';
-    if (diff < 604800) return ['dim','lun','mar','mer','jeu','ven','sam'][d.getDay()];
-    return d.toLocaleDateString('fr-FR', { day:'numeric', month:'short' });
+    if (diff < 604800) return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    return d.toLocaleDateString('en-US', { day:'numeric', month:'short' });
   }
 
   const filtered = conversations.filter(c => {
     const matchesSearch = !search || c.shop.toLowerCase().includes(search.toLowerCase());
-    const matchesTab = activeTab === 0 ? true : activeTab === 1 ? c.last.includes('Commande') : activeTab === 2 ? c.verified : activeTab === 3 ? c.unread > 0 : true;
+    const matchesTab = activeTab === 0 ? true : activeTab === 1 ? c.last.includes('Order') : activeTab === 2 ? c.verified : activeTab === 3 ? c.unread > 0 : true;
     return matchesSearch && matchesTab;
   });
 
@@ -72,7 +72,7 @@ function MessagesListScreen() {
 
         <div style={{ padding:'12px 20px 0' }}>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:26, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', marginBottom:4 }}>Messages</div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute, marginBottom:14 }}>Discutez avec les vendeurs de vos commandes.</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute, marginBottom:14 }}>Chat with the sellers of your orders.</div>
 
           {/* Search */}
           <div style={{ display:'flex', alignItems:'center', gap:10, background:C.paper, border:`1.5px solid ${C.hairline}`, borderRadius:12, padding:'10px 14px', marginBottom:14 }}>
@@ -80,7 +80,7 @@ function MessagesListScreen() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher des messages"
+              placeholder="Search messages"
               style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:14, color:C.ink }}
             />
             {search && (
@@ -166,8 +166,8 @@ function MessagesListScreen() {
             <div style={{ width:56, height:56, borderRadius:9999, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Icon name="messageSquare" size={26} color={C.primary} />
             </div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:700, color:C.ink }}>Aucun message</div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute, textAlign:'center' }}>Commencez une conversation depuis une fiche produit.</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:700, color:C.ink }}>No messages</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute, textAlign:'center' }}>Start a conversation from a product page.</div>
           </div>
         )}
 

@@ -4,20 +4,20 @@ function NotificationsScreen() {
   const { goBack } = useNav();
   const [activeTab, setActiveTab] = React.useState(0);
   const [notifications, setNotifications] = React.useState([
-    { id:1, type:'order',   icon:'truck',   iconBg:'#EEF2FF', iconColor:'#4A6FD4', title:'Votre commande #CLV789456 a été expédiée', body:'Super ! Votre colis est en route. Livraison prévue le 18 mai.', time:'il y a 4j', unread:true,  pinned:true,  group:'week' },
-    { id:2, type:'promo',   icon:'zap',     iconBg:'#ECFDF5', iconColor:C.success,  title:'Promo spéciale pour vous 🎉',              body:'Profitez de 20% sur tous les articles Mode. Offre valable jusqu\'au 25 mai.',  time:'il y a 4j', unread:true,  pinned:false, group:'week' },
-    { id:3, type:'order',   icon:'package', iconBg:'#FFF7ED', iconColor:'#E67E22',  title:'Commande livrée',                          body:'La commande #CLV782145 a été livrée avec succès. Merci de choisir CLORIVO !', time:'il y a 5j', unread:true,  pinned:false, group:'week' },
-    { id:4, type:'system',  icon:'heart',   iconBg:'#FFF1F2', iconColor:C.danger,   title:'Ajouté à vos favoris',                     body:'"Nike Air Max 270" a été ajouté à votre liste. Retrouvez-le quand vous voulez !', time:'il y a 6j', unread:true, pinned:false, group:'week' },
-    { id:5, type:'promo',   icon:'tag',     iconBg:'#F5F3FF', iconColor:C.primary,  title:'Flash deal · -65% sur céramiques',         body:'Seulement 2h restantes. Ne ratez pas cette offre.',                           time:'il y a 8j', unread:false, pinned:false, group:'older' },
-    { id:6, type:'order',   icon:'check',   iconBg:'#ECFDF5', iconColor:C.success,  title:'Paiement confirmé',                        body:'Votre paiement de $75.04 a bien été reçu. Commande #CLV789456.',               time:'il y a 9j', unread:false, pinned:false, group:'older' },
-    { id:7, type:'system',  icon:'star',    iconBg:'#FFFBEB', iconColor:'#F59E0B',  title:'Laissez un avis',                          body:'Comment s\'est passée votre expérience avec luna.studio ?',                   time:'il y a 12j', unread:false, pinned:false, group:'older' },
+    { id:1, type:'order',   icon:'truck',   iconBg:'#EEF2FF', iconColor:'#4A6FD4', title:'Your order #CLV789456 has shipped', body:'Good news! Your package is on its way. Estimated delivery on May 18.', time:'4d ago', unread:true,  pinned:true,  group:'week' },
+    { id:2, type:'promo',   icon:'zap',     iconBg:'#ECFDF5', iconColor:C.success,  title:'Special promo just for you 🎉',              body:'Enjoy 20% off all Fashion items. Offer valid until May 25.',  time:'4d ago', unread:true,  pinned:false, group:'week' },
+    { id:3, type:'order',   icon:'package', iconBg:'#FFF7ED', iconColor:'#E67E22',  title:'Order delivered',                          body:'Order #CLV782145 was delivered successfully. Thanks for choosing CLORIVO!', time:'5d ago', unread:true,  pinned:false, group:'week' },
+    { id:4, type:'system',  icon:'heart',   iconBg:'#FFF1F2', iconColor:C.danger,   title:'Added to your wishlist',                     body:'"Nike Air Max 270" was added to your list. Find it anytime you like!', time:'6d ago', unread:true, pinned:false, group:'week' },
+    { id:5, type:'promo',   icon:'tag',     iconBg:'#F5F3FF', iconColor:C.primary,  title:'Flash deal · -65% on ceramics',         body:'Only 2 hours left. Don\'t miss this offer.',                           time:'8d ago', unread:false, pinned:false, group:'older' },
+    { id:6, type:'order',   icon:'check',   iconBg:'#ECFDF5', iconColor:C.success,  title:'Payment confirmed',                        body:'Your payment of $75.04 was received. Order #CLV789456.',               time:'9d ago', unread:false, pinned:false, group:'older' },
+    { id:7, type:'system',  icon:'star',    iconBg:'#FFFBEB', iconColor:'#F59E0B',  title:'Leave a review',                          body:'How was your experience with luna.studio?',                   time:'12d ago', unread:false, pinned:false, group:'older' },
   ]);
 
   const tabs = [
-    { label:'Tout', count:4 },
-    { label:'Commandes', count:2 },
+    { label:'All', count:4 },
+    { label:'Orders', count:2 },
     { label:'Promos', count:2 },
-    { label:'Système', count:0 },
+    { label:'System', count:0 },
   ];
 
   const typeMap = { 0: null, 1:'order', 2:'promo', 3:'system' };
@@ -48,7 +48,7 @@ function NotificationsScreen() {
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{notif.time}</span>
             {notif.pinned && (
-              <span style={{ background:C.primarySoft, color:C.primaryDeep, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:9999 }}>Épinglé</span>
+              <span style={{ background:C.primarySoft, color:C.primaryDeep, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:9999 }}>Pinned</span>
             )}
           </div>
         </div>
@@ -72,7 +72,7 @@ function NotificationsScreen() {
             </button>
             <div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:26, fontWeight:800, color:C.ink, letterSpacing:'-0.03em' }}>Notifications</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute, marginTop:2 }}>Restez informé de tout ce qui compte.</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute, marginTop:2 }}>Stay up to date on everything that matters.</div>
             </div>
           </div>
           <button style={{ width:38, height:38, borderRadius:9999, border:`1.5px solid ${C.hairline}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -97,10 +97,10 @@ function NotificationsScreen() {
         {/* Unread banner */}
         {unreadCount > 0 && (
           <div style={{ margin:'12px 20px 0', display:'flex', alignItems:'center', justifyContent:'space-between', background:C.primarySoft, borderRadius:10, padding:'10px 14px' }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.primaryDeep }}>{unreadCount} notification{unreadCount > 1 ? 's' : ''} non lue{unreadCount > 1 ? 's' : ''}</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.primaryDeep }}>{unreadCount} unread notification{unreadCount > 1 ? 's' : ''}</span>
             <button onClick={markAllRead} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4 }}>
               <Icon name="checkCircle" size={14} color={C.primary} />
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.primary }}>Tout lire</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.primary }}>Mark all read</span>
             </button>
           </div>
         )}
@@ -108,7 +108,7 @@ function NotificationsScreen() {
         {/* This week */}
         {weekNotifs.length > 0 && (
           <div style={{ padding:'16px 20px 0' }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, color:C.mute, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:4 }}>Cette semaine</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, color:C.mute, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:4 }}>This week</div>
             {weekNotifs.map(n => <NotifCard key={n.id} notif={n} />)}
           </div>
         )}
@@ -116,7 +116,7 @@ function NotificationsScreen() {
         {/* Older */}
         {olderNotifs.length > 0 && (
           <div style={{ padding:'16px 20px 0' }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, color:C.mute, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:4 }}>Plus ancien</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, color:C.mute, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:4 }}>Older</div>
             {olderNotifs.map(n => <NotifCard key={n.id} notif={n} />)}
           </div>
         )}

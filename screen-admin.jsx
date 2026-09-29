@@ -13,13 +13,13 @@ function AdminToggle({ initial }) {
 // ─── ADMIN SIDEBAR NAV ─────────────────────────────────────────
 function AdminSidebar({ active, onNav }) {
   const items = [
-    { icon:'barChart', label:'Vue d\'ensemble', key:'overview' },
-    { icon:'user',     label:'Utilisateurs',    key:'users' },
-    { icon:'store',    label:'Vendeurs',         key:'sellers', badge:14 },
+    { icon:'barChart', label:'Overview', key:'overview' },
+    { icon:'user',     label:'Users',    key:'users' },
+    { icon:'store',    label:'Sellers',         key:'sellers', badge:14 },
     { icon:'lock',     label:'KYC',             key:'kyc',  badge:8 },
-    { icon:'zap',      label:'Signalements',    key:'reports', badge:3 },
-    { icon:'camera',   label:'Bannières',       key:'banners' },
-    { icon:'settings', label:'Paramètres',      key:'settings' },
+    { icon:'zap',      label:'Reports',    key:'reports', badge:3 },
+    { icon:'camera',   label:'Banners',       key:'banners' },
+    { icon:'settings', label:'Settings',      key:'settings' },
   ];
   return (
     <div style={{ width:52, background:'#0F0C1E', height:'100%', display:'flex', flexDirection:'column', padding:'14px 0', alignItems:'center', gap:4, flexShrink:0 }}>
@@ -60,103 +60,103 @@ function AdminDashboardScreen() {
 
   const kpis = [
     { k:'GMV',           v: adminStats ? '$' + Math.round((adminStats.gmv??184000)/1000) + 'k' : '$184k', d:'+12%' },
-    { k:'Commandes',     v: adminStats ? String(adminStats.orders??4281) : '4 281', d:'+8%' },
-    { k:'Utilisateurs',  v: adminStats ? String(adminStats.users??12480) : '12 480', d:'+18%' },
-    { k:'Vendeurs',      v: adminStats ? String(adminStats.sellers??342) : '342', d:'+4%' },
-    { k:'KYC en attente',v: adminStats ? String(adminStats.pendingKyc??14) : '14', d:'!' },
-    { k:'Taux retour',   v:'1.9%', d:'−0.3' },
+    { k:'Orders',     v: adminStats ? String(adminStats.orders??4281) : '4,281', d:'+8%' },
+    { k:'Users',  v: adminStats ? String(adminStats.users??12480) : '12,480', d:'+18%' },
+    { k:'Sellers',      v: adminStats ? String(adminStats.sellers??342) : '342', d:'+4%' },
+    { k:'KYC pending',v: adminStats ? String(adminStats.pendingKyc??14) : '14', d:'!' },
+    { k:'Return rate',   v:'1.9%', d:'−0.3' },
   ];
   const pending = [
-    { icon:'store', label:'atelier.lune', sub:'Nouvelle boutique · FR', badge:'review' },
+    { icon:'store', label:'atelier.lune', sub:'New shop · FR', badge:'review' },
     { icon:'lock',  label:'M. Otieno',    sub:'KYC · KE',               badge:'urgent' },
-    { icon:'zap',   label:'Signalement',  sub:'contre boutique #2841',   badge:'review' },
+    { icon:'zap',   label:'Report',  sub:'against shop #2841',   badge:'review' },
   ];
 
   const sectionMeta = {
-    overview: { title:"Vue d'ensemble", sub:'7 derniers jours',          url:'admin.clorivo.com/dashboard' },
-    users:    { title:'Utilisateurs',    sub:'12 480 comptes actifs',     url:'admin.clorivo.com/users' },
-    sellers:  { title:'Vendeurs',        sub:'342 boutiques · 14 en attente', url:'admin.clorivo.com/sellers' },
-    reports:  { title:'Signalements',    sub:'3 à traiter',               url:'admin.clorivo.com/reports' },
-    settings: { title:'Paramètres',      sub:'Configuration de la plateforme', url:'admin.clorivo.com/settings' },
+    overview: { title:"Overview", sub:'Last 7 days',          url:'admin.clorivo.com/dashboard' },
+    users:    { title:'Users',    sub:'12,480 active accounts',     url:'admin.clorivo.com/users' },
+    sellers:  { title:'Sellers',        sub:'342 shops · 14 pending', url:'admin.clorivo.com/sellers' },
+    reports:  { title:'Reports',    sub:'3 to handle',               url:'admin.clorivo.com/reports' },
+    settings: { title:'Settings',      sub:'Platform configuration', url:'admin.clorivo.com/settings' },
   };
   const meta = sectionMeta[section] || sectionMeta.overview;
 
   const usersList = [
-    { name:'Alex Martin',   email:'alex@mail.com',   role:'Acheteur', status:'actif',    tint:0 },
-    { name:'Mary Otieno',   email:'maryo@mail.com',  role:'Vendeur',  status:'actif',    tint:1 },
-    { name:'Sophie Park',   email:'spark@mail.com',  role:'Acheteur', status:'actif',    tint:2 },
-    { name:'Jun Wei',       email:'jwei@mail.com',   role:'Vendeur',  status:'suspendu', tint:3 },
-    { name:'Léa Dubois',    email:'lea.d@mail.com',  role:'Acheteur', status:'actif',    tint:4 },
+    { name:'Alex Martin',   email:'alex@mail.com',   role:'Buyer', status:'active',    tint:0 },
+    { name:'Mary Otieno',   email:'maryo@mail.com',  role:'Seller',  status:'active',    tint:1 },
+    { name:'Sophie Park',   email:'spark@mail.com',  role:'Buyer', status:'active',    tint:2 },
+    { name:'Jun Wei',       email:'jwei@mail.com',   role:'Seller',  status:'suspended', tint:3 },
+    { name:'Léa Dubois',    email:'lea.d@mail.com',  role:'Buyer', status:'active',    tint:4 },
   ];
   const sellersList = [
-    { name:'luna.studio',   cat:'Maison & Déco', sales:'$12.4k', rating:4.9, status:'vérifié',  tint:0 },
-    { name:'TechZone',      cat:'Électronique',  sales:'$48.1k', rating:4.7, status:'vérifié',  tint:1 },
-    { name:'atelier.lune',  cat:'Artisanat',     sales:'—',      rating:0,   status:'attente',  tint:2 },
-    { name:'Fashion House', cat:'Mode',          sales:'$22.7k', rating:4.6, status:'vérifié',  tint:3 },
+    { name:'luna.studio',   cat:'Home & Decor', sales:'$12.4k', rating:4.9, status:'verified',  tint:0 },
+    { name:'TechZone',      cat:'Electronics',  sales:'$48.1k', rating:4.7, status:'verified',  tint:1 },
+    { name:'atelier.lune',  cat:'Crafts',     sales:'—',      rating:0,   status:'pending',  tint:2 },
+    { name:'Fashion House', cat:'Fashion',          sales:'$22.7k', rating:4.6, status:'verified',  tint:3 },
   ];
   const reportsList = [
-    { subject:'Produit contrefait',   target:'boutique #2841', time:'il y a 2h', severity:'urgent' },
-    { subject:'Avis frauduleux',      target:'@fastdeals',     time:'il y a 5h', severity:'moyen' },
-    { subject:'Contenu inapproprié',  target:'produit #9921',  time:'il y a 1j', severity:'moyen' },
+    { subject:'Counterfeit product',   target:'shop #2841', time:'2h ago', severity:'urgent' },
+    { subject:'Fraudulent review',      target:'@fastdeals',     time:'5h ago', severity:'medium' },
+    { subject:'Inappropriate content',  target:'product #9921',  time:'1d ago', severity:'medium' },
   ];
   const settingsList = [
-    { key:'commission', icon:'creditCard', label:'Commission plateforme', detail:'8.5%' },
-    { key:'shipping',   icon:'truck',      label:'Frais de livraison',     detail:'Configurés' },
-    { key:'security',   icon:'lock',       label:'Sécurité & 2FA',         detail:'Activé' },
-    { key:'notifs',     icon:'bell',       label:'Notifications système',  detail:'On' },
-    { key:'roles',      icon:'user',       label:'Rôles & permissions',    detail:'4 rôles' },
+    { key:'commission', icon:'creditCard', label:'Platform commission', detail:'8.5%' },
+    { key:'shipping',   icon:'truck',      label:'Shipping fees',     detail:'Configured' },
+    { key:'security',   icon:'lock',       label:'Security & 2FA',         detail:'Enabled' },
+    { key:'notifs',     icon:'bell',       label:'System notifications',  detail:'On' },
+    { key:'roles',      icon:'user',       label:'Roles & permissions',    detail:'4 roles' },
   ];
 
   // Detail content for each settings sub-option
   const settingsDetails = {
     commission: {
-      title:'Commission plateforme',
+      title:'Platform commission',
       rows:[
-        { type:'slider', label:'Taux global', value:'8.5%' },
-        { type:'kv', k:'Maison & Déco', v:'8.0%' },
-        { type:'kv', k:'Électronique',  v:'6.5%' },
-        { type:'kv', k:'Mode',          v:'10.0%' },
-        { type:'kv', k:'Revenu commissions (30j)', v:'$15 640', accent:true },
+        { type:'slider', label:'Overall rate', value:'8.5%' },
+        { type:'kv', k:'Home & Decor', v:'8.0%' },
+        { type:'kv', k:'Electronics',  v:'6.5%' },
+        { type:'kv', k:'Fashion',          v:'10.0%' },
+        { type:'kv', k:'Commission revenue (30d)', v:'$15,640', accent:true },
       ],
     },
     shipping: {
-      title:'Frais de livraison',
+      title:'Shipping fees',
       rows:[
-        { type:'kv', k:'Standard (5–8j)', v:'$3.99' },
-        { type:'kv', k:'Express (2–3j)',  v:'$8.99' },
-        { type:'kv', k:'Seuil gratuité',  v:'$30.00' },
-        { type:'toggle', k:'Livraison gratuite activée', on:true },
-        { type:'toggle', k:'Suivi temps réel',           on:true },
+        { type:'kv', k:'Standard (5–8d)', v:'$3.99' },
+        { type:'kv', k:'Express (2–3d)',  v:'$8.99' },
+        { type:'kv', k:'Free shipping threshold',  v:'$30.00' },
+        { type:'toggle', k:'Free shipping enabled', on:true },
+        { type:'toggle', k:'Real-time tracking',           on:true },
       ],
     },
     security: {
-      title:'Sécurité & 2FA',
+      title:'Security & 2FA',
       rows:[
-        { type:'toggle', k:'Double authentification', on:true },
-        { type:'toggle', k:'Connexion biométrique',   on:true },
-        { type:'toggle', k:'Alertes connexion',        on:false },
-        { type:'kv', k:'Sessions actives', v:'3 appareils' },
-        { type:'kv', k:'Dernière vérif. sécurité', v:'il y a 2j' },
+        { type:'toggle', k:'Two-factor authentication', on:true },
+        { type:'toggle', k:'Biometric login',   on:true },
+        { type:'toggle', k:'Login alerts',        on:false },
+        { type:'kv', k:'Active sessions', v:'3 devices' },
+        { type:'kv', k:'Last security check', v:'2d ago' },
       ],
     },
     notifs: {
-      title:'Notifications système',
+      title:'System notifications',
       rows:[
-        { type:'toggle', k:'Nouvelles commandes',    on:true },
-        { type:'toggle', k:'Nouveaux vendeurs',       on:true },
-        { type:'toggle', k:'Signalements urgents',    on:true },
-        { type:'toggle', k:'Rapports hebdomadaires',  on:false },
-        { type:'toggle', k:'E-mails marketing',       on:false },
+        { type:'toggle', k:'New orders',    on:true },
+        { type:'toggle', k:'New sellers',       on:true },
+        { type:'toggle', k:'Urgent reports',    on:true },
+        { type:'toggle', k:'Weekly reports',  on:false },
+        { type:'toggle', k:'Marketing emails',       on:false },
       ],
     },
     roles: {
-      title:'Rôles & permissions',
+      title:'Roles & permissions',
       rows:[
-        { type:'kv', k:'Super Admin', v:'1 membre' },
-        { type:'kv', k:'Modérateur',  v:'4 membres' },
-        { type:'kv', k:'Support',     v:'8 membres' },
-        { type:'kv', k:'Analyste',    v:'2 membres' },
-        { type:'toggle', k:'Inviter de nouveaux membres', on:true },
+        { type:'kv', k:'Super Admin', v:'1 member' },
+        { type:'kv', k:'Moderator',  v:'4 members' },
+        { type:'kv', k:'Support',     v:'8 members' },
+        { type:'kv', k:'Analyst',    v:'2 members' },
+        { type:'toggle', k:'Invite new members', on:true },
       ],
     },
   };
@@ -224,9 +224,9 @@ function AdminDashboardScreen() {
           {/* GMV chart */}
           <div style={{ background:'#1A1630', borderRadius:12, padding:'12px 14px' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:'#EDE9F7' }}>Tendance GMV</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:'#EDE9F7' }}>GMV trend</span>
               <div style={{ display:'flex', gap:6 }}>
-                {['7j','30j','90j'].map((l, i) => (
+                {['7d','30d','90d'].map((l, i) => (
                   <span key={i} style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color: i === 0 ? C.primary : 'rgba(255,255,255,0.3)', fontWeight: i === 0 ? 600 : 400, cursor:'pointer' }}>{l}</span>
                 ))}
               </div>
@@ -247,8 +247,8 @@ function AdminDashboardScreen() {
           {/* Pending approvals */}
           <div style={{ background:'#1A1630', borderRadius:12, overflow:'hidden' }}>
             <div style={{ padding:'10px 14px', borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', justifyContent:'space-between' }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:'#EDE9F7' }}>En attente d'action</span>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.primary, fontWeight:500, cursor:'pointer' }}>Voir tout</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:'#EDE9F7' }}>Pending action</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.primary, fontWeight:500, cursor:'pointer' }}>See all</span>
             </div>
             {pending.map((p, i) => (
               <div key={i} onClick={() => p.sub.includes('KYC') && navigate('admin-kyc')} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none', cursor:'pointer' }}>
@@ -268,7 +268,7 @@ function AdminDashboardScreen() {
           {/* ── USERS ── */}
           {section === 'users' && <>
           <div style={{ display:'flex', gap:8 }}>
-            {[['Total','12 480'],['Acheteurs','11 902'],['Vendeurs','578']].map((s,i) => (
+            {[['Total','12,480'],['Buyers','11,902'],['Sellers','578']].map((s,i) => (
               <div key={i} style={{ flex:1, background:'#1A1630', borderRadius:10, padding:'10px' }}>
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'rgba(255,255,255,0.4)' }}>{s[0]}</div>
                 <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight:700, color:'#EDE9F7', marginTop:2 }}>{s[1]}</div>
@@ -276,7 +276,7 @@ function AdminDashboardScreen() {
             ))}
           </div>
           <div style={{ background:'#1A1630', borderRadius:12, overflow:'hidden' }}>
-            <div style={{ padding:'10px 14px', borderBottom:'1px solid rgba(255,255,255,0.06)', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:'#EDE9F7' }}>Comptes récents</div>
+            <div style={{ padding:'10px 14px', borderBottom:'1px solid rgba(255,255,255,0.06)', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:'#EDE9F7' }}>Recent accounts</div>
             {usersList.map((u, i) => (
               <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
                 <Avatar size={32} initials={u.name.split(' ').map(n=>n[0]).join('')} />
@@ -284,7 +284,7 @@ function AdminDashboardScreen() {
                   <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'#EDE9F7' }}>{u.name}</div>
                   <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{u.email} · {u.role}</div>
                 </div>
-                <span style={{ background: u.status === 'actif' ? 'rgba(31,138,91,0.2)' : 'rgba(209,67,67,0.2)', color: u.status === 'actif' ? C.success : C.danger, fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:9999 }}>{u.status}</span>
+                <span style={{ background: u.status === 'active' ? 'rgba(31,138,91,0.2)' : 'rgba(209,67,67,0.2)', color: u.status === 'active' ? C.success : C.danger, fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:9999 }}>{u.status}</span>
               </div>
             ))}
           </div>
@@ -293,7 +293,7 @@ function AdminDashboardScreen() {
           {/* ── SELLERS ── */}
           {section === 'sellers' && <>
           <div style={{ display:'flex', gap:8 }}>
-            {[['Actifs','342'],['En attente','14'],['Suspendus','6']].map((s,i) => (
+            {[['Active','342'],['Pending','14'],['Suspended','6']].map((s,i) => (
               <div key={i} style={{ flex:1, background:'#1A1630', borderRadius:10, padding:'10px' }}>
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'rgba(255,255,255,0.4)' }}>{s[0]}</div>
                 <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight:700, color:'#EDE9F7', marginTop:2 }}>{s[1]}</div>
@@ -301,9 +301,9 @@ function AdminDashboardScreen() {
             ))}
           </div>
           <div style={{ background:'#1A1630', borderRadius:12, overflow:'hidden' }}>
-            <div style={{ padding:'10px 14px', borderBottom:'1px solid rgba(255,255,255,0.06)', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:'#EDE9F7' }}>Boutiques</div>
+            <div style={{ padding:'10px 14px', borderBottom:'1px solid rgba(255,255,255,0.06)', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:'#EDE9F7' }}>Shops</div>
             {sellersList.map((s, i) => (
-              <div key={i} onClick={() => s.status === 'attente' && navigate('admin-kyc')} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none', cursor:'pointer' }}>
+              <div key={i} onClick={() => s.status === 'pending' && navigate('admin-kyc')} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none', cursor:'pointer' }}>
                 <div style={{ width:32, height:32, borderRadius:8, overflow:'hidden', flexShrink:0 }}><Img label="" tint={s.tint} style={{ width:32, height:32 }} /></div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'#EDE9F7' }}>{s.name}</div>
@@ -311,7 +311,7 @@ function AdminDashboardScreen() {
                 </div>
                 <div style={{ textAlign:'right' }}>
                   <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:600, color:'#EDE9F7' }}>{s.sales}</div>
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, color: s.status === 'vérifié' ? C.success : C.warning }}>{s.status}</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, color: s.status === 'verified' ? C.success : C.warning }}>{s.status}</span>
                 </div>
               </div>
             ))}
@@ -322,7 +322,7 @@ function AdminDashboardScreen() {
           {section === 'reports' && <>
           <div style={{ background:'rgba(209,67,67,0.12)', border:`1px solid rgba(209,67,67,0.3)`, borderRadius:12, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
             <Icon name="zap" size={18} color={C.danger} />
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'#EDE9F7', fontWeight:500 }}>3 signalements nécessitent votre attention</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'#EDE9F7', fontWeight:500 }}>3 reports need your attention</span>
           </div>
           <div style={{ background:'#1A1630', borderRadius:12, overflow:'hidden' }}>
             {reportsList.map((r, i) => (
@@ -331,10 +331,10 @@ function AdminDashboardScreen() {
                   <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:'#EDE9F7' }}>{r.subject}</span>
                   <span style={{ background: r.severity === 'urgent' ? C.danger : 'rgba(198,138,0,0.25)', color: r.severity === 'urgent' ? '#fff' : C.warning, fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:9999 }}>{r.severity}</span>
                 </div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)', marginBottom:8 }}>Cible : {r.target} · {r.time}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)', marginBottom:8 }}>Target: {r.target} · {r.time}</div>
                 <div style={{ display:'flex', gap:8 }}>
-                  <button style={{ flex:1, height:32, borderRadius:8, border:'none', background:'rgba(255,255,255,0.08)', color:'#EDE9F7', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, cursor:'pointer' }}>Examiner</button>
-                  <button style={{ flex:1, height:32, borderRadius:8, border:'none', background:C.primary, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, cursor:'pointer' }}>Résoudre</button>
+                  <button style={{ flex:1, height:32, borderRadius:8, border:'none', background:'rgba(255,255,255,0.08)', color:'#EDE9F7', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, cursor:'pointer' }}>Review</button>
+                  <button style={{ flex:1, height:32, borderRadius:8, border:'none', background:C.primary, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, cursor:'pointer' }}>Resolve</button>
                 </div>
               </div>
             ))}
@@ -356,7 +356,7 @@ function AdminDashboardScreen() {
             ))}
           </div>
           <button onClick={goBack} style={{ height:44, borderRadius:12, border:'none', background:'rgba(209,67,67,0.15)', color:C.danger, fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-            <Icon name="logOut" size={16} color={C.danger} /> Quitter la console
+            <Icon name="logOut" size={16} color={C.danger} /> Exit console
           </button>
           </>}
 
@@ -367,7 +367,7 @@ function AdminDashboardScreen() {
               <>
                 <button onClick={() => setSettingsOpen(null)} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0 }}>
                   <Icon name="arrowLeft" size={16} color='rgba(255,255,255,0.5)' />
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.5)' }}>Paramètres</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.5)' }}>Settings</span>
                 </button>
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:18, fontWeight:800, color:'#EDE9F7', letterSpacing:'-0.02em' }}>{d.title}</div>
                 <div style={{ background:'#1A1630', borderRadius:12, overflow:'hidden' }}>
@@ -401,7 +401,7 @@ function AdminDashboardScreen() {
                   ))}
                 </div>
                 <button onClick={() => setSettingsOpen(null)} style={{ height:44, borderRadius:12, border:'none', background:C.primary, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, cursor:'pointer' }}>
-                  Enregistrer les modifications
+                  Save changes
                 </button>
               </>
             );
@@ -436,11 +436,11 @@ function AdminKycScreen() {
   }
 
   const checks = [
-    { label:'Validité du document', status:'pass' },
-    { label:'Correspondance du nom', status:'pass' },
-    { label:'Correspondance visage (98%)', status:'pass' },
-    { label:'Screening sanctions', status:'pass' },
-    { label:'Compte dupliqué', status:'review' },
+    { label:'Document validity', status:'pass' },
+    { label:'Name match', status:'pass' },
+    { label:'Face match (98%)', status:'pass' },
+    { label:'Sanctions screening', status:'pass' },
+    { label:'Duplicate account', status:'review' },
   ];
 
   return (
@@ -468,9 +468,9 @@ function AdminKycScreen() {
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <button onClick={goBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4 }}>
               <Icon name="arrowLeft" size={14} color='rgba(255,255,255,0.4)' />
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.4)' }}>File d'attente</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.4)' }}>Queue</span>
             </button>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.3)' }}>8 en attente · #1</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.3)' }}>8 pending · #1</span>
           </div>
           {/* Applicant */}
           <div style={{ display:'flex', gap:10, alignItems:'flex-start', background:'#1A1630', borderRadius:12, padding:'12px' }}>
@@ -478,15 +478,15 @@ function AdminKycScreen() {
             <div style={{ flex:1 }}>
               <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
                 <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:'#EDE9F7' }}>{current?.profiles?.full_name ?? 'Mary Otieno'}</span>
-                <span style={{ background:'rgba(209,67,67,0.2)', color:C.danger, fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:9999 }}>en attente</span>
+                <span style={{ background:'rgba(209,67,67,0.2)', color:C.danger, fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:9999 }}>pending</span>
               </div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)', lineHeight:1.5 }}>{current?.profiles?.email ?? 'maryo@mail.com'}</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)' }}>Boutique : "{current?.shop_name ?? 'kibo.crafts'}"</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)' }}>Shop: "{current?.shop_name ?? 'kibo.crafts'}"</div>
             </div>
           </div>
           {/* Documents */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
-            {['Recto ID','Verso ID','Selfie'].map((t, i) => (
+            {['ID front','ID back','Selfie'].map((t, i) => (
               <div key={i} style={{ borderRadius:8, overflow:'hidden', background:'#1A1630' }}>
                 <Img label="" tint={i} style={{ height:70, borderRadius:0 }} />
                 <div style={{ padding:'5px 6px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -498,7 +498,7 @@ function AdminKycScreen() {
           </div>
           {/* Automated checks */}
           <div style={{ background:'#1A1630', borderRadius:12, padding:'12px 14px' }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'#EDE9F7', marginBottom:8 }}>Contrôles automatisés</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'#EDE9F7', marginBottom:8 }}>Automated checks</div>
             {checks.map((c, i) => (
               <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
                 <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.6)' }}>{c.label}</span>
@@ -508,9 +508,9 @@ function AdminKycScreen() {
           </div>
           {/* Admin note */}
           <div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:500, color:'rgba(255,255,255,0.5)', marginBottom:6 }}>Note admin</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:500, color:'rgba(255,255,255,0.5)', marginBottom:6 }}>Admin note</div>
             <div style={{ background:'#1A1630', border:'1.5px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'10px 12px', minHeight:50 }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.3)' }}>Ajouter une note…</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.3)' }}>Add a note…</span>
             </div>
           </div>
           {/* Decision */}
@@ -518,17 +518,17 @@ function AdminKycScreen() {
             <div style={{ background: decision === 'approve' ? 'rgba(31,138,91,0.15)' : 'rgba(209,67,67,0.15)', borderRadius:12, padding:'14px', textAlign:'center' }}>
               <Icon name="checkCircle" size={28} color={decision === 'approve' ? C.success : C.danger} />
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, color: decision === 'approve' ? C.success : C.danger, marginTop:6 }}>
-                {decision === 'approve' ? 'Approuvé — compte vendeur activé' : 'Rejeté — email envoyé au candidat'}
+                {decision === 'approve' ? 'Approved — seller account activated' : 'Rejected — email sent to applicant'}
               </div>
             </div>
           ) : (
             <div style={{ display:'flex', gap:8 }}>
               <Btn size="sm" style={{ flex:1, color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} onClick={() => handleDecision('rejected')}>
-                <Icon name="x" size={14} color={C.danger} /> Rejeter
+                <Icon name="x" size={14} color={C.danger} /> Reject
               </Btn>
-              <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid rgba(255,255,255,0.15)`, background:'transparent' }}>Demander +</Btn>
+              <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid rgba(255,255,255,0.15)`, background:'transparent' }}>Request more</Btn>
               <Btn variant="primary" size="sm" style={{ flex:1.4 }} onClick={() => handleDecision('approved')}>
-                <Icon name="check" size={14} color="#fff" sw={2.5} /> Approuver
+                <Icon name="check" size={14} color="#fff" sw={2.5} /> Approve
               </Btn>
             </div>
           )}
@@ -543,16 +543,25 @@ function AdminKycScreen() {
 function AdminBannersScreen() {
   const { goBack } = useNav();
   const [banners, setBanners] = React.useState([
-    { id:'b1', title:'Offre printemps · 70% off', is_active:true,  bg_color:C.primary },
-    { id:'b2', title:'Fête des mères',            is_active:true,  bg_color:'#C97B5A' },
-    { id:'b3', title:'Prévisualisation été',      is_active:false, bg_color:'#3B3730' },
+    { id:'b1', title:'Spring sale · 70% off', is_active:true,  bg_color:C.primary },
+    { id:'b2', title:"Mother's Day",          is_active:true,  bg_color:'#C97B5A' },
+    { id:'b3', title:'Summer preview',        is_active:false, bg_color:'#3B3730' },
   ]);
   const [editBanner, setEditBanner] = React.useState(null);
   const [editTitle, setEditTitle]   = React.useState('');
 
+  const [signupBanner, setSignupBanner] = React.useState(null);
+  const [signupTitle, setSignupTitle]       = React.useState('');
+  const [signupSubtitle, setSignupSubtitle] = React.useState('');
+  const [uploading, setUploading]           = React.useState(false);
+  const fileInputRef = React.useRef(null);
+
   React.useEffect(() => {
     sbGetBanners().then(({ data }) => {
       if (data?.length) setBanners(data);
+    });
+    sbGetSignupBanner().then(b => {
+      if (b) { setSignupBanner(b); setSignupTitle(b.title || ''); setSignupSubtitle(b.subtitle || ''); }
     });
   }, []);
 
@@ -569,8 +578,38 @@ function AdminBannersScreen() {
     const { data } = await sbUpsertBanner(updated);
     if (data) setBanners(prev => prev.map(x => x.id === data.id ? data : x));
   }
-  const statusColors = { live:'#EFF9F4', scheduled:C.primarySoft, draft:'#F5F5F5' };
-  const statusText   = { live:C.success, scheduled:C.primary,      draft:C.mute };
+
+  async function handleSignupImageChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const path = `signup-success/${Date.now()}-${file.name}`;
+    const { url, error } = await sbUploadFile('banners', path, file);
+    setUploading(false);
+    if (error || !url) return;
+    const { data } = await sbUpsertBanner({
+      ...(signupBanner || {}),
+      placement: 'signup_success',
+      is_active: true,
+      position: 1,
+      image_url: url,
+      title: signupTitle,
+      subtitle: signupSubtitle,
+    });
+    if (data) setSignupBanner(data);
+  }
+
+  async function handleSaveSignupText() {
+    const { data } = await sbUpsertBanner({
+      ...(signupBanner || {}),
+      placement: 'signup_success',
+      is_active: true,
+      position: 1,
+      title: signupTitle,
+      subtitle: signupSubtitle,
+    });
+    if (data) setSignupBanner(data);
+  }
 
   return (
     <div style={{ position:'absolute', inset:0, background:'#0A0812', display:'flex', flexDirection:'column' }}>
@@ -593,12 +632,43 @@ function AdminBannersScreen() {
       <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
         <AdminSidebar active="banners" onNav={() => {}} />
         <div style={{ flex:1, overflowY:'auto', padding:'14px 14px', background:'#0F0C1E', display:'flex', flexDirection:'column', gap:12 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-            <div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:800, color:'#EDE9F7', letterSpacing:'-0.02em' }}>Bannières accueil</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)' }}>4 actives · glisser pour réordonner</div>
+
+          {/* ── Signup success banner ── */}
+          <div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:800, color:'#EDE9F7', letterSpacing:'-0.02em' }}>Signup Success Banner</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)' }}>Shown to buyers right after they create an account</div>
+          </div>
+          <div style={{ background:'#1A1630', borderRadius:14, padding:12, display:'flex', flexDirection:'column', gap:10 }}>
+            <div onClick={() => fileInputRef.current?.click()} style={{ height:110, borderRadius:12, overflow:'hidden', position:'relative', cursor:'pointer', background: signupBanner?.image_url ? undefined : 'rgba(255,255,255,0.05)', border: signupBanner?.image_url ? 'none' : '1.5px dashed rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {signupBanner?.image_url ? (
+                <img src={signupBanner.image_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                  <Icon name="camera" size={22} color="rgba(255,255,255,0.4)" />
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)' }}>{uploading ? 'Uploading…' : 'Upload banner image'}</span>
+                </div>
+              )}
+              {signupBanner?.image_url && (
+                <div style={{ position:'absolute', bottom:6, right:6, background:'rgba(14,11,31,0.65)', borderRadius:8, padding:'4px 8px', display:'flex', alignItems:'center', gap:5 }}>
+                  <Icon name="camera" size={12} color="#fff" />
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'#fff' }}>{uploading ? 'Uploading…' : 'Replace'}</span>
+                </div>
+              )}
             </div>
-            <Btn variant="primary" size="sm">+ Nouvelle</Btn>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleSignupImageChange} style={{ display:'none' }} />
+
+            <input value={signupTitle} onChange={e => setSignupTitle(e.target.value)} placeholder="Optional caption title" style={{ height:38, border:'1.5px solid rgba(255,255,255,0.12)', borderRadius:8, padding:'0 10px', background:'rgba(255,255,255,0.05)', color:'#EDE9F7', fontFamily:"'Inter',sans-serif", fontSize:13, outline:'none' }} />
+            <input value={signupSubtitle} onChange={e => setSignupSubtitle(e.target.value)} placeholder="Optional caption subtitle" style={{ height:38, border:'1.5px solid rgba(255,255,255,0.12)', borderRadius:8, padding:'0 10px', background:'rgba(255,255,255,0.05)', color:'#EDE9F7', fontFamily:"'Inter',sans-serif", fontSize:13, outline:'none' }} />
+            <Btn variant="primary" size="sm" onClick={handleSaveSignupText}>Save Caption</Btn>
+          </div>
+
+          {/* ── Homepage banners ── */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:8 }}>
+            <div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:800, color:'#EDE9F7', letterSpacing:'-0.02em' }}>Homepage Banners</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)' }}>{banners.filter(b=>b.is_active).length} active</div>
+            </div>
+            <Btn variant="primary" size="sm">+ New</Btn>
           </div>
 
           {/* Banner cards */}
@@ -609,9 +679,9 @@ function AdminBannersScreen() {
                   <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:'#fff', lineHeight:1.2 }}>{b.title}</span>
                 </div>
                 <div style={{ padding:'6px 8px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span style={{ background: b.is_active ? '#EFF9F4' : '#F5F5F5', color: b.is_active ? C.success : C.mute, fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:9999 }}>{b.is_active ? 'live' : 'inactif'}</span>
+                  <span style={{ background: b.is_active ? '#EFF9F4' : '#F5F5F5', color: b.is_active ? C.success : C.mute, fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:9999 }}>{b.is_active ? 'live' : 'inactive'}</span>
                   <button onClick={e => { e.stopPropagation(); handleToggleBanner(b); }} style={{ border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:9, color:'rgba(255,255,255,0.4)' }}>
-                    {b.is_active ? 'Désactiver' : 'Activer'}
+                    {b.is_active ? 'Deactivate' : 'Activate'}
                   </button>
                 </div>
               </div>
@@ -619,11 +689,11 @@ function AdminBannersScreen() {
           </div>
           {editBanner && (
             <div style={{ background:'#252138', borderRadius:12, padding:'12px 14px', display:'flex', flexDirection:'column', gap:8 }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:'#EDE9F7' }}>Modifier la bannière</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:'#EDE9F7' }}>Edit Banner</div>
               <input value={editTitle} onChange={e => setEditTitle(e.target.value)} style={{ height:38, border:'1.5px solid rgba(255,255,255,0.12)', borderRadius:8, padding:'0 10px', background:'rgba(255,255,255,0.05)', color:'#EDE9F7', fontFamily:"'Inter',sans-serif", fontSize:13, outline:'none' }} />
               <div style={{ display:'flex', gap:8 }}>
-                <Btn size="sm" style={{ flex:1, color:'rgba(255,255,255,0.5)', border:'1.5px solid rgba(255,255,255,0.12)', background:'transparent' }} onClick={() => setEditBanner(null)}>Annuler</Btn>
-                <Btn variant="primary" size="sm" style={{ flex:1 }} onClick={handleSaveBanner}>Enregistrer</Btn>
+                <Btn size="sm" style={{ flex:1, color:'rgba(255,255,255,0.5)', border:'1.5px solid rgba(255,255,255,0.12)', background:'transparent' }} onClick={() => setEditBanner(null)}>Cancel</Btn>
+                <Btn variant="primary" size="sm" style={{ flex:1 }} onClick={handleSaveBanner}>Save</Btn>
               </div>
             </div>
           )}

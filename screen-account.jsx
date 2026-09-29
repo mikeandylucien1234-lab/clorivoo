@@ -4,14 +4,14 @@
 function WishlistScreen() {
   const { navigate } = useNav();
   const [activeCol, setActiveCol] = React.useState(0);
-  const collections = ['Tous · 14', 'Maison · 6', 'Cadeaux · 4', '+ Nouvelle liste'];
+  const collections = ['All · 14', 'Home · 6', 'Gifts · 4', '+ New list'];
   const products    = PRODUCTS.slice(0, 8);
 
   return (
     <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
       <StatusBar />
       <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
-        <NavBar title="Mes favoris" onBack={false}
+        <NavBar title="My Wishlist" onBack={false}
           right={
             <button style={{ width:44, height:44, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Icon name="settings" size={20} color={C.mute} />
@@ -29,9 +29,9 @@ function WishlistScreen() {
       <div style={{ flex:1, overflowY:'auto', padding:'14px 16px', paddingBottom: NAV_H + HOME_H }}>
         {/* Sort / filter row */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>{products.length} articles</span>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>{products.length} items</span>
           <button style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4, color:C.mute }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13 }}>Trier</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13 }}>Sort</span>
             <Icon name="chevronRight" size={14} color={C.mute} style={{ transform:'rotate(90deg)' }} />
           </button>
         </div>
@@ -56,36 +56,36 @@ function WishlistScreen() {
 function ProfileScreen() {
   const { navigate } = useNav();
   const stats = [
-    { value:'28', label:'commandes' },
-    { value:'14', label:'favoris' },
+    { value:'28', label:'orders' },
+    { value:'14', label:'wishlist' },
     { value:'1.2k', label:'points' },
-    { value:'Gold', label:'statut' },
+    { value:'Gold', label:'status' },
   ];
   const orderStatuses = [
-    { icon:'creditCard', label:'À payer', count:1 },
-    { icon:'package',    label:'À expédier', count:0 },
-    { icon:'truck',      label:'En transit', count:3 },
-    { icon:'star',       label:'À noter', count:2 },
+    { icon:'creditCard', label:'To pay', count:1 },
+    { icon:'package',    label:'To ship', count:0 },
+    { icon:'truck',      label:'In transit', count:3 },
+    { icon:'star',       label:'To review', count:2 },
   ];
   const menuGroups = [
     {
       items: [
-        { icon:'package',    label:'Mes commandes', detail:'3 en cours', action: () => navigate('tracking') },
-        { icon:'mapPin',     label:'Adresses',       detail:'2 enregistrées', action: () => {} },
-        { icon:'creditCard', label:'Paiements',       detail:'Visa, PayPal', action: () => {} },
+        { icon:'package',    label:'My orders', detail:'3 in progress', action: () => navigate('tracking') },
+        { icon:'mapPin',     label:'Addresses',       detail:'2 saved', action: () => {} },
+        { icon:'creditCard', label:'Payments',       detail:'Visa, PayPal', action: () => {} },
       ],
     },
     {
       items: [
-        { icon:'store', label:'Devenir vendeur', detail:'Gagner sur clorivo', action: () => navigate('become-seller'), accent:true },
+        { icon:'store', label:'Become a seller', detail:'Earn on clorivo', action: () => navigate('become-seller'), accent:true },
       ],
     },
     {
       items: [
-        { icon:'help',     label:'Aide & Support',   action: () => {} },
-        { icon:'settings', label:'Paramètres',       action: () => {} },
-        { icon:'lock',     label:'Console admin',    action: () => navigate('admin') },
-        { icon:'logOut',   label:'Se déconnecter',   action: () => navigate('login'), danger:true },
+        { icon:'help',     label:'Help & Support',   action: () => {} },
+        { icon:'settings', label:'Settings',       action: () => {} },
+        { icon:'lock',     label:'Admin console',    action: () => navigate('admin') },
+        { icon:'logOut',   label:'Log out',   action: () => navigate('login'), danger:true },
       ],
     },
   ];
@@ -106,19 +106,19 @@ function ProfileScreen() {
               </div>
             </div>
             <div style={{ flex:1 }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, marginBottom:1 }}>Bonjour 👋</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, marginBottom:1 }}>Hello 👋</div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:20, fontWeight:800, color:C.ink, letterSpacing:'-0.03em' }}>Alex Martin</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:2 }}>Membre depuis mars 2024 · ⭐ 4.9</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:2 }}>Member since March 2024 · ⭐ 4.9</div>
             </div>
-            <button style={{ border:`1.5px solid ${C.hairline}`, background:C.white, borderRadius:9999, padding:'7px 14px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.ink }}>Modifier</button>
+            <button style={{ border:`1.5px solid ${C.hairline}`, background:C.white, borderRadius:9999, padding:'7px 14px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.ink }}>Edit</button>
           </div>
 
           {/* Delivery address strip */}
           <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:C.primarySoft, borderRadius:12, marginBottom:16, cursor:'pointer' }}>
             <Icon name="mapPin" size={16} color={C.primary} />
             <div style={{ flex:1 }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute, marginBottom:1 }}>Adresse de livraison</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.primaryDeep }}>14 rue de la Roquette, 75011 Paris</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute, marginBottom:1 }}>Delivery address</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.primaryDeep }}>14 Roquette Street, 75011 Paris</div>
             </div>
             <Icon name="chevronRight" size={14} color={C.primary} />
           </div>
@@ -137,8 +137,8 @@ function ProfileScreen() {
         {/* Order quick row */}
         <div style={{ margin:'14px 16px 0', background:C.white, borderRadius:16, padding:'14px 10px', boxShadow:'0 2px 12px rgba(14,11,31,0.05)' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0 8px', marginBottom:12 }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, color:C.ink }}>Mes commandes</span>
-            <button onClick={() => navigate('tracking')} style={{ border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.primary, fontWeight:500 }}>Voir tout</button>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, color:C.ink }}>My orders</span>
+            <button onClick={() => navigate('tracking')} style={{ border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.primary, fontWeight:500 }}>See all</button>
           </div>
           <div style={{ display:'flex', justifyContent:'space-around' }}>
             {orderStatuses.map((s, i) => (

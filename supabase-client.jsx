@@ -45,6 +45,24 @@ async function sbSignOut() {
   await _sb.auth.signOut();
 }
 
+async function sbResetPasswordForEmail(email) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.auth.resetPasswordForEmail(email);
+  return { data, error };
+}
+
+async function sbVerifyRecoveryOtp(email, token) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.auth.verifyOtp({ email, token, type: 'recovery' });
+  return { data, error };
+}
+
+async function sbUpdatePassword(newPassword) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.auth.updateUser({ password: newPassword });
+  return { data, error };
+}
+
 async function sbGetSession() {
   if (!_sb) return null;
   const { data } = await _sb.auth.getSession();
@@ -115,12 +133,18 @@ async function sbGetShop(shopId) {
 }
 
 // ─── BANNERS ─────────────────────────────────────────────────────
-async function sbGetBanners() {
-  if (!_sb) return { data: _DEMO_BANNERS, error: null };
+async function sbGetBanners({ placement = 'homepage' } = {}) {
+  if (!_sb) return { data: placement === 'homepage' ? _DEMO_BANNERS : [], error: null };
   const { data, error } = await _sb.from('banners')
-    .select('*').eq('is_active', true).order('position');
-  if (error || !data?.length) return { data: _DEMO_BANNERS, error };
+    .select('*').eq('is_active', true).eq('placement', placement).order('position');
+  if (error || !data?.length) return { data: placement === 'homepage' ? _DEMO_BANNERS : [], error };
   return { data, error };
+}
+
+// Convenience: the single banner shown on the "account created" success screen
+async function sbGetSignupBanner() {
+  const { data } = await sbGetBanners({ placement: 'signup_success' });
+  return data?.[0] ?? null;
 }
 
 async function sbUpsertBanner(banner) {
@@ -464,9 +488,10 @@ const _DEMO_KYC_REQUESTS = [
 // Expose all helpers globally (used by screen files)
 Object.assign(window, {
   sbSignUp, sbSignIn, sbSignOut, sbGetSession, sbGetUser, sbGetProfile, sbUpdateProfile,
+  sbResetPasswordForEmail, sbVerifyRecoveryOtp, sbUpdatePassword,
   sbGetProducts, sbGetProduct,
   sbGetShops, sbGetShop,
-  sbGetBanners, sbUpsertBanner, sbDeleteBanner,
+  sbGetBanners, sbUpsertBanner, sbDeleteBanner, sbGetSignupBanner,
   sbGetCart, sbUpsertCartItem, sbClearCart,
   sbCreateOrder, sbGetOrder, sbGetOrders,
   sbGetConversations, sbGetMessages, sbSendMessage,

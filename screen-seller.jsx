@@ -2,7 +2,7 @@
 
 // ─── STEPPER COMPONENT ───────────────────────────────────────
 function KycStepper({ step }) {
-  const steps = ['Profil', 'KYC', 'Boutique'];
+  const steps = ['Profile', 'KYC', 'Shop'];
   return (
     <div style={{ padding:'10px 20px 14px', background:C.white, borderBottom:`1px solid ${C.hairline}` }}>
       <div style={{ display:'flex', alignItems:'center' }}>
@@ -33,33 +33,33 @@ function BecomeSellerScreen() {
     <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
       <StatusBar />
       <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
-        <NavBar title="Devenir vendeur" onBack={goBack} />
+        <NavBar title="Become a Seller" onBack={goBack} />
         <KycStepper step={0} />
       </div>
       <div style={{ flex:1, overflowY:'auto', padding:'18px 20px 40px', display:'flex', flexDirection:'column', gap:14 }}>
         <div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', marginBottom:4 }}>Parlez-nous de vous</div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute }}>Ces informations restent privées et sécurisées.</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', marginBottom:4 }}>Tell us about yourself</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute }}>This information stays private and secure.</div>
         </div>
         <div style={{ display:'flex', gap:10 }}>
-          <Input label="Prénom" placeholder="Alex" style={{ flex:1 }} />
-          <Input label="Nom" placeholder="Martin" style={{ flex:1 }} />
+          <Input label="First name" placeholder="Alex" style={{ flex:1 }} />
+          <Input label="Last name" placeholder="Martin" style={{ flex:1 }} />
         </div>
-        <Input label="Date de naissance" placeholder="JJ / MM / AAAA" />
-        <Input label="Adresse e-mail" placeholder="vous@mail.com" type="email" iconLeft={<Icon name="mail" size={16} color={C.mute} />} />
+        <Input label="Date of birth" placeholder="DD / MM / YYYY" />
+        <Input label="Email address" placeholder="you@mail.com" type="email" iconLeft={<Icon name="mail" size={16} color={C.mute} />} />
         <div style={{ display:'flex', gap:10 }}>
-          <Input label="Indicatif" placeholder="+33" style={{ width:80 }} />
-          <Input label="Téléphone" placeholder="6 12 34 56 78" style={{ flex:1 }} />
+          <Input label="Country code" placeholder="+1" style={{ width:80 }} />
+          <Input label="Phone" placeholder="555 123 4567" style={{ flex:1 }} />
         </div>
-        <Input label="Nationalité" placeholder="Française" />
-        <Input label="Pays de résidence" placeholder="France" iconLeft={<Icon name="mapPin" size={16} color={C.mute} />} />
+        <Input label="Nationality" placeholder="American" />
+        <Input label="Country of residence" placeholder="United States" iconLeft={<Icon name="mapPin" size={16} color={C.mute} />} />
         <Divider style={{ margin:'4px 0' }} />
         <div>
-          <Input label="Nom de votre boutique" placeholder="Atelier Lune" iconLeft={<Icon name="store" size={16} color={C.mute} />} />
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:5 }}>C'est ce que verront les acheteurs</div>
+          <Input label="Your shop name" placeholder="Atelier Lune" iconLeft={<Icon name="store" size={16} color={C.mute} />} />
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:5 }}>This is what buyers will see</div>
         </div>
         <Btn variant="primary" size="lg" wide onClick={() => navigate('kyc-doc')}>
-          Continuer — Vérification ID
+          Continue — ID Verification
           <Icon name="arrowLeft" size={16} color="#fff" style={{ transform:'rotate(180deg)' }} />
         </Btn>
       </div>
@@ -75,7 +75,7 @@ function KycDocScreen() {
     <div style={{ position:'absolute', inset:0, background:'#0A0812', display:'flex', flexDirection:'column' }}>
       <StatusBar light />
       <div style={{ paddingTop:STATUS_H, flexShrink:0 }}>
-        <NavBar title="Vérifier votre identité" onBack={goBack} transparent light />
+        <NavBar title="Verify Your Identity" onBack={goBack} transparent light />
         {/* Dark stepper */}
         <div style={{ padding:'6px 20px 12px', display:'flex', gap:6 }}>
           {[0,1,2].map(i => <div key={i} style={{ flex:1, height:3, borderRadius:9999, background: i === 0 ? C.primary : 'rgba(255,255,255,0.15)', transition:'background 0.3s' }} />)}
@@ -83,8 +83,8 @@ function KycDocScreen() {
       </div>
       <div style={{ flex:1, padding:'0 20px', display:'flex', flexDirection:'column', gap:14 }}>
         <div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:20, fontWeight:800, color:'#fff', letterSpacing:'-0.02em' }}>Recto de votre pièce d'identité</div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.6)', marginTop:4 }}>Positionnez votre passeport ou CNI dans le cadre</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:20, fontWeight:800, color:'#fff', letterSpacing:'-0.02em' }}>Front of your ID document</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.6)', marginTop:4 }}>Position your passport or ID card within the frame</div>
         </div>
         {/* Viewfinder */}
         <div style={{ flex:1, border:`2px dashed ${captured ? C.success : C.primary}`, borderRadius:14, position:'relative', background:'rgba(255,255,255,0.04)', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', transition:'border-color 0.3s' }}>
@@ -97,22 +97,22 @@ function KycDocScreen() {
                 <div style={{ width:56, height:56, borderRadius:9999, background:'rgba(31,138,91,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
                   <Icon name="check" size={28} color={C.success} sw={2.5} />
                 </div>
-                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.success, fontWeight:600 }}>Photo capturée</span>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.success, fontWeight:600 }}>Photo captured</span>
               </div>
             : <div style={{ textAlign:'center' }}>
                 <div style={{ fontSize:36, marginBottom:8, opacity:0.3 }}>▭</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.5)', lineHeight:1.4 }}>Alignez les 4 coins<br/>Évitez les reflets</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.5)', lineHeight:1.4 }}>Align all 4 corners<br/>Avoid glare</div>
               </div>
           }
         </div>
         {/* Security note */}
         <div style={{ background:'rgba(255,255,255,0.07)', borderRadius:10, padding:'10px 14px', display:'flex', gap:8, alignItems:'flex-start' }}>
           <Icon name="lock" size={14} color='rgba(255,255,255,0.5)' style={{ marginTop:1, flexShrink:0 }} />
-          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.5)', lineHeight:1.4 }}>Upload chiffré. Clorivo ne partage jamais vos documents avec les vendeurs.</span>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.5)', lineHeight:1.4 }}>Encrypted upload. Clorivo never shares your documents with sellers.</span>
         </div>
         <Btn variant="primary" size="lg" wide onClick={() => { if (!captured) { setCaptured(true); } else { navigate('kyc-back'); } }}>
           <Icon name="camera" size={17} color="#fff" />
-          {captured ? 'Continuer →' : 'Ouvrir la caméra'}
+          {captured ? 'Continue →' : 'Open camera'}
         </Btn>
         <div style={{ height:20 }} />
       </div>
@@ -128,44 +128,44 @@ function KycBackScreen() {
     <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
       <StatusBar />
       <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
-        <NavBar title="Vérifier votre identité" onBack={goBack} />
+        <NavBar title="Verify Your Identity" onBack={goBack} />
         <div style={{ padding:'6px 20px 12px', display:'flex', gap:6 }}>
           {[0,1,2].map(i => <div key={i} style={{ flex:1, height:3, borderRadius:9999, background: i <= 1 ? C.primary : C.hairline }} />)}
         </div>
       </div>
       <div style={{ flex:1, padding:'18px 20px 40px', display:'flex', flexDirection:'column', gap:14 }}>
         <div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:20, fontWeight:800, color:C.ink, letterSpacing:'-0.02em' }}>Verso de votre pièce d'identité</div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, marginTop:4 }}>Les deux faces sont requises pour la vérification</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:20, fontWeight:800, color:C.ink, letterSpacing:'-0.02em' }}>Back of your ID document</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, marginTop:4 }}>Both sides are required for verification</div>
         </div>
         {/* Already uploaded card */}
         <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', background:'#EFF9F4', borderRadius:12, border:`1.5px solid ${C.success}` }}>
           <Img label="" tint={0} style={{ width:48, height:34, borderRadius:6, flexShrink:0 }} />
           <div style={{ flex:1 }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>Recto · capturé</div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>passport_front.jpg · 1.2 Mo</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>Front · captured</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>passport_front.jpg · 1.2 MB</div>
           </div>
           <Icon name="checkCircle" size={20} color={C.success} />
         </div>
         {/* Upload zone */}
         <div onClick={() => setUploaded(true)} style={{ flex:1, border:`2px dashed ${uploaded ? C.success : C.hairline}`, borderRadius:16, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:10, cursor:'pointer', background: uploaded ? '#EFF9F4' : C.white, transition:'all 0.2s', minHeight:160 }}>
           {uploaded
-            ? <><Icon name="checkCircle" size={36} color={C.success} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, color:C.success }}>Verso téléchargé !</span></>
+            ? <><Icon name="checkCircle" size={36} color={C.success} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, color:C.success }}>Back uploaded!</span></>
             : <>
                 <div style={{ width:52, height:52, borderRadius:9999, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center' }}>
                   <Icon name="camera" size={24} color={C.primary} />
                 </div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:600, color:C.ink }}>Appuyer pour importer le verso</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>jpg, png · max 5 Mo</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:600, color:C.ink }}>Tap to upload the back</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>jpg, png · max 5 MB</div>
                 <div style={{ display:'flex', gap:8 }}>
-                  <Chip active>📷 Caméra</Chip>
-                  <Chip>🖼 Galerie</Chip>
+                  <Chip active>📷 Camera</Chip>
+                  <Chip>🖼 Gallery</Chip>
                 </div>
               </>
           }
         </div>
         <Btn variant="primary" size="lg" wide onClick={() => navigate('kyc-selfie')} disabled={!uploaded}>
-          Continuer →
+          Continue →
         </Btn>
       </div>
     </div>
@@ -183,26 +183,26 @@ function KycSelfieScreen() {
   }, []);
 
   const checks = [
-    'Centré dans le cadre',
-    'Bonne luminosité',
-    'Tournez la tête à gauche…',
-    'Tournez à droite…',
-    'Clignez lentement',
+    'Centered in the frame',
+    'Good lighting',
+    'Turn your head left…',
+    'Turn right…',
+    'Blink slowly',
   ];
 
   return (
     <div style={{ position:'absolute', inset:0, background:'#0A0812', display:'flex', flexDirection:'column' }}>
       <StatusBar light />
       <div style={{ paddingTop:STATUS_H, flexShrink:0 }}>
-        <NavBar title="Contrôle de vivacité" onBack={goBack} transparent light />
+        <NavBar title="Liveness Check" onBack={goBack} transparent light />
         <div style={{ padding:'6px 20px 12px', display:'flex', gap:6 }}>
           {[0,1,2].map(i => <div key={i} style={{ flex:1, height:3, borderRadius:9999, background: C.primary }} />)}
         </div>
       </div>
       <div style={{ flex:1, padding:'0 20px', display:'flex', flexDirection:'column', gap:14 }}>
         <div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:20, fontWeight:800, color:'#fff' }}>Regardez la caméra</div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.6)', marginTop:4 }}>Suivez le point, puis clignez lentement</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:20, fontWeight:800, color:'#fff' }}>Look at the camera</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.6)', marginTop:4 }}>Follow the dot, then blink slowly</div>
         </div>
         {/* Face oval */}
         <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', position:'relative' }}>
@@ -220,7 +220,7 @@ function KycSelfieScreen() {
             )}
           </div>
           <div style={{ position:'absolute', bottom:-20, fontFamily:"'Inter',sans-serif", fontSize:13, color: progress >= 4 ? C.success : C.primary, fontWeight:600 }}>
-            {progress >= 4 ? '✓ Vérifié' : '● Analyse en cours…'}
+            {progress >= 4 ? '✓ Verified' : '● Analyzing…'}
           </div>
         </div>
         {/* Checklist */}
@@ -233,7 +233,7 @@ function KycSelfieScreen() {
           ))}
         </div>
         <Btn variant="primary" size="lg" wide onClick={() => navigate('kyc-success')} disabled={progress < 4}>
-          {progress < 4 ? 'Vérification en cours…' : 'Finaliser mon compte vendeur'}
+          {progress < 4 ? 'Verifying…' : 'Finish setting up my seller account'}
         </Btn>
         <div style={{ height:20 }} />
       </div>
@@ -250,18 +250,18 @@ function KycSuccessScreen() {
       <div style={{ width:80, height:80, borderRadius:9999, background:'#EFF9F4', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:20 }}>
         <Icon name="checkCircle" size={40} color={C.success} />
       </div>
-      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:24, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', textAlign:'center', marginBottom:10 }}>Dossier soumis !</div>
-      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, color:C.mute, textAlign:'center', lineHeight:1.5, marginBottom:32 }}>Votre vérification est en cours de traitement. Vous recevrez une confirmation sous 24–48h.</div>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:24, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', textAlign:'center', marginBottom:10 }}>Application submitted!</div>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, color:C.mute, textAlign:'center', lineHeight:1.5, marginBottom:32 }}>Your verification is being processed. You'll receive a confirmation within 24–48h.</div>
       <div style={{ background:C.primarySoft, borderRadius:12, padding:'14px 16px', width:'100%', marginBottom:24 }}>
         <div style={{ display:'flex', gap:10, alignItems:'center' }}>
           <Icon name="bell" size={18} color={C.primary} />
           <div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.primaryDeep }}>Notification activée</div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Nous vous préviendrons dès validation</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.primaryDeep }}>Notifications enabled</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>We'll let you know as soon as you're approved</div>
           </div>
         </div>
       </div>
-      <Btn variant="primary" size="lg" wide onClick={() => navigate('home')}>Retour à l'accueil</Btn>
+      <Btn variant="primary" size="lg" wide onClick={() => navigate('home')}>Back to home</Btn>
     </div>
   );
 }
@@ -290,10 +290,10 @@ function SellerDashboardScreen() {
   }, []);
 
   const kpis = [
-    { k:'Commandes', v: stats ? String(stats.orders)  : '38',   delta:'+12', up:true  },
-    { k:'Revenus',   v: stats ? '$' + (stats.revenue ?? 842).toFixed(0) : '$842', delta:'+8%', up:true },
-    { k:'Produits',  v: stats ? String(stats.products) : '15',  delta:'+2',  up:true  },
-    { k:'Note',      v: stats ? String(stats.rating ?? 4.9) : '4.9', delta:'stable', up:true },
+    { k:'Orders', v: stats ? String(stats.orders)  : '38',   delta:'+12', up:true  },
+    { k:'Revenue',   v: stats ? '$' + (stats.revenue ?? 842).toFixed(0) : '$842', delta:'+8%', up:true },
+    { k:'Products',  v: stats ? String(stats.products) : '15',  delta:'+2',  up:true  },
+    { k:'Rating',      v: stats ? String(stats.rating ?? 4.9) : '4.9', delta:'stable', up:true },
   ];
   const data = [120, 185, 142, 210, 175, 260, 230];
   const days = ['L','M','M','J','V','S','D'];
@@ -304,11 +304,11 @@ function SellerDashboardScreen() {
   const area = `0,${H} ${polyline} ${W},${H}`;
 
   const navItems = [
-    { icon:'package',  label:'Commandes', badge:12, action: () => navigate('seller-orders') },
-    { icon:'store',    label:'Produits',  badge:0,  action: () => {} },
+    { icon:'package',  label:'Orders', badge:12, action: () => navigate('seller-orders') },
+    { icon:'store',    label:'Products',  badge:0,  action: () => {} },
     { icon:'creditCard',label:'Wallet',   badge:0,  action: () => {} },
     { icon:'barChart', label:'Analytics', badge:0,  action: () => {} },
-    { icon:'zap',      label:'Retrait',   badge:0,  action: () => {} },
+    { icon:'zap',      label:'Withdraw',   badge:0,  action: () => {} },
     { icon:'camera',   label:'CJ Import', badge:0,  action: () => navigate('cj-connect') },
   ];
 
@@ -321,33 +321,33 @@ function SellerDashboardScreen() {
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
           <Avatar size={36} initials="LS" bg="rgba(255,255,255,0.2)" style={{ border:'2px solid rgba(255,255,255,0.3)' }} />
           <div style={{ flex:1 }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.75)' }}>Bienvenue,</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.75)' }}>Welcome,</div>
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:700, color:'#fff' }}>{sellerName}</div>
           </div>
           <button onClick={() => navigate('home')} style={{ border:'none', background:'rgba(255,255,255,0.15)', borderRadius:9999, padding:'6px 12px', cursor:'pointer', display:'flex', alignItems:'center', gap:5 }}>
             <Icon name="store" size={13} color="#fff" />
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'#fff', fontWeight:500 }}>Mode acheteur</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'#fff', fontWeight:500 }}>Buyer mode</span>
           </button>
         </div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.75)', marginBottom:2 }}>Solde disponible</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.75)', marginBottom:2 }}>Available balance</div>
         <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:32, fontWeight:700, color:'#fff', letterSpacing:'-0.02em' }}>${(stats?.revenue ?? 2481.04).toFixed(2)}</div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.75)', marginTop:2, marginBottom:14 }}>↗ +$184 cette semaine</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.75)', marginTop:2, marginBottom:14 }}>↗ +$184 this week</div>
         <div style={{ display:'flex', gap:8 }}>
-          <Btn variant="soft" size="sm" style={{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.3)' }}>Retirer</Btn>
-          <Btn variant="soft" size="sm" style={{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.3)' }}>+ Produit</Btn>
-          <Btn variant="soft" size="sm" onClick={() => navigate('cj-connect')} style={{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.3)' }}>Import CJ</Btn>
+          <Btn variant="soft" size="sm" style={{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.3)' }}>Withdraw</Btn>
+          <Btn variant="soft" size="sm" style={{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.3)' }}>+ Product</Btn>
+          <Btn variant="soft" size="sm" onClick={() => navigate('cj-connect')} style={{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.3)' }}>Import from CJ</Btn>
         </div>
       </div>
 
       <div style={{ flex:1, overflowY:'auto', padding:'14px 16px', paddingBottom:30, display:'flex', flexDirection:'column', gap:14 }}>
-        {/* Aperçu boutique card */}
+        {/* Shop preview card */}
         <div onClick={() => navigate('shop-customize')} style={{ background:C.white, borderRadius:16, padding:'14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)', cursor:'pointer', display:'flex', alignItems:'center', gap:14 }}>
           <div style={{ width:54, height:54, borderRadius:14, background:`linear-gradient(135deg, ${C.primary}, ${C.primaryDeep})`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
             <Icon name="store" size={26} color="#fff" />
           </div>
           <div style={{ flex:1 }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink, letterSpacing:'-0.01em' }}>Ma boutique</div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:1 }}>Aperçu & personnalisation · bannières, logo, mise en avant</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink, letterSpacing:'-0.01em' }}>My shop</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:1 }}>Preview & customization · banners, logo, featured items</div>
           </div>
           <Icon name="chevronRight" size={18} color={C.mute} />
         </div>
@@ -359,7 +359,7 @@ function SellerDashboardScreen() {
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:4 }}>{k.k}</div>
               <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color:C.ink, letterSpacing:'-0.01em' }}>{k.v}</div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color: k.up ? C.success : C.danger, marginTop:2 }}>
-                {k.up ? '↗' : '↘'} {k.delta} vs hier
+                {k.up ? '↗' : '↘'} {k.delta} vs yesterday
               </div>
             </div>
           ))}
@@ -368,7 +368,7 @@ function SellerDashboardScreen() {
         {/* Revenue chart */}
         <div style={{ background:C.white, borderRadius:14, padding:'14px 16px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink, letterSpacing:'-0.01em' }}>Revenus · 7 jours</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink, letterSpacing:'-0.01em' }}>Revenue · 7 days</span>
             <div style={{ background:C.primarySoft, borderRadius:9999, padding:'4px 10px' }}>
               <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:600, color:C.primary }}>$1 312</span>
             </div>
@@ -413,18 +413,18 @@ function SellerDashboardScreen() {
 function SellerOrdersScreen() {
   const { navigate, goBack } = useNav();
   const [filter, setFilter] = React.useState(1);
-  const filters = ['Tous 47','Nouveaux 12','Emballés 8','Expédiés 23','Retours 4'];
+  const filters = ['All 47','New 12','Packed 8','Shipped 23','Returns 4'];
   const orders = [
-    { id:'#CL-29841', buyer:'A. Martin', sku:'Vase terracotta · M', qty:1, price:'$24.50', status:'nouveau', urgent:true },
-    { id:'#CL-29839', buyer:'M. Otieno',  sku:'Tablier lin · oat', qty:2, price:'$56.00', status:'nouveau', urgent:false },
-    { id:'#CL-29836', buyer:'S. Park',    sku:'Brûleur à huile',    qty:1, price:'$15.00', status:'emballé', urgent:false },
-    { id:'#CL-29830', buyer:'J. Wei',     sku:'Mug céramique × 4', qty:4, price:'$36.00', status:'emballé', urgent:false },
+    { id:'#CL-29841', buyer:'A. Martin', sku:'Terracotta vase · M', qty:1, price:'$24.50', status:'new', urgent:true },
+    { id:'#CL-29839', buyer:'M. Otieno',  sku:'Linen apron · oat', qty:2, price:'$56.00', status:'new', urgent:false },
+    { id:'#CL-29836', buyer:'S. Park',    sku:'Oil burner',    qty:1, price:'$15.00', status:'packed', urgent:false },
+    { id:'#CL-29830', buyer:'J. Wei',     sku:'Ceramic mug × 4', qty:4, price:'$36.00', status:'packed', urgent:false },
   ];
   return (
     <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
       <StatusBar />
       <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
-        <NavBar title="Commandes" onBack={goBack} right={
+        <NavBar title="Orders" onBack={goBack} right={
           <button style={{ width:44, height:44, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
             <Icon name="search" size={20} color={C.mute} />
           </button>
@@ -443,11 +443,11 @@ function SellerOrdersScreen() {
                 <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:700, color:C.ink }}>{o.price}</span>
               </div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.ink, marginBottom:2 }}>{o.sku}</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:6 }}>{o.buyer} · qté {o.qty}</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:6 }}>{o.buyer} · qty {o.qty}</div>
               <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-                <span style={{ background: o.status === 'nouveau' ? C.primarySoft : C.paper, color: o.status === 'nouveau' ? C.primaryDeep : C.mute, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, padding:'3px 8px', borderRadius:9999 }}>{o.status}</span>
-                {o.urgent && <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:C.danger }}>Expédier aujourd'hui</span>}
-                <button style={{ marginLeft:'auto', border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:C.primary }}>Traiter →</button>
+                <span style={{ background: o.status === 'new' ? C.primarySoft : C.paper, color: o.status === 'new' ? C.primaryDeep : C.mute, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, padding:'3px 8px', borderRadius:9999 }}>{o.status}</span>
+                {o.urgent && <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:C.danger }}>Ship today</span>}
+                <button style={{ marginLeft:'auto', border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:C.primary }}>Process →</button>
               </div>
             </div>
           </div>

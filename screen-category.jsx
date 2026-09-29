@@ -3,24 +3,24 @@
 function CategoryScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
   const isDesktop = useIsDesktop();
-  const initial = params.category || 'Tout';
+  const initial = params.category || 'All';
 
-  const categories = ['Tout','Maison','Tech','Beauté','Mode','Enfants','Sport','Cuisine'];
-  const [active, setActive]   = React.useState(categories.includes(initial) ? initial : 'Tout');
+  const categories = ['All','Home','Tech','Beauty','Fashion','Kids','Sport','Kitchen'];
+  const [active, setActive]   = React.useState(categories.includes(initial) ? initial : 'All');
   const [sort, setSort]       = React.useState(0);
   const [view, setView]       = React.useState('grid');
 
   const subCats = {
-    'Tout':    ['Tendances','Nouveautés','Meilleures ventes','Promos'],
-    'Maison':  ['Déco','Cuisine','Luminaire','Textile','Rangement'],
-    'Tech':    ['Audio','Téléphones','Accessoires','Gaming'],
-    'Beauté':  ['Soin','Maquillage','Parfum','Cheveux'],
-    'Mode':    ['Femme','Homme','Sacs','Chaussures','Bijoux'],
-    'Enfants': ['Jouets','Vêtements','Puériculture'],
-    'Sport':   ['Fitness','Plein air','Vélo'],
-    'Cuisine': ['Ustensiles','Électroménager','Vaisselle'],
+    'All':    ['Trending','New arrivals','Best sellers','Deals'],
+    'Home':   ['Decor','Kitchen','Lighting','Textiles','Storage'],
+    'Tech':   ['Audio','Phones','Accessories','Gaming'],
+    'Beauty': ['Skincare','Makeup','Fragrance','Hair'],
+    'Fashion':['Women','Men','Bags','Shoes','Jewelry'],
+    'Kids':   ['Toys','Clothing','Baby care'],
+    'Sport':  ['Fitness','Outdoor','Cycling'],
+    'Kitchen':['Utensils','Appliances','Tableware'],
   };
-  const sorts = ['Populaire','Prix ↑','Prix ↓','Nouveautés'];
+  const sorts = ['Popular','Price ↑','Price ↓','Newest'];
 
   // Build product list (dup PRODUCTS for a fuller grid)
   let products = [...PRODUCTS, ...PRODUCTS.map(p => ({ ...p, id: p.id + 100 }))];
@@ -43,7 +43,7 @@ function CategoryScreen({ params = {} }) {
           {/* Search */}
           <div onClick={() => {}} style={{ flex:1, display:'flex', alignItems:'center', gap:8, background:C.paper, border:`1.5px solid ${C.hairline}`, borderRadius:9999, padding:'9px 14px', cursor:'text' }}>
             <Icon name="search" size={16} color={C.mute} />
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, flex:1 }}>Rechercher dans {active}…</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, flex:1 }}>Search in {active}…</span>
           </div>
           <button onClick={() => navigate('cart')} style={{ width:40, height:40, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', position:'relative', flexShrink:0 }}>
             <Icon name="cart" size={22} color={C.ink} />
@@ -69,7 +69,7 @@ function CategoryScreen({ params = {} }) {
           <div style={{ position:'absolute', inset:0, background:`linear-gradient(135deg, ${C.primary}dd, ${C.primaryDeep}aa)` }} />
           <div style={{ position:'absolute', inset:0, padding:'16px', display:'flex', flexDirection:'column', justifyContent:'center' }}>
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.03em' }}>{active}</div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.85)', marginTop:2 }}>{products.length} produits · jusqu'à -70%</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.85)', marginTop:2 }}>{products.length} products · up to -70%</div>
           </div>
         </div>
 

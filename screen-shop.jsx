@@ -6,11 +6,11 @@ function ShopCustomizeScreen() {
 
   // Editable shop state
   const [shopName, setShopName]   = React.useState('luna.studio');
-  const [shopBio, setShopBio]     = React.useState('Objets déco faits main · céramique & lin');
+  const [shopBio, setShopBio]     = React.useState('Handmade decor pieces · ceramic & linen');
   const [accent, setAccent]       = React.useState('#6C4DFF');
   const [banners, setBanners]     = React.useState([
-    { id:1, title:'Nouvelle collection printemps', sub:'-20% cette semaine', color:'#6C4DFF', tint:0 },
-    { id:2, title:'Édition limitée terracotta',     sub:'Pièces uniques',      color:'#C97B5A', tint:1 },
+    { id:1, title:'New spring collection', sub:'-20% this week', color:'#6C4DFF', tint:0 },
+    { id:2, title:'Limited terracotta edition',     sub:'One-of-a-kind pieces',      color:'#C97B5A', tint:1 },
   ]);
   const [bannerIdx, setBannerIdx] = React.useState(0);
 
@@ -26,7 +26,7 @@ function ShopCustomizeScreen() {
   function addBanner() {
     const colors = ['#6C4DFF','#C97B5A','#1F8A5B','#2563EB','#DB2777','#EA580C'];
     const id = Date.now();
-    setBanners(prev => [...prev, { id, title:'Nouvelle bannière', sub:'Appuyez pour éditer', color:colors[prev.length % colors.length], tint:prev.length % 5 }]);
+    setBanners(prev => [...prev, { id, title:'New banner', sub:'Tap to edit', color:colors[prev.length % colors.length], tint:prev.length % 5 }]);
   }
   function removeBanner(id) {
     setBanners(prev => prev.filter(b => b.id !== id));
@@ -40,7 +40,7 @@ function ShopCustomizeScreen() {
       <div style={{ margin:'0 16px', borderRadius:20, overflow:'hidden', border:`1px solid ${C.hairline}`, background:C.white, boxShadow:'0 8px 30px rgba(14,11,31,0.10)' }}>
         {/* mini status hint */}
         <div style={{ background:C.paper, padding:'5px 0', textAlign:'center', borderBottom:`1px solid ${C.hairline}` }}>
-          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:C.mute, letterSpacing:'0.04em' }}>APERÇU CÔTÉ ACHETEUR</span>
+          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:C.mute, letterSpacing:'0.04em' }}>BUYER-SIDE PREVIEW</span>
         </div>
         {/* Cover */}
         <div style={{ height:84, position:'relative', overflow:'hidden' }}>
@@ -63,9 +63,9 @@ function ShopCustomizeScreen() {
                   <Icon name="check" size={9} color="#fff" sw={3} />
                 </div>
               </div>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>2.4k abonnés · ⭐ 4.9</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>2.4k followers · ⭐ 4.9</span>
             </div>
-            <button style={{ background:accent, border:'none', borderRadius:9999, padding:'6px 14px', color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600 }}>Suivre</button>
+            <button style={{ background:accent, border:'none', borderRadius:9999, padding:'6px 14px', color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600 }}>Follow</button>
           </div>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, lineHeight:1.4 }}>{shopBio}</div>
         </div>
@@ -84,7 +84,7 @@ function ShopCustomizeScreen() {
         )}
         {/* Product grid */}
         <div style={{ padding:'0 14px 14px' }}>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:8 }}>Produits ({shopProducts.length})</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:8 }}>Products ({shopProducts.length})</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
             {shopProducts.map((p, i) => (
               <div key={p.id} style={{ borderRadius:8, overflow:'hidden' }}>
@@ -103,14 +103,14 @@ function ShopCustomizeScreen() {
       <StatusBar />
       {/* Header */}
       <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
-        <NavBar title="Ma boutique" onBack={goBack} right={
+        <NavBar title="My Shop" onBack={goBack} right={
           <button onClick={() => navigate('home')} style={{ width:44, height:44, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
             <Icon name="eye" size={20} color={C.primary} />
           </button>
         } />
         {/* Tabs */}
         <div style={{ display:'flex', padding:'0 16px' }}>
-          {[['preview','Aperçu'],['edit','Personnaliser']].map(([k, label]) => (
+          {[['preview','Preview'],['edit','Customize']].map(([k, label]) => (
             <button key={k} onClick={() => setTab(k)} style={{ flex:1, height:42, border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight: tab === k ? 700 : 500, color: tab === k ? C.primary : C.mute, borderBottom: tab === k ? `2px solid ${C.primary}` : '2px solid transparent', marginBottom:-1 }}>{label}</button>
           ))}
         </div>
@@ -124,7 +124,7 @@ function ShopCustomizeScreen() {
             <ShopPreview />
             <div style={{ margin:'0 16px' }}>
               <Btn variant="primary" size="lg" wide onClick={() => setTab('edit')}>
-                <Icon name="settings" size={17} color="#fff" /> Personnaliser ma boutique
+                <Icon name="settings" size={17} color="#fff" /> Customize my shop
               </Btn>
             </div>
           </>
@@ -135,7 +135,7 @@ function ShopCustomizeScreen() {
           <>
             {/* Logo & cover */}
             <div style={{ margin:'0 16px', background:C.white, borderRadius:16, padding:'14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:12 }}>Logo & couverture</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:12 }}>Logo & cover</div>
               <div style={{ display:'flex', gap:10 }}>
                 <button style={{ flex:1, height:80, border:`2px dashed ${C.hairline}`, borderRadius:12, background:C.paper, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:5 }}>
                   <Icon name="camera" size={20} color={C.primary} />
@@ -143,16 +143,16 @@ function ShopCustomizeScreen() {
                 </button>
                 <button style={{ flex:2, height:80, border:`2px dashed ${C.hairline}`, borderRadius:12, background:C.paper, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:5 }}>
                   <Icon name="camera" size={20} color={C.primary} />
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Photo de couverture</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Cover photo</span>
                 </button>
               </div>
             </div>
 
             {/* Shop info */}
             <div style={{ margin:'0 16px', background:C.white, borderRadius:16, padding:'14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:12 }}>Informations</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:12 }}>Information</div>
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                <Input label="Nom de la boutique" value={shopName} onChange={e => setShopName(e.target.value)} iconLeft={<Icon name="store" size={16} color={C.mute} />} />
+                <Input label="Shop name" value={shopName} onChange={e => setShopName(e.target.value)} iconLeft={<Icon name="store" size={16} color={C.mute} />} />
                 <div>
                   <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.mute, marginBottom:5 }}>Description</div>
                   <div style={{ border:`1.5px solid ${C.hairline}`, borderRadius:12, padding:'10px 14px', background:C.white }}>
@@ -164,7 +164,7 @@ function ShopCustomizeScreen() {
 
             {/* Accent color */}
             <div style={{ margin:'0 16px', background:C.white, borderRadius:16, padding:'14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:12 }}>Couleur de la boutique</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:12 }}>Shop color</div>
               <div style={{ display:'flex', gap:12 }}>
                 {accentOptions.map((c, i) => (
                   <button key={i} onClick={() => setAccent(c)} style={{ width:38, height:38, borderRadius:9999, background:c, border:`3px solid ${accent === c ? C.ink : 'transparent'}`, outline: accent === c ? `1.5px solid ${c}` : 'none', outlineOffset:1, cursor:'pointer', transition:'all 0.15s' }} />
@@ -175,10 +175,10 @@ function ShopCustomizeScreen() {
             {/* Banners management */}
             <div style={{ margin:'0 16px', background:C.white, borderRadius:16, padding:'14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink }}>Bannières ({banners.length})</span>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink }}>Banners ({banners.length})</span>
                 <button onClick={addBanner} style={{ border:'none', background:C.primarySoft, borderRadius:9999, padding:'6px 12px', cursor:'pointer', display:'flex', alignItems:'center', gap:4 }}>
                   <Icon name="plus" size={14} color={C.primary} sw={2.5} />
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:C.primary }}>Ajouter</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:C.primary }}>Add</span>
                 </button>
               </div>
               <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
@@ -195,15 +195,15 @@ function ShopCustomizeScreen() {
                   </div>
                 ))}
                 {banners.length === 0 && (
-                  <div style={{ textAlign:'center', padding:'16px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Aucune bannière. Ajoutez-en une pour mettre en avant vos offres.</div>
+                  <div style={{ textAlign:'center', padding:'16px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No banners yet. Add one to showcase your offers.</div>
                 )}
               </div>
             </div>
 
             {/* Featured products */}
             <div style={{ margin:'0 16px', background:C.white, borderRadius:16, padding:'14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:4 }}>Produits mis en avant</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:12 }}>Glissez pour réordonner · sélectionnez les vedettes</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:4 }}>Featured products</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:12 }}>Drag to reorder · select featured items</div>
               <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:4 }}>
                 {shopProducts.map((p, i) => (
                   <div key={p.id} style={{ width:80, flexShrink:0, position:'relative' }}>
@@ -223,7 +223,7 @@ function ShopCustomizeScreen() {
             {/* Save */}
             <div style={{ margin:'0 16px' }}>
               <Btn variant="primary" size="lg" wide onClick={() => setTab('preview')}>
-                <Icon name="check" size={17} color="#fff" sw={2.5} /> Enregistrer & prévisualiser
+                <Icon name="check" size={17} color="#fff" sw={2.5} /> Save & preview
               </Btn>
             </div>
           </>
