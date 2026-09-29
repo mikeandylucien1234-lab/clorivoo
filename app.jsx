@@ -69,6 +69,9 @@ const SCREENS = {
   tracking:     () => window.OrdersListScreen,
   'order-detail': () => window.OrderDetailScreen,
   wishlist:     () => window.WishlistScreen,
+  'wishlist-shared':        () => window.WishlistSharedScreen,
+  'wishlist-notifications': () => window.WishlistNotificationsScreen,
+  'wishlist-alerts':        () => window.WishlistAlertsScreen,
   profile:      () => window.ProfileScreen,
   chat:         () => window.ChatScreen,
   // V2 — Seller

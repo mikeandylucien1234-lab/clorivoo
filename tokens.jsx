@@ -127,6 +127,7 @@ const ICONS = {
   clock:        ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z','M12 6v6l4 2'],
   info:         ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z','M12 16v-4','M12 8h.01'],
   smartphone:   ['M17 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z','M12 18h.01'],
+  moreHorizontal: ['M5 12h.01','M12 12h.01','M19 12h.01'],
 };
 
 // Icon component

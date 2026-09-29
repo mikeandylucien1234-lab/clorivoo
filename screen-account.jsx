@@ -7,59 +7,6 @@ window._PROFILE = window._PROFILE || {
   memberSince:'2024-01-01', verified:true, avatar:null,
 };
 
-// ─── WISHLIST ─────────────────────────────────────────────────
-function WishlistScreen() {
-  const { navigate } = useNav();
-  const [activeCol, setActiveCol] = React.useState(0);
-  const collections = ['All · 14', 'Home · 6', 'Gifts · 4', '+ New list'];
-  const products    = PRODUCTS.slice(0, 8);
-
-  return (
-    <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
-      <StatusBar />
-      <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
-        <NavBar title="My Wishlist" onBack={false}
-          right={
-            <button style={{ width:44, height:44, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <Icon name="settings" size={20} color={C.mute} />
-            </button>
-          }
-        />
-        {/* Collection tabs */}
-        <div style={{ display:'flex', gap:8, padding:'8px 16px 12px', overflowX:'auto' }}>
-          {collections.map((c, i) => (
-            <Chip key={i} active={i === activeCol} onClick={() => setActiveCol(i)}>{c}</Chip>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ flex:1, overflowY:'auto', padding:'14px 16px', paddingBottom: NAV_H + HOME_H }}>
-        {/* Sort / filter row */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>{products.length} items</span>
-          <button style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4, color:C.mute }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13 }}>Sort</span>
-            <Icon name="chevronRight" size={14} color={C.mute} style={{ transform:'rotate(90deg)' }} />
-          </button>
-        </div>
-
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-          {products.map((p, i) => (
-            <ProductCard key={p.id} product={p} size="md" tint={i % 5} onPress={() => navigate('pdp', { product: p })} />
-          ))}
-        </div>
-      </div>
-
-      <BottomNav active={4} onTab={(i) => {
-        if (i === 0) navigate('home');
-        else if (i === 1) navigate('categories');
-        else if (i === 2) navigate('cart');
-        else if (i === 3) navigate('tracking');
-      }} />
-    </div>
-  );
-}
-
 // ─── PROFILE HOME ───────────────────────────────────────────────
 function ProfileScreen() {
   const { navigate } = useNav();
@@ -82,7 +29,7 @@ function ProfileScreen() {
     cancelled: orders.filter(o => o.status === 'cancelled').length,
   };
   const walletBalance = window._WALLET_BALANCE ?? 45.50;
-  const wishlistCount = 3;
+  const wishlistCount = (window._WISHLIST || []).length;
 
   const stats = [
     { icon:'archive',     value: String(orderCounts.all), label:'Orders' },
@@ -635,4 +582,4 @@ function EditProfileScreen() {
   );
 }
 
-Object.assign(window, { WishlistScreen, ProfileScreen, PersonalInfoScreen, EditProfileScreen });
+Object.assign(window, { ProfileScreen, PersonalInfoScreen, EditProfileScreen });
