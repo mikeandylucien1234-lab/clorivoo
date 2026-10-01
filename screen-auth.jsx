@@ -1,28 +1,156 @@
 // screen-auth.jsx — Splash · Welcome · Login · Sign Up · Forgot Password · OTP · Reset Password · Success
 
 // ─── SPLASH ──────────────────────────────────────────────────
-function SplashScreen() {
-  const { navigate } = useNav();
-  const [dot, setDot] = React.useState(0);
+const SPLASH_STAGES = [
+  { at:0,  text:'Initializing CLORIVO…' },
+  { at:20, text:'Checking your session…' },
+  { at:42, text:'Syncing cart & wishlist…' },
+  { at:64, text:'Loading preferences…' },
+  { at:84, text:'Connecting services…' },
+  { at:96, text:'Almost there…' },
+];
 
+// Placeholder hooks for a real deployment — structured so a backend can
+// plug in without changing the navigation flow below.
+function checkMaintenanceMode() { return false; }
+function checkForceUpdate() { return null; } // would return a min version string to block on
+
+async function decideSplashDestination() {
+  if (checkMaintenanceMode()) return 'onboarding'; // would be 'maintenance' with a real screen
+  try {
+    const session = await sbGetSession();
+    if (!session) {
+      let onboarded = false;
+      try { onboarded = localStorage.getItem('clorivo_onboarded') === '1'; } catch (e) {}
+      if (!onboarded) { try { localStorage.setItem('clorivo_onboarded', '1'); } catch (e) {} }
+      return onboarded ? 'login' : 'onboarding';
+    }
+    const user = await sbGetUser();
+    const profile = user ? await sbGetProfile(user.id) : null;
+    if (profile?.role === 'admin')  return 'admin';
+    if (profile?.role === 'seller') return 'seller-home';
+    return 'home';
+  } catch (e) {
+    return 'onboarding';
+  }
+}
+
+function SplashScreen() {
+  const { replace } = useNav();
+  const { dark, setDark } = useTheme();
+  const [progress, setProgress] = React.useState(0);
+  const [destination, setDestination] = React.useState(null);
+
+  // Automatic theme detection (light/dark splash)
   React.useEffect(() => {
-    const t1 = setInterval(() => setDot(d => (d + 1) % 3), 500);
-    const t2 = setTimeout(() => navigate('onboarding'), 2200);
-    return () => { clearInterval(t1); clearTimeout(t2); };
+    try {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      setDark(mq.matches);
+    } catch (e) {}
   }, []);
 
+  // Resolve where to go while the progress bar plays
+  React.useEffect(() => {
+    let alive = true;
+    decideSplashDestination().then(dest => { if (alive) setDestination(dest); });
+    return () => { alive = false; };
+  }, []);
+
+  // Animated progress (percentage-driven loading)
+  React.useEffect(() => {
+    const t = setInterval(() => {
+      setProgress(p => Math.min(100, p + 2 + Math.random() * 3));
+    }, 55);
+    return () => clearInterval(t);
+  }, []);
+
+  // Navigate once both the animation finished AND we know the destination
+  React.useEffect(() => {
+    if (progress >= 100 && destination) {
+      const t = setTimeout(() => replace(destination), 250);
+      return () => clearTimeout(t);
+    }
+  }, [progress, destination]);
+
+  const stageText = [...SPLASH_STAGES].reverse().find(s => progress >= s.at)?.text ?? SPLASH_STAGES[0].text;
+  const bg = dark ? '#0F0C1E' : 'linear-gradient(180deg, #FBFAFF 0%, #F3EFFF 100%)';
+  const ink = dark ? '#EDE9F7' : C.ink;
+  const mute = dark ? '#9088A8' : C.mute;
+  const cardBg = dark ? '#1A1630' : C.white;
+
   return (
-    <div style={{ position:'absolute', inset:0, background:C.white, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:0 }}>
+    <div style={{ position:'absolute', inset:0, background:bg, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
       <StatusBar />
-      <div style={{ width:88, height:88, borderRadius:24, background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 8px 32px rgba(108,77,255,0.28)', marginBottom:20 }}>
-        <Icon name="shoppingBag" size={44} color="#fff" sw={2} />
-      </div>
-      <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:30, color:C.ink, letterSpacing:'-0.04em', marginBottom:6 }}>CLORIVO</div>
-      <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:400, fontSize:14, color:C.mute, letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:64 }}>shop · sell · ship</div>
-      <div style={{ display:'flex', gap:6 }}>
-        {[0,1,2].map(i => (
-          <div key={i} style={{ width: i === dot ? 22 : 6, height:6, borderRadius:9999, background: i === dot ? C.primary : C.hairline, transition:'all 0.4s ease' }} />
-        ))}
+
+      {/* Soft decorative blobs */}
+      <div style={{ position:'absolute', top:-60, right:-60, width:260, height:260, borderRadius:9999, background: dark ? 'radial-gradient(circle, rgba(123,95,255,0.18) 0%, transparent 70%)' : 'radial-gradient(circle, rgba(108,77,255,0.14) 0%, transparent 70%)' }} />
+      <div style={{ position:'absolute', bottom:-80, left:-70, width:240, height:240, borderRadius:9999, background: dark ? 'radial-gradient(circle, rgba(123,95,255,0.14) 0%, transparent 70%)' : 'radial-gradient(circle, rgba(138,107,255,0.12) 0%, transparent 70%)' }} />
+
+      <div style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', padding:'0 32px', maxWidth:360 }}>
+
+        {/* Logo mark: padlock + heart, fade-scale-in with a soft glow pulse */}
+        <div style={{ position:'relative', width:110, height:110, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:18, animation:'splashLogoIn 0.7s cubic-bezier(0.25,0.46,0.45,0.94) both' }}>
+          <div style={{ position:'absolute', inset:0, borderRadius:9999, background:`radial-gradient(circle, ${C.primary}55 0%, transparent 72%)`, animation:'splashGlow 2.4s ease-in-out infinite' }} />
+          <Icon name="lock" size={88} color={C.primary} filled sw={1} style={{ position:'relative' }} />
+          <Icon name="heartFill" size={26} color="#fff" filled style={{ position:'absolute', top:'58%', left:'50%', transform:'translate(-50%,-50%)' }} />
+        </div>
+
+        <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:34, color:C.primary, letterSpacing:'-0.03em', marginBottom:6, animation:'fadeUp 0.6s ease 0.15s both' }}>CLORIVO</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:500, fontSize:14, color:mute, marginBottom:36, animation:'fadeUp 0.6s ease 0.25s both' }}>Shop. Love. Live Better.</div>
+
+        {/* Hero illustration */}
+        <div style={{ position:'relative', width:260, height:200, marginBottom:30, animation:'fadeUp 0.6s ease 0.35s both' }}>
+          {[...Array(7)].map((_, i) => (
+            <div key={i} style={{ position:'absolute', width:6, height:6, borderRadius:9999, background:['#F59E0B','#DB2777','#6C4DFF','#1F8A5B'][i%4], opacity:0.6, top:`${(i*29)%85}%`, left:`${(i*41)%90}%`, animation:`floatY ${2.6+(i%3)*0.4}s ease-in-out infinite ${i*0.2}s` }} />
+          ))}
+
+          <div style={{ position:'absolute', top:12, left:'50%', transform:'translateX(-50%)', width:34, height:30, borderRadius:'6px 6px 10px 10px', background:'#8A6BFF', display:'flex', alignItems:'center', justifyContent:'center', animation:'floatY 3s ease-in-out infinite' }}>
+            <div style={{ width:16, height:4, borderRadius:9999, background:'rgba(255,255,255,0.7)' }} />
+          </div>
+
+          <div style={{ position:'absolute', top:50, left:28, width:30, height:42, borderRadius:8, background:'#2B2740', boxShadow:'0 6px 14px rgba(14,11,31,0.2)', animation:'floatY 3.4s ease-in-out infinite 0.3s' }}>
+            <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Icon name="smartphone" size={14} color="rgba(255,255,255,0.5)" />
+            </div>
+          </div>
+
+          <div style={{ position:'absolute', top:42, right:26, animation:'floatY 3.2s ease-in-out infinite 0.5s' }}>
+            <Icon name="headphones" size={38} color="#1A1420" />
+          </div>
+
+          <div style={{ position:'absolute', top:14, left:40, width:20, height:20, background:'#F59E0B', borderRadius:9999, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 10px rgba(245,158,11,0.35)', animation:'floatY 2.8s ease-in-out infinite 0.1s' }}>
+            <Icon name="tag" size={11} color="#fff" />
+          </div>
+          <div style={{ position:'absolute', top:18, right:50, width:28, height:28, background:'#fff', borderRadius:9999, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 6px 14px rgba(14,11,31,0.12)', animation:'floatY 3.1s ease-in-out infinite 0.4s' }}>
+            <Icon name="heartFill" size={14} color={C.primary} filled />
+          </div>
+
+          <div style={{ position:'absolute', bottom:10, left:'50%', transform:'translateX(-50%)', width:160, height:110, borderRadius:16, background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 20px 40px rgba(108,77,255,0.3)', display:'flex', alignItems:'flex-end', justifyContent:'center', paddingBottom:10 }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:800, color:'rgba(255,255,255,0.9)', letterSpacing:'0.04em' }}>CLORIVO</span>
+          </div>
+
+          <div style={{ position:'absolute', bottom:0, left:6, width:42, height:34, background:'#C98D5A', borderRadius:4, boxShadow:'0 6px 12px rgba(14,11,31,0.15)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <Icon name="lock" size={14} color="rgba(0,0,0,0.3)" />
+          </div>
+
+          <div style={{ position:'absolute', bottom:2, right:10, width:26, height:30, animation:'floatY 3.6s ease-in-out infinite 0.6s' }}>
+            <div style={{ width:'100%', height:20, background:'#1F8A5B', borderRadius:'10px 10px 2px 2px' }} />
+            <div style={{ width:22, height:14, background:'#fff', borderRadius:6, margin:'-4px auto 0' }} />
+          </div>
+        </div>
+
+        <div style={{ textAlign:'center', marginBottom:28, animation:'fadeUp 0.6s ease 0.45s both' }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, color:ink }}>Everything you love, </span>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:800, color:C.primary }}>all in one place.</span>
+        </div>
+
+        {/* Progress bar + dynamic loading text */}
+        <div style={{ width:220, animation:'fadeUp 0.6s ease 0.55s both' }}>
+          <div style={{ width:'100%', height:6, borderRadius:9999, background: dark ? '#252138' : C.hairline, overflow:'hidden' }}>
+            <div style={{ width:`${progress}%`, height:'100%', borderRadius:9999, background:`linear-gradient(90deg, ${C.primary} 0%, #8A6BFF 100%)`, transition:'width 0.15s linear' }} />
+          </div>
+          <div style={{ textAlign:'center', marginTop:10, fontFamily:"'Inter',sans-serif", fontSize:12.5, color:mute }}>{stageText}</div>
+        </div>
       </div>
     </div>
   );

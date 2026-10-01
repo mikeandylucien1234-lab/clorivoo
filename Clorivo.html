@@ -65,6 +65,14 @@
       from { transform: translateY(30px); opacity: 0; }
       to   { transform: translateY(0);    opacity: 1; }
     }
+    @keyframes splashLogoIn {
+      from { transform: scale(0.7); opacity: 0; }
+      to   { transform: scale(1);   opacity: 1; }
+    }
+    @keyframes splashGlow {
+      0%, 100% { opacity: 0.55; transform: scale(0.94); }
+      50%      { opacity: 1;    transform: scale(1.08); }
+    }
 
     /* ── Onboarding sheet ── */
     @keyframes sheetIn {

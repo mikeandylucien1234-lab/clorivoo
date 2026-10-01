@@ -52,6 +52,7 @@ function ProfileScreen() {
     { icon:'lifeBuoy',   label:'Support Tickets',      action: () => navigate('support') },
     { icon:'settings',   label:'Settings',             action: () => navigate('settings') },
     { icon:'users',      label:'Invite Friends',       detail:'Earn $10', action: () => navigate('invite') },
+    { icon:'lock',       label:'Admin Console',        action: () => navigate('admin') },
   ];
   const [toast, setToast] = React.useState(null);
   function setReviewsToast() { setToast({ type:'success', message:'You have no pending reviews' }); }
