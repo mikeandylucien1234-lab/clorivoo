@@ -212,35 +212,219 @@ function AuthShell({ children, onBack, topRight, isDesktop }) {
   );
 }
 
-// ─── WELCOME SCREEN ──────────────────────────────────────────
-function OnboardingScreen() {
-  const { navigate } = useNav();
-  const isDesktop = useIsDesktop();
-
+// ─── ONBOARDING ILLUSTRATIONS (one per slide) ────────────────
+function OnboardingArtWelcome() {
+  const { dark } = useTheme();
   return (
-    <AuthShell isDesktop={isDesktop}>
-      <div style={{ padding:'8px 24px 40px', display:'flex', flexDirection:'column', alignItems:'center', animation:'fadeUp 0.5s ease both' }}>
-        <AuthArt />
-
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:26, fontWeight:800, color:C.primary, letterSpacing:'-0.03em', marginTop:8 }}>CLORIVO</div>
-
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:24, fontWeight:800, color:C.ink, letterSpacing:'-0.03em', textAlign:'center', marginTop:18, lineHeight:1.25 }}>
-          Welcome to CLORIVO
-        </div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, color:C.mute, textAlign:'center', marginTop:8, lineHeight:1.5, maxWidth:320 }}>
-          Shop and sell worldwide with confidence
-        </div>
-
-        <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:12, marginTop:32 }}>
-          <Btn variant="primary" size="lg" wide onClick={() => navigate('login')} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 10px 28px rgba(108,77,255,0.35)' }}>
-            Login
-          </Btn>
-          <Btn variant="secondary" size="lg" wide onClick={() => navigate('register')}>
-            Create Account
-          </Btn>
+    <div style={{ position:'relative', width:220, height:180 }}>
+      {[...Array(6)].map((_, i) => (
+        <div key={i} style={{ position:'absolute', width:6, height:6, borderRadius:9999, background:['#F59E0B','#DB2777','#6C4DFF','#1F8A5B'][i%4], opacity:0.6, top:`${(i*27)%80}%`, left:`${(i*37)%88}%`, animation:`floatY ${2.6+(i%3)*0.4}s ease-in-out infinite ${i*0.2}s` }} />
+      ))}
+      <div style={{ position:'absolute', top:4, left:'50%', transform:'translateX(-50%)', animation:'floatY 3.2s ease-in-out infinite 0.5s' }}>
+        <Icon name="headphones" size={42} color={dark ? '#EDE9F7' : '#1A1420'} />
+      </div>
+      <div style={{ position:'absolute', top:26, left:34, width:34, height:48, borderRadius:9, background:'#2B2740', boxShadow:'0 8px 16px rgba(14,11,31,0.22)', display:'flex', alignItems:'center', justifyContent:'center', animation:'floatY 3.4s ease-in-out infinite 0.2s' }}>
+        <Icon name="smartphone" size={16} color="rgba(255,255,255,0.5)" />
+      </div>
+      <div style={{ position:'absolute', top:14, right:32, width:24, height:24, background:'#F59E0B', borderRadius:9999, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 10px rgba(245,158,11,0.35)', animation:'floatY 2.8s ease-in-out infinite 0.1s' }}>
+        <Icon name="tag" size={12} color="#fff" />
+      </div>
+      <div style={{ position:'absolute', bottom:34, left:'50%', transform:'translateX(-50%)', width:140, height:96, borderRadius:16, background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 20px 36px rgba(108,77,255,0.3)', display:'flex', alignItems:'flex-end', justifyContent:'center', paddingBottom:10 }}>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:800, color:'rgba(255,255,255,0.9)' }}>CLORIVO</span>
+      </div>
+      <div style={{ position:'absolute', bottom:22, left:4, width:38, height:30, background:'#C98D5A', borderRadius:4, boxShadow:'0 6px 12px rgba(14,11,31,0.15)' }} />
+      <div style={{ position:'absolute', bottom:20, right:6, animation:'floatY 3.6s ease-in-out infinite 0.4s' }}>
+        <div style={{ width:22, height:18, background:'#1F8A5B', borderRadius:'10px 10px 2px 2px' }} />
+        <div style={{ width:18, height:12, background:'#fff', borderRadius:5, margin:'-3px auto 0' }} />
+      </div>
+    </div>
+  );
+}
+function OnboardingArtDeals() {
+  const { dark } = useTheme();
+  return (
+    <div style={{ position:'relative', width:240, height:220, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ position:'absolute', width:170, height:170, borderRadius:9999, background: dark ? '#1E1535' : C.primarySoft }} />
+      <div style={{ position:'relative', width:150, height:210, borderRadius:24, background:'#15111F', padding:6, boxShadow: dark ? '0 0 0 1px rgba(255,255,255,0.08), 0 24px 48px rgba(0,0,0,0.5)' : '0 24px 48px rgba(14,11,31,0.3)', animation:'floatY 4s ease-in-out infinite' }}>
+        <div style={{ width:'100%', height:'100%', borderRadius:18, background:C.white, overflow:'hidden', padding:7, display:'flex', flexDirection:'column', gap:4 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:4, background:C.paper, borderRadius:7, padding:'3px 7px', flexShrink:0 }}>
+            <Icon name="search" size={9} color={C.mute} />
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:7, color:C.mute }}>Search products</span>
+          </div>
+          <div style={{ borderRadius:9, background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, padding:'7px 9px', flexShrink:0 }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:800, color:'#fff' }}>Mega Deals</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:6.5, color:'rgba(255,255,255,0.85)', marginBottom:3 }}>Up to 50% OFF</div>
+            <div style={{ display:'inline-block', background:'#fff', borderRadius:9999, padding:'2px 7px', fontFamily:"'Inter',sans-serif", fontSize:6, fontWeight:700, color:C.primary }}>Shop Now</div>
+          </div>
+          <div style={{ display:'flex', gap:5, flexShrink:0 }}>
+            {['#F0ECFD','#FDF0EC','#ECF4FD','#ECFDF4'].map((c,i) => (
+              <div key={i} style={{ flex:1, height:16, borderRadius:7, background:c }} />
+            ))}
+          </div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:7, fontWeight:700, color:C.ink, flexShrink:0 }}>Flash Deals</div>
+          <div style={{ display:'flex', gap:5, flexShrink:0 }}>
+            {[0,1].map(i => (
+              <div key={i} style={{ flex:1, borderRadius:7, background:C.paper, padding:4 }}>
+                <div style={{ width:'100%', height:34, borderRadius:5, background: i===0?'#E4DCFF':'#D4E4F9', marginBottom:3 }} />
+                <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:6.5, fontWeight:700, color:C.primary }}>${i===0?'89.99':'199.00'}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </AuthShell>
+      <div style={{ position:'absolute', top:10, left:4, width:30, height:30, borderRadius:9999, background:C.primary, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 8px 16px rgba(108,77,255,0.3)', animation:'floatY 3s ease-in-out infinite 0.2s' }}>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:800, color:'#fff' }}>%</span>
+      </div>
+      <div style={{ position:'absolute', top:30, right:0, width:28, height:28, borderRadius:10, background:C.white, boxShadow:'0 8px 16px rgba(14,11,31,0.12)', display:'flex', alignItems:'center', justifyContent:'center', animation:'floatY 3.4s ease-in-out infinite 0.4s' }}>
+        <Icon name="creditCard" size={13} color={C.primary} />
+      </div>
+      <div style={{ position:'absolute', bottom:34, right:-4, width:30, height:30, borderRadius:10, background:C.primary, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 8px 16px rgba(108,77,255,0.3)', animation:'floatY 3.2s ease-in-out infinite 0.1s' }}>
+        <Icon name="cart" size={14} color="#fff" />
+      </div>
+    </div>
+  );
+}
+function OnboardingArtSecurity() {
+  const { dark } = useTheme();
+  return (
+    <div style={{ position:'relative', width:220, height:200, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ position:'absolute', width:170, height:170, borderRadius:9999, background: dark ? '#1E1535' : '#F0ECFD' }} />
+      <div style={{ position:'absolute', bottom:8, width:130, height:28, borderRadius:9999, background: dark ? '#2A2248' : '#DCD3FA' }} />
+      <div style={{ position:'relative', animation:'floatY 3.6s ease-in-out infinite' }}>
+        <Icon name="shield" size={118} color={C.primary} filled sw={1} />
+        <Icon name="lock" size={38} color="#fff" style={{ position:'absolute', top:'38%', left:'50%', transform:'translate(-50%,-50%)' }} />
+      </div>
+      <div style={{ position:'absolute', top:14, right:8, width:30, height:30, borderRadius:10, background:C.white, boxShadow:'0 8px 16px rgba(14,11,31,0.12)', display:'flex', alignItems:'center', justifyContent:'center', animation:'floatY 3s ease-in-out infinite 0.2s' }}>
+        <Icon name="creditCard" size={14} color={C.primary} />
+      </div>
+      <div style={{ position:'absolute', top:4, left:6, width:30, height:30, borderRadius:10, background:C.white, boxShadow:'0 8px 16px rgba(14,11,31,0.12)', display:'flex', alignItems:'center', justifyContent:'center', animation:'floatY 3.3s ease-in-out infinite 0.4s' }}>
+        <Icon name="messageSquare" size={14} color={C.primary} />
+      </div>
+      <div style={{ position:'absolute', bottom:40, left:0, width:14, height:14, borderRadius:9999, background:'#F59E0B', opacity:0.7, animation:'floatY 2.6s ease-in-out infinite 0.1s' }} />
+      <div style={{ position:'absolute', top:50, right:-4, width:10, height:10, borderRadius:9999, background:'#DB2777', opacity:0.6, animation:'floatY 2.9s ease-in-out infinite 0.3s' }} />
+    </div>
+  );
+}
+
+const ONBOARDING_SLIDES = [
+  {
+    key:'welcome', art:OnboardingArtWelcome, logo:true,
+    title:'Everything you love,', titleAccent:'all in one place.',
+    subtitle:'Discover millions of products from trusted sellers, all in one app.',
+    cta:'Get Started',
+  },
+  {
+    key:'deals', art:OnboardingArtDeals,
+    title:'Best deals,', titleAccent:'every day.',
+    subtitle:'Enjoy exclusive offers, flash sales, and discounts made just for you.',
+    cta:'Next',
+  },
+  {
+    key:'security', art:OnboardingArtSecurity,
+    title:'Safe. Secure.', titleAccent:'Worry-free shopping.',
+    subtitle:'Your security is our priority. Shop with confidence every time.',
+    cta:'Start Shopping',
+  },
+];
+
+function markOnboarded() { try { localStorage.setItem('clorivo_onboarded', '1'); } catch (e) {} }
+
+// ─── ONBOARDING (3-slide carousel) ────────────────────────────
+function OnboardingScreen() {
+  const { navigate } = useNav();
+  const { dark } = useTheme();
+  const isDesktop = useIsDesktop();
+  const [index, setIndex] = React.useState(0);
+  const drag = React.useRef({ startX:0, dragging:false });
+  const [dragX, setDragX] = React.useState(0);
+
+  function finish() {
+    markOnboarded();
+    try {
+      // Prepare sensible personalization defaults — real preference
+      // screens live in Settings; onboarding just seeds them.
+      if (!localStorage.getItem('clorivo_prefs')) {
+        localStorage.setItem('clorivo_prefs', JSON.stringify({ language:'English', currency:'USD', notifications:true }));
+      }
+    } catch (e) {}
+    navigate('register');
+  }
+  function handleCta() {
+    if (index < ONBOARDING_SLIDES.length - 1) setIndex(i => i + 1);
+    else finish();
+  }
+  function handleSkip() { markOnboarded(); navigate('login'); }
+
+  function onPointerDown(e) { drag.current = { startX: e.clientX, dragging:true }; }
+  function onPointerMove(e) {
+    if (!drag.current.dragging) return;
+    setDragX(e.clientX - drag.current.startX);
+  }
+  function onPointerUpEnd() {
+    if (!drag.current.dragging) return;
+    if (dragX < -60 && index < ONBOARDING_SLIDES.length - 1) setIndex(i => i + 1);
+    else if (dragX > 60 && index > 0) setIndex(i => i - 1);
+    setDragX(0);
+    drag.current.dragging = false;
+  }
+
+  const slide = ONBOARDING_SLIDES[index];
+  const bg = dark ? '#0F0C1E' : 'linear-gradient(180deg, #FBFAFF 0%, #F3EFFF 100%)';
+  const ink = dark ? '#EDE9F7' : C.ink;
+  const mute = dark ? '#9088A8' : C.mute;
+
+  return (
+    <div style={{ position:'absolute', inset:0, background:bg, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <StatusBar />
+      <div style={{ paddingTop:STATUS_H, display:'flex', justifyContent:'flex-end', padding:'14px 20px 0' }}>
+        {index < ONBOARDING_SLIDES.length - 1 && (
+          <button onClick={handleSkip} style={{ border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, color:C.primary }}>Skip</button>
+        )}
+      </div>
+
+      <div
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUpEnd} onPointerLeave={onPointerUpEnd}
+        style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'0 32px', touchAction:'pan-y', cursor:'grab' }}
+      >
+        <div key={slide.key} style={{ display:'flex', flexDirection:'column', alignItems:'center', transform:`translateX(${dragX * 0.3}px)`, transition: drag.current.dragging ? 'none' : 'transform 0.2s', animation:'fadeUp 0.45s ease both', maxWidth:360, width:'100%' }}>
+          {slide.logo && (
+            <>
+              <div style={{ position:'relative', width:76, height:76, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:8 }}>
+                <Icon name="lock" size={62} color={C.primary} filled sw={1} />
+                <Icon name="heartFill" size={18} color="#fff" filled style={{ position:'absolute', top:'58%', left:'50%', transform:'translate(-50%,-50%)' }} />
+              </div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:24, color:C.primary, letterSpacing:'-0.03em', marginBottom:2 }}>CLORIVO</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:mute, marginBottom:18 }}>Shop. Love. Live Better.</div>
+            </>
+          )}
+
+          <slide.art />
+
+          <div style={{ textAlign:'center', marginTop:24 }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:ink, letterSpacing:'-0.02em' }}>{slide.title} </span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:C.primary, letterSpacing:'-0.02em' }}>{slide.titleAccent}</span>
+          </div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:mute, textAlign:'center', marginTop:8, lineHeight:1.5, maxWidth:300 }}>
+            {slide.subtitle}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display:'flex', justifyContent:'center', gap:6, marginBottom:20 }}>
+        {ONBOARDING_SLIDES.map((s, i) => (
+          <button key={s.key} onClick={() => setIndex(i)} style={{ width: i === index ? 22 : 7, height:7, borderRadius:9999, border:'none', background: i === index ? C.primary : C.hairline, cursor:'pointer', transition:'all 0.3s ease', padding:0 }} />
+        ))}
+      </div>
+
+      <div style={{ padding: isDesktop ? '0 0 36px' : '0 24px 36px', maxWidth: isDesktop ? 360 : undefined, margin: isDesktop ? '0 auto' : undefined, width: isDesktop ? '100%' : undefined }}>
+        <Btn variant="primary" size="lg" wide onClick={handleCta} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 10px 28px rgba(108,77,255,0.35)' }}>
+          {slide.cta}
+        </Btn>
+        <div style={{ textAlign:'center', marginTop:14, fontFamily:"'Inter',sans-serif", fontSize:13.5, color:mute }}>
+          Already have an account? <span onClick={() => { markOnboarded(); navigate('login'); }} style={{ color:C.primary, fontWeight:700, cursor:'pointer' }}>Log in</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
