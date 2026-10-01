@@ -217,7 +217,7 @@ function SellerStoreScreen({ params = {} }) {
               <span style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:800, color:C.ink, letterSpacing:'-0.02em' }}>{seller.name}</span>
             </div>
             <div style={{ display:'flex', gap:2, alignItems:'center' }}>
-              <button onClick={() => setToast({ type:'success', message:'Opening search…' })} style={{ width:38, height:38, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <button onClick={() => navigate('search')} style={{ width:38, height:38, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                 <Icon name="search" size={20} color={C.ink} />
               </button>
               <button onClick={() => navigate('cart')} style={{ width:38, height:38, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', position:'relative' }}>

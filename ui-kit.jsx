@@ -194,6 +194,7 @@ function BottomNav({ active = 0, onTab }) {
 function DesktopNav() {
   const isDesktop = useIsDesktop();
   const { current, navigate } = useNav();
+  const [query, setQuery] = React.useState('');
   if (!isDesktop) return null;
 
   const screen = current?.screen;
@@ -235,9 +236,15 @@ function DesktopNav() {
         </nav>
 
         <div style={{ flex:1, maxWidth:420 }}>
-          <div style={{ height:40, display:'flex', alignItems:'center', gap:8, padding:'0 14px', borderRadius:9999, background:C.paper, border:`1.5px solid ${C.hairline}` }}>
+          <div onClick={() => screen !== 'search' && navigate('search', { query })} style={{ height:40, display:'flex', alignItems:'center', gap:8, padding:'0 14px', borderRadius:9999, background:C.paper, border:`1.5px solid ${C.hairline}`, cursor:'text' }}>
             <Icon name="search" size={16} color={C.mute} />
-            <input placeholder="Search on clorivo…" style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink }} />
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') navigate('search', { query }); }}
+              placeholder="Search on clorivo…"
+              style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink }}
+            />
           </div>
         </div>
 

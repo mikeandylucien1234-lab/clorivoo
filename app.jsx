@@ -101,6 +101,7 @@ const SCREENS = {
   'notification-settings': () => window.NotificationSettingsScreen,
   'messages-list':  () => window.MessagesListScreen,
   'categories':     () => window.CategoriesScreen,
+  'search':         () => window.SearchScreen,
   'category':       () => window.CategoryScreen,
   // V2 — Account & Profile
   'personal-info':    () => window.PersonalInfoScreen,

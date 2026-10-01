@@ -94,7 +94,7 @@ function HomeScreen() {
         </div>
 
         {/* Search bar */}
-        <div onClick={() => {}} style={{ margin: '10px 20px', display: 'flex', alignItems: 'center', gap: 10, background: C.paper, border: `1.5px solid ${C.hairline}`, borderRadius: 12, padding: '11px 14px', cursor: 'text' }}>
+        <div onClick={() => navigate('search')} style={{ margin: '10px 20px', display: 'flex', alignItems: 'center', gap: 10, background: C.paper, border: `1.5px solid ${C.hairline}`, borderRadius: 12, padding: '11px 14px', cursor: 'text' }}>
           <Icon name="search" size={18} color={C.mute} />
           <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, color: C.mute, flex: 1 }}>Search on Clorivo…</span>
           <div style={{ width: 1, height: 16, background: C.hairline }} />

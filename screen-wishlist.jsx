@@ -265,7 +265,7 @@ function WishlistScreen() {
               <span style={{ fontFamily:"'Inter',sans-serif", fontSize:18, fontWeight:800, color:C.primary, letterSpacing:'-0.02em' }}>CLORIVO</span>
             </div>
             <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-              <button onClick={() => setToast({ type:'success', message:'Opening search…' })} style={{ width:40, height:40, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <button onClick={() => navigate('search')} style={{ width:40, height:40, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                 <Icon name="search" size={21} color={C.mute} />
               </button>
               <button onClick={() => navigate('cart')} style={{ width:40, height:40, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', position:'relative' }}>
