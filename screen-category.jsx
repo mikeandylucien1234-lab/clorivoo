@@ -287,4 +287,4 @@ function CategoryScreen({ params = {} }) {
   );
 }
 
-Object.assign(window, { CategoriesScreen, CategoryScreen });
+Object.assign(window, { CategoriesScreen, CategoryScreen, MAIN_CATEGORIES });

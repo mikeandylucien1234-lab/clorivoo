@@ -12,7 +12,9 @@ function HomeScreen() {
   const [user, setUser]                     = React.useState(null);
   const [activeBanner, setActiveBanner]     = React.useState(0);
 
-  const categories = ['All', 'Home', 'Tech', 'Beauty', 'Fashion', 'Kids'];
+  const categories = window._HOME_CHIPS || ['All', 'Home', 'Tech', 'Beauty', 'Fashion', 'Kids'];
+  const homeSections = window._HOME_SECTIONS || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
+  const announcement = window._ANNOUNCEMENT;
 
   React.useEffect(() => {
     sbGetUser().then(u => setUser(u));
@@ -66,6 +68,13 @@ function HomeScreen() {
   return (
     <div style={{ position: 'absolute', inset: 0, background: C.paper, display: 'flex', flexDirection: 'column' }}>
       <StatusBar />
+
+      {/* Announcement bar — admin-managed (Admin Console › Content › Announcement Bar) */}
+      {announcement?.enabled && announcement?.text && (
+        <div style={{ background:`linear-gradient(90deg, ${C.primary} 0%, #8A6BFF 100%)`, padding:'7px 16px', textAlign:'center', flexShrink:0 }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'#fff' }}>{announcement.text}</span>
+        </div>
+      )}
 
       {/* Top bar */}
       {!isDesktop && (
@@ -138,6 +147,7 @@ function HomeScreen() {
         <div style={{ maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined }}>
 
         {/* Hero banner — admin-managed (Admin Console › Banners › Homepage Banners) */}
+        {homeSections.hero && (
         <div style={{ padding: '16px 20px 0' }}>
           <div style={{ borderRadius: 16, position: 'relative', overflow: 'hidden', minHeight: 150, background: heroBanner.image_url ? '#1A1630' : `linear-gradient(135deg, ${heroBanner.bg_color || heroBanner.color || C.primary} 0%, ${C.primaryDeep} 100%)` }}>
             {heroBanner.image_url ? (
@@ -171,6 +181,7 @@ function HomeScreen() {
             </div>
           )}
         </div>
+        )}
 
         {/* clori+ promo strip + shortcuts */}
         <div style={{ padding: '14px 20px 0' }}>
@@ -210,6 +221,7 @@ function HomeScreen() {
         </div>
 
         {/* Featured Shops */}
+        {homeSections.shops && (
         <div style={{ padding: '20px 20px 0' }}>
           <SectionHeader title="Popular Shops" onSeeAll={() => {}} style={{ marginBottom: 14 }} />
           <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 4 }}>
@@ -238,8 +250,10 @@ function HomeScreen() {
             })}
           </div>
         </div>
+        )}
 
         {/* Flash Deals + Super Deals — side by side */}
+        {homeSections.deals && (
         <div style={{ padding: '20px 20px 0' }}>
           <div style={{ display:'flex', gap:10, background:C.white, borderRadius:16, padding:12, boxShadow:'0 2px 12px rgba(14,11,31,0.05)' }}>
 
@@ -302,8 +316,10 @@ function HomeScreen() {
 
           </div>
         </div>
+        )}
 
         {/* Category Tiles */}
+        {homeSections.categories && (
         <div style={{ padding: '20px 20px 0' }}>
           <SectionHeader title="Popular Categories" style={{ marginBottom: 12 }} />
           <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(4, 1fr)' : '1fr 1fr', gap: 10 }}>
@@ -324,6 +340,7 @@ function HomeScreen() {
             )}
           </div>
         </div>
+        )}
 
         {/* Promo Banners */}
         <div style={{ padding: '20px 20px 0' }}>
@@ -360,6 +377,7 @@ function HomeScreen() {
         </div>
 
         {/* Featured — Sponsored Products */}
+        {homeSections.featured && (
         <div style={{ padding: '20px 20px 0' }}>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:12 }}>
             <div>
@@ -382,8 +400,10 @@ function HomeScreen() {
             ))}
           </div>
         </div>
+        )}
 
         {/* Product Videos */}
+        {homeSections.videos && (
         <div style={{ padding:'20px 20px 0' }}>
           <div style={{ marginBottom:12 }}>
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:700, color:C.ink, letterSpacing:'-0.02em' }}>Product Videos</span>
@@ -433,6 +453,7 @@ function HomeScreen() {
             ))}
           </div>
         </div>
+        )}
 
         {/* For You */}
         <div style={{ padding: '20px 20px 16px' }}>

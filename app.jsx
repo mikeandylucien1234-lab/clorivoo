@@ -92,9 +92,9 @@ const SCREENS = {
   'cj-search':      () => window.CjSearchScreen,
   'cj-publish':     () => window.CjPublishScreen,
   // V2 — Admin
-  'admin':          () => window.AdminDashboardScreen,
-  'admin-kyc':      () => window.AdminKycScreen,
-  'admin-banners':  () => window.AdminBannersScreen,
+  'admin':          () => window.AdminShellScreen,
+  'admin-kyc':      () => window.AdminShellScreen,
+  'admin-banners':  () => window.AdminShellScreen,
   // Notifications + Messages
   'notifications':  () => window.NotificationsScreen,
   'notification-detail':   () => window.NotificationDetailScreen,
