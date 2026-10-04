@@ -5,6 +5,7 @@ window._PROFILE = window._PROFILE || {
   name:'John Doe', email:'john.doe@gmail.com', phone:'+509 34 56 78 90',
   dob:'1995-05-15', gender:'Male', nationality:'Haitian',
   memberSince:'2024-01-01', verified:true, avatar:null,
+  role:'buyer', status:'active',
 };
 
 // ─── PROFILE HOME ───────────────────────────────────────────────
@@ -89,8 +90,20 @@ function ProfileScreen() {
       <div style={{ flex:1, overflowY:'auto', paddingBottom: isDesktop ? 40 : NAV_H + HOME_H + 16 }}>
         <div style={{ maxWidth: isDesktop ? 640 : undefined, margin: isDesktop ? '0 auto' : undefined, padding: isDesktop ? '24px 0' : '0 16px', width: isDesktop ? '100%' : undefined, display:'flex', flexDirection:'column', gap:14 }}>
 
+          {/* Admin suspension notice — reflects status changes made from the Admin Console */}
+          {profile.status === 'suspended' && (
+            <div style={{ borderRadius:14, background:'#FDEDED', border:'1px solid #F6C9C9', padding:'12px 14px', display:'flex', alignItems:'center', gap:10, marginTop: isDesktop ? 0 : 14 }}>
+              <Icon name="lock" size={18} color={C.danger} />
+              <div style={{ flex:1 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.danger }}>Your account has been suspended</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.danger, opacity:0.85, marginTop:1 }}>An administrator restricted this account. Contact support to appeal.</div>
+              </div>
+              <button onClick={() => navigate('support')} style={{ border:'none', background:C.danger, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, borderRadius:9999, padding:'7px 12px', cursor:'pointer', flexShrink:0 }}>Support</button>
+            </div>
+          )}
+
           {/* Profile card */}
-          <div style={{ borderRadius:20, background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, padding:'20px', position:'relative', overflow:'hidden', flexShrink:0, marginTop: isDesktop ? 0 : 14 }}>
+          <div style={{ borderRadius:20, background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, padding:'20px', position:'relative', overflow:'hidden', flexShrink:0, marginTop: isDesktop || profile.status === 'suspended' ? 0 : 14 }}>
             <div style={{ position:'absolute', right:-30, top:-30, width:160, height:160, borderRadius:9999, background:'rgba(255,255,255,0.07)' }} />
             <div style={{ display:'flex', alignItems:'center', gap:14, position:'relative' }}>
               <div style={{ position:'relative', flexShrink:0 }}>
@@ -108,6 +121,12 @@ function ProfileScreen() {
                     <div style={{ width:16, height:16, borderRadius:9999, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                       <Icon name="check" size={9} color={C.primary} sw={3} />
                     </div>
+                  )}
+                  {profile.role === 'seller' && (
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, color:'#fff', background:'rgba(255,255,255,0.22)', borderRadius:9999, padding:'2px 8px' }}>Seller</span>
+                  )}
+                  {profile.role === 'admin' && (
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, color:'#fff', background:'rgba(255,255,255,0.22)', borderRadius:9999, padding:'2px 8px' }}>Admin</span>
                   )}
                 </div>
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:'rgba(255,255,255,0.85)', marginTop:2 }}>{profile.email}</div>

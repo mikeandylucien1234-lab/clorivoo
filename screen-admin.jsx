@@ -47,15 +47,95 @@ function AdminSidebar({ active, onNav }) {
   );
 }
 
+// ─── ADMIN — User Detail (connects admin actions to the user's own Profile page) ──
+function AdminUserDetail({ user, onBack, onSave }) {
+  const [role, setRole] = React.useState(user.role);
+  const [status, setStatus] = React.useState(user.status);
+  const [saved, setSaved] = React.useState(false);
+  const dirty = role !== user.role || status !== user.status;
+
+  async function handleSave() {
+    await onSave({ role, status });
+    setSaved(true);
+  }
+
+  return (
+    <>
+      <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0 }}>
+        <Icon name="arrowLeft" size={16} color='rgba(255,255,255,0.5)' />
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.5)' }}>Users</span>
+      </button>
+
+      <div style={{ display:'flex', alignItems:'center', gap:12, background:'#1A1630', borderRadius:14, padding:'14px' }}>
+        <Avatar size={48} initials={user.name.split(' ').map(n=>n[0]).join('')} />
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:'#EDE9F7' }}>{user.name}</span>
+            {user.isYou && <span style={{ fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, color:C.primary, background:'rgba(108,77,255,0.2)', borderRadius:9999, padding:'1px 6px' }}>you</span>}
+          </div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:'rgba(255,255,255,0.4)' }}>{user.email}</div>
+        </div>
+      </div>
+
+      {user.isYou && (
+        <div style={{ background:'rgba(108,77,255,0.1)', border:'1px solid rgba(108,77,255,0.25)', borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:11.5, color:'rgba(237,233,247,0.8)' }}>
+          This is the account signed in on this device. Changes here write straight to its Profile page.
+        </div>
+      )}
+
+      <div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.5)', marginBottom:6 }}>Role</div>
+        <div style={{ display:'flex', gap:8 }}>
+          {['Buyer','Seller','Admin'].map(r => (
+            <button key={r} onClick={() => setRole(r)} style={{ flex:1, height:38, borderRadius:9, border: role === r ? `1.5px solid ${C.primary}` : '1.5px solid rgba(255,255,255,0.12)', background: role === r ? 'rgba(108,77,255,0.2)' : 'transparent', color: role === r ? C.primary : 'rgba(255,255,255,0.6)', fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, cursor:'pointer' }}>{r}</button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.5)', marginBottom:6 }}>Account status</div>
+        <div style={{ display:'flex', gap:8 }}>
+          {['active','suspended'].map(s => (
+            <button key={s} onClick={() => setStatus(s)} style={{ flex:1, height:38, borderRadius:9, border: status === s ? `1.5px solid ${s === 'active' ? C.success : C.danger}` : '1.5px solid rgba(255,255,255,0.12)', background: status === s ? (s === 'active' ? 'rgba(31,138,91,0.18)' : 'rgba(209,67,67,0.18)') : 'transparent', color: status === s ? (s === 'active' ? C.success : C.danger) : 'rgba(255,255,255,0.6)', fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, cursor:'pointer', textTransform:'capitalize' }}>{s}</button>
+          ))}
+        </div>
+      </div>
+
+      {status === 'suspended' && (
+        <div style={{ background:'rgba(209,67,67,0.1)', border:'1px solid rgba(209,67,67,0.25)', borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:11.5, color:'rgba(255,255,255,0.6)' }}>
+          Suspending shows a restriction notice on this user's Profile page and blocks checkout until reactivated.
+        </div>
+      )}
+
+      {saved ? (
+        <div style={{ background:'rgba(31,138,91,0.15)', borderRadius:10, padding:'12px', textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.success, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          <Icon name="checkCircle" size={16} color={C.success} /> Saved — synced to the user's account
+        </div>
+      ) : (
+        <Btn variant="primary" onClick={handleSave} disabled={!dirty}>Save changes</Btn>
+      )}
+    </>
+  );
+}
+
 // ─── ADMIN — Overview ─────────────────────────────────────────
 function AdminDashboardScreen() {
   const { navigate, goBack } = useNav();
   const [section, setSection] = React.useState('overview');
   const [settingsOpen, setSettingsOpen] = React.useState(null);
   const [adminStats, setAdminStats] = React.useState(null);
+  const [remoteUsers, setRemoteUsers] = React.useState(null);
+  const [userDetail, setUserDetail] = React.useState(null);
+  const [, forceTick] = React.useState(0);
 
   React.useEffect(() => {
     sbAdminGetStats().then(s => setAdminStats(s));
+    sbAdminGetUsers().then(u => { if (u) setRemoteUsers(u); });
+    // Live-poll the current session's profile so admin actions taken here
+    // (suspend, role change, verify) are reflected the moment they happen,
+    // and so edits made on the user-facing Profile page show up here too.
+    const id = setInterval(() => forceTick(t => t + 1), 800);
+    return () => clearInterval(id);
   }, []);
 
   const kpis = [
@@ -81,13 +161,52 @@ function AdminDashboardScreen() {
   };
   const meta = sectionMeta[section] || sectionMeta.overview;
 
-  const usersList = [
-    { name:'Alex Martin',   email:'alex@mail.com',   role:'Buyer', status:'active',    tint:0 },
-    { name:'Mary Otieno',   email:'maryo@mail.com',  role:'Seller',  status:'active',    tint:1 },
-    { name:'Sophie Park',   email:'spark@mail.com',  role:'Buyer', status:'active',    tint:2 },
-    { name:'Jun Wei',       email:'jwei@mail.com',   role:'Seller',  status:'suspended', tint:3 },
-    { name:'Léa Dubois',    email:'lea.d@mail.com',  role:'Buyer', status:'active',    tint:4 },
+  // The signed-in account's own profile, live — edits made here are written
+  // straight into window._PROFILE, so they show up immediately on the
+  // user-facing Profile page, and vice versa.
+  const youRow = {
+    id:'you', isYou:true, tint:0,
+    name: window._PROFILE?.name ?? 'You',
+    email: window._PROFILE?.email ?? '',
+    role: (window._PROFILE?.role ?? 'buyer') === 'seller' ? 'Seller' : (window._PROFILE?.role === 'admin' ? 'Admin' : 'Buyer'),
+    status: window._PROFILE?.status ?? 'active',
+  };
+  const demoUsers = [
+    { name:'Alex Martin',   email:'alex@mail.com',   role:'Buyer', status:'active',    tint:1 },
+    { name:'Mary Otieno',   email:'maryo@mail.com',  role:'Seller',  status:'active',    tint:2 },
+    { name:'Sophie Park',   email:'spark@mail.com',  role:'Buyer', status:'active',    tint:3 },
+    { name:'Jun Wei',       email:'jwei@mail.com',   role:'Seller',  status:'suspended', tint:4 },
+    { name:'Léa Dubois',    email:'lea.d@mail.com',  role:'Buyer', status:'active',    tint:0 },
   ];
+  const usersList = [youRow, ...(remoteUsers
+    ? remoteUsers.filter(u => u.email !== youRow.email).map((u, i) => ({
+        id: u.id,
+        name: u.full_name || u.email || 'User',
+        email: u.email || '',
+        role: u.role === 'seller' ? 'Seller' : (u.role === 'admin' ? 'Admin' : 'Buyer'),
+        status: u.status || 'active',
+        tint: i % 5,
+      }))
+    : demoUsers)];
+
+  async function handleSaveUserDetail(updates) {
+    if (!userDetail) return;
+    if (userDetail.isYou) {
+      window._PROFILE = {
+        ...window._PROFILE,
+        role: updates.role.toLowerCase(),
+        status: updates.status,
+      };
+      try {
+        const user = await sbGetUser();
+        if (user) await sbUpdateProfile(user.id, { role: updates.role.toLowerCase(), status: updates.status });
+      } catch (e) {}
+    } else if (userDetail.id) {
+      await sbAdminUpdateUser(userDetail.id, { role: updates.role.toLowerCase(), status: updates.status });
+      setRemoteUsers(prev => (prev || []).map(u => u.id === userDetail.id ? { ...u, role: updates.role.toLowerCase(), status: updates.status } : u));
+    }
+    setUserDetail(null);
+  }
   const sellersList = [
     { name:'luna.studio',   cat:'Home & Decor', sales:'$12.4k', rating:4.9, status:'verified',  tint:0 },
     { name:'TechZone',      cat:'Electronics',  sales:'$48.1k', rating:4.7, status:'verified',  tint:1 },
@@ -266,7 +385,7 @@ function AdminDashboardScreen() {
           </>}
 
           {/* ── USERS ── */}
-          {section === 'users' && <>
+          {section === 'users' && !userDetail && <>
           <div style={{ display:'flex', gap:8 }}>
             {[['Total','12,480'],['Buyers','11,902'],['Sellers','578']].map((s,i) => (
               <div key={i} style={{ flex:1, background:'#1A1630', borderRadius:10, padding:'10px' }}>
@@ -278,17 +397,26 @@ function AdminDashboardScreen() {
           <div style={{ background:'#1A1630', borderRadius:12, overflow:'hidden' }}>
             <div style={{ padding:'10px 14px', borderBottom:'1px solid rgba(255,255,255,0.06)', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:'#EDE9F7' }}>Recent accounts</div>
             {usersList.map((u, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+              <div key={u.id ?? i} onClick={() => setUserDetail(u)} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none', cursor:'pointer' }}>
                 <Avatar size={32} initials={u.name.split(' ').map(n=>n[0]).join('')} />
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'#EDE9F7' }}>{u.name}</div>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'#EDE9F7' }}>{u.name}</span>
+                    {u.isYou && <span style={{ fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, color:C.primary, background:'rgba(108,77,255,0.2)', borderRadius:9999, padding:'1px 6px' }}>you</span>}
+                  </div>
                   <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{u.email} · {u.role}</div>
                 </div>
-                <span style={{ background: u.status === 'active' ? 'rgba(31,138,91,0.2)' : 'rgba(209,67,67,0.2)', color: u.status === 'active' ? C.success : C.danger, fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:9999 }}>{u.status}</span>
+                <span style={{ background: u.status === 'active' ? 'rgba(31,138,91,0.2)' : 'rgba(209,67,67,0.2)', color: u.status === 'active' ? C.success : C.danger, fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:9999, flexShrink:0 }}>{u.status}</span>
+                <Icon name="chevronRight" size={14} color='rgba(255,255,255,0.3)' />
               </div>
             ))}
           </div>
           </>}
+
+          {/* ── USERS · DETAIL ── */}
+          {section === 'users' && userDetail && (
+            <AdminUserDetail user={userDetail} onBack={() => setUserDetail(null)} onSave={handleSaveUserDetail} />
+          )}
 
           {/* ── SELLERS ── */}
           {section === 'sellers' && <>

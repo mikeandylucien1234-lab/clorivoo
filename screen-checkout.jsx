@@ -255,6 +255,7 @@ function CheckoutPaymentScreen({ params = {} }) {
   const [cardErrors, setCardErrors] = React.useState({});
 
   const walletInsufficient = total > WALLET_BALANCE;
+  const accountSuspended = window._PROFILE?.status === 'suspended';
 
   function validateCard() {
     const e = {};
@@ -267,6 +268,7 @@ function CheckoutPaymentScreen({ params = {} }) {
   }
 
   async function handlePay() {
+    if (accountSuspended) return;
     if (paymentMethod === 'card' && !validateCard()) return;
     if (paymentMethod === 'wallet' && walletInsufficient) return;
 
@@ -424,7 +426,13 @@ function CheckoutPaymentScreen({ params = {} }) {
 
       <div style={{ position:'absolute', bottom:0, left:0, right:0, padding: isDesktop ? '16px 0 24px' : '12px 16px 28px', background:C.white, borderTop:`1px solid ${C.hairline}` }}>
         <div style={{ maxWidth: isDesktop ? 640 : undefined, margin: isDesktop ? '0 auto' : undefined }}>
-          <Btn variant="primary" size="lg" wide onClick={handlePay} disabled={loading}
+          {accountSuspended && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, background:'#FDEDED', border:'1px solid #F6C9C9', borderRadius:10, padding:'8px 12px', marginBottom:10 }}>
+              <Icon name="lock" size={14} color={C.danger} />
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.danger, fontWeight:600 }}>Your account is suspended — checkout is disabled. Contact support to appeal.</span>
+            </div>
+          )}
+          <Btn variant="primary" size="lg" wide onClick={handlePay} disabled={loading || accountSuspended}
             style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 8px 20px rgba(108,77,255,0.3)' }}>
             {loading ? 'Processing…' : (<><Icon name="lock" size={15} color="#fff" /> Pay ${total.toFixed(2)}</>)}
           </Btn>

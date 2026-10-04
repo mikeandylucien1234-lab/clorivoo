@@ -422,6 +422,21 @@ async function sbAdminUpdateKyc(id, status, notes) {
   return { error };
 }
 
+async function sbAdminGetUsers() {
+  if (!_sb) return null;
+  const { data } = await _sb.from('profiles')
+    .select('id, full_name, email, role, status, avatar_url, created_at')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  return data;
+}
+
+async function sbAdminUpdateUser(id, updates) {
+  if (!_sb) return { error: null };
+  const { data, error } = await _sb.from('profiles').update(updates).eq('id', id).select().single();
+  return { data, error };
+}
+
 // ─── FILE UPLOADS ─────────────────────────────────────────────────
 async function sbUploadFile(bucket, path, file) {
   if (!_sb) return { url: null, error: { message: 'Not configured' } };
@@ -508,7 +523,7 @@ Object.assign(window, {
   sbSubscribeToMessages, sbMarkConversationRead, sbGetOrCreateConversation,
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
-  sbAdminGetStats, sbAdminGetKycRequests, sbAdminUpdateKyc,
+  sbAdminGetStats, sbAdminGetKycRequests, sbAdminUpdateKyc, sbAdminGetUsers, sbAdminUpdateUser,
   sbUploadFile,
   _isConfigured,
 });
