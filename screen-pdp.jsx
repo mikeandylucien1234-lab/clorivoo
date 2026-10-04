@@ -114,7 +114,7 @@ Dimensions: Ø 12 × H 22 cm · Weight: 680 g · Material: premium certified mat
 
         {/* Gallery */}
         <div style={{ position:'relative', height:320, margin: isDesktop ? '0' : '0 16px', width: isDesktop ? undefined : 'calc(100% - 32px)', borderRadius:18, overflow:'hidden' }}>
-          <Img label={p.label} tint={(p.id + selectedColor) % 5} style={{ width:'100%', height:320, borderRadius:0 }} />
+          <Img label={p.label} src={p.image_url} tint={(p.id + selectedColor) % 5} style={{ width:'100%', height:320, borderRadius:0 }} />
           {p.discount && (
             <div style={{ position:'absolute', top:12, left:12, background:C.danger, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, padding:'4px 10px', borderRadius:9999 }}>-{p.discount}%</div>
           )}

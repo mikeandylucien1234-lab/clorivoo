@@ -2,7 +2,7 @@
 // Requires: tokens.jsx loaded first
 
 // ─── IMAGE PLACEHOLDER ──────────────────────────────────────
-function Img({ label, style = {}, tint = 0 }) {
+function Img({ label, style = {}, tint = 0, src }) {
   const tints = [
     'linear-gradient(135deg,#f0ecfd 0%,#e4daf9 50%,#ede5ff 100%)',
     'linear-gradient(135deg,#fdf0ec 0%,#f9e0d4 50%,#fde8e0 100%)',
@@ -10,6 +10,13 @@ function Img({ label, style = {}, tint = 0 }) {
     'linear-gradient(135deg,#ecfdf4 0%,#d4f9e4 50%,#e0fff0 100%)',
     'linear-gradient(135deg,#fdfaec 0%,#f9f0d4 50%,#fdf8e0 100%)',
   ];
+  if (src) {
+    return (
+      <div style={{ position:'relative', overflow:'hidden', background: tints[tint % tints.length], ...style }}>
+        <img src={src} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />
+      </div>
+    );
+  }
   return (
     <div style={{ position:'relative', overflow:'hidden', background: tints[tint % tints.length], ...style }}>
       <div style={{ position:'absolute', inset:0, backgroundImage:'radial-gradient(ellipse at 35% 45%, rgba(108,77,255,0.07) 0%, transparent 65%)' }} />
@@ -275,7 +282,7 @@ function ProductCard({ product, size='md', onPress, tint, specs, onAddToCart }) 
   return (
     <div onClick={onPress} style={{ width:w, borderRadius:12, background:C.white, boxShadow:'0 2px 12px rgba(14,11,31,0.06)', overflow:'hidden', cursor:'pointer', flexShrink:0 }}>
       <div style={{ position:'relative' }}>
-        <Img label={p.label} tint={tint || (p.id % 5)} style={{ width:w, height:imgH }} />
+        <Img label={p.label} src={p.image_url} tint={tint || (p.id % 5)} style={{ width:w, height:imgH }} />
         {p.discount && (
           <div style={{ position:'absolute', top:8, left:8, background:C.danger, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, padding:'2px 7px', borderRadius:9999 }}>-{p.discount}%</div>
         )}
@@ -314,7 +321,7 @@ function ProductCardWide({ product, qty, variant, onRemove, onQtyChange }) {
   const p = product;
   return (
     <div style={{ display:'flex', gap:12, padding:'12px 0' }}>
-      <Img label="" tint={p.id % 5} style={{ width:72, height:72, borderRadius:10, flexShrink:0 }} />
+      <Img label="" src={p.image_url} tint={p.id % 5} style={{ width:72, height:72, borderRadius:10, flexShrink:0 }} />
       <div style={{ flex:1, display:'flex', flexDirection:'column', gap:4 }}>
         <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.ink, lineHeight:1.3 }}>{p.title}</div>
         {variant && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{variant}</div>}

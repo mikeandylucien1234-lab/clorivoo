@@ -10,6 +10,7 @@ function HomeScreen() {
   const [shops, setShops]                   = React.useState(null);
   const [banners, setBanners]               = React.useState(null);
   const [user, setUser]                     = React.useState(null);
+  const [activeBanner, setActiveBanner]     = React.useState(0);
 
   const categories = ['All', 'Home', 'Tech', 'Beauty', 'Fashion', 'Kids'];
 
@@ -27,6 +28,18 @@ function HomeScreen() {
       });
     }
   }, []);
+
+  const heroBanners = (banners && banners.length) ? banners : [
+    { id:'default', title:'Up to 70% off\nHome & Kitchen', subtitle:'Spring sale', cta_text:'Shop now', bg_color:C.primary },
+  ];
+  const heroBannerRaw = heroBanners[activeBanner % heroBanners.length] || heroBanners[0];
+  const heroBanner = { ...heroBannerRaw, title: (heroBannerRaw.title || '').split('\n').flatMap((line, i) => i === 0 ? [line] : [<br key={i} />, line]) };
+
+  React.useEffect(() => {
+    if (heroBanners.length <= 1) return;
+    const id = setInterval(() => setActiveBanner(i => (i + 1) % heroBanners.length), 4500);
+    return () => clearInterval(id);
+  }, [heroBanners.length]);
 
   const flashDeals = products.slice(0, 4);
   const forYou     = products.slice(2, 8);
@@ -124,23 +137,39 @@ function HomeScreen() {
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: NAV_H + HOME_H }}>
         <div style={{ maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined }}>
 
-        {/* Hero banner */}
+        {/* Hero banner — admin-managed (Admin Console › Banners › Homepage Banners) */}
         <div style={{ padding: '16px 20px 0' }}>
-          <div style={{ borderRadius: 16, background: `linear-gradient(135deg, ${C.primary} 0%, ${C.primaryDeep} 100%)`, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', right: -20, top: -20, width: 140, height: 140, borderRadius: 9999, background: 'rgba(255,255,255,0.07)' }} />
-            <div style={{ position: 'absolute', right: 20, bottom: -30, width: 90, height: 90, borderRadius: 9999, background: 'rgba(255,255,255,0.05)' }} />
-            <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.8)', marginBottom: 4, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Spring sale · ends in</div>
-            <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.95)', marginBottom: 8 }}>02:14:08</div>
-            <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.03em', lineHeight: 1.15, marginBottom: 12 }}>Up to 70% off<br />Home & Kitchen</div>
-            <button onClick={() => navigate('pdp', { product: PRODUCTS[0] })} style={{ background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(8px)', border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: 9999, padding: '8px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, color: '#fff' }}>
-              <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600 }}>Shop now</span>
-              <Icon name="arrowLeft" size={14} color="#fff" style={{ transform: 'rotate(180deg)' }} />
-            </button>
+          <div style={{ borderRadius: 16, position: 'relative', overflow: 'hidden', minHeight: 150, background: heroBanner.image_url ? '#1A1630' : `linear-gradient(135deg, ${heroBanner.bg_color || heroBanner.color || C.primary} 0%, ${C.primaryDeep} 100%)` }}>
+            {heroBanner.image_url ? (
+              <>
+                <img src={heroBanner.image_url} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.5) 100%)' }} />
+              </>
+            ) : (
+              <>
+                <div style={{ position: 'absolute', right: -20, top: -20, width: 140, height: 140, borderRadius: 9999, background: 'rgba(255,255,255,0.07)' }} />
+                <div style={{ position: 'absolute', right: 20, bottom: -30, width: 90, height: 90, borderRadius: 9999, background: 'rgba(255,255,255,0.05)' }} />
+              </>
+            )}
+            <div style={{ position: 'relative', padding: '18px 20px' }}>
+              {heroBanner.subtitle && (
+                <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.8)', marginBottom: 4, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{heroBanner.subtitle}</div>
+              )}
+              <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.03em', lineHeight: 1.15, marginBottom: 12 }}>{heroBanner.title}</div>
+              <button onClick={() => navigate('search')} style={{ background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(8px)', border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: 9999, padding: '8px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, color: '#fff' }}>
+                <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600 }}>{heroBanner.cta_text || 'Shop now'}</span>
+                <Icon name="arrowLeft" size={14} color="#fff" style={{ transform: 'rotate(180deg)' }} />
+              </button>
+            </div>
           </div>
           {/* Banner dots */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginTop: 8 }}>
-            {[0, 1, 2, 3].map((i) => <div key={i} style={{ width: i === 0 ? 16 : 5, height: 5, borderRadius: 9999, background: i === 0 ? C.primary : C.hairline, transition: 'all 0.3s' }} />)}
-          </div>
+          {heroBanners.length > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginTop: 8 }}>
+              {heroBanners.map((b, i) => (
+                <button key={b.id ?? i} onClick={() => setActiveBanner(i)} style={{ width: i === activeBanner ? 16 : 5, height: 5, borderRadius: 9999, background: i === activeBanner ? C.primary : C.hairline, transition: 'all 0.3s', border: 'none', padding: 0, cursor: 'pointer' }} />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* clori+ promo strip + shortcuts */}

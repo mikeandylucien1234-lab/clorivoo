@@ -15,6 +15,7 @@ function AdminSidebar({ active, onNav }) {
   const items = [
     { icon:'barChart', label:'Overview', key:'overview' },
     { icon:'user',     label:'Users',    key:'users' },
+    { icon:'tag',      label:'Products',      key:'products' },
     { icon:'store',    label:'Sellers',         key:'sellers', badge:14 },
     { icon:'lock',     label:'KYC',             key:'kyc',  badge:8 },
     { icon:'zap',      label:'Reports',    key:'reports', badge:3 },
@@ -118,6 +119,82 @@ function AdminUserDetail({ user, onBack, onSave }) {
   );
 }
 
+// ─── ADMIN — Product Detail (create / edit — feeds Home, Category, Search & PDP) ──
+function AdminProductDetail({ product, onBack, onSave, onDelete }) {
+  const [form, setForm] = React.useState({
+    id: product.id, title: product.title || '', price: String(product.price ?? ''),
+    oldPrice: product.oldPrice != null ? String(product.oldPrice) : '', discount: product.discount != null ? String(product.discount) : '',
+    category: product.category || 'home', seller: product.seller || '', image_url: product.image_url || null,
+  });
+  const [uploading, setUploading] = React.useState(false);
+  const fileRef = React.useRef(null);
+  const isNew = !product.id;
+  const canSave = form.title.trim() && parseFloat(form.price) > 0;
+
+  async function handleImageChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const path = `products/${Date.now()}-${file.name}`;
+    const { url, error } = await sbUploadFile('products', path, file);
+    setUploading(false);
+    if (error || !url) return;
+    setForm(f => ({ ...f, image_url: url }));
+  }
+
+  return (
+    <>
+      <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0 }}>
+        <Icon name="arrowLeft" size={16} color='rgba(255,255,255,0.5)' />
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'rgba(255,255,255,0.5)' }}>Products</span>
+      </button>
+
+      <div onClick={() => fileRef.current?.click()} style={{ height:150, borderRadius:12, overflow:'hidden', position:'relative', cursor:'pointer', background: form.image_url ? undefined : '#1A1630', border: form.image_url ? 'none' : '1.5px dashed rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        {form.image_url ? (
+          <img src={form.image_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+            <Icon name="camera" size={22} color="rgba(255,255,255,0.4)" />
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)' }}>{uploading ? 'Uploading…' : 'Upload product photo'}</span>
+          </div>
+        )}
+        {form.image_url && (
+          <div style={{ position:'absolute', bottom:6, right:6, background:'rgba(14,11,31,0.65)', borderRadius:8, padding:'4px 8px', display:'flex', alignItems:'center', gap:5 }}>
+            <Icon name="camera" size={12} color="#fff" />
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'#fff' }}>{uploading ? 'Uploading…' : 'Replace'}</span>
+          </div>
+        )}
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" onChange={handleImageChange} style={{ display:'none' }} />
+
+      <input value={form.title} onChange={e => setForm(f => ({ ...f, title:e.target.value }))} placeholder="Product title" style={{ height:40, border:'1.5px solid rgba(255,255,255,0.12)', borderRadius:9, padding:'0 12px', background:'rgba(255,255,255,0.05)', color:'#EDE9F7', fontFamily:"'Inter',sans-serif", fontSize:13, outline:'none' }} />
+
+      <div style={{ display:'flex', gap:8 }}>
+        <input value={form.price} onChange={e => setForm(f => ({ ...f, price:e.target.value }))} placeholder="Price" inputMode="decimal" style={{ flex:1, height:40, border:'1.5px solid rgba(255,255,255,0.12)', borderRadius:9, padding:'0 12px', background:'rgba(255,255,255,0.05)', color:'#EDE9F7', fontFamily:"'JetBrains Mono',monospace", fontSize:13, outline:'none' }} />
+        <input value={form.oldPrice} onChange={e => setForm(f => ({ ...f, oldPrice:e.target.value }))} placeholder="Compare-at (optional)" inputMode="decimal" style={{ flex:1, height:40, border:'1.5px solid rgba(255,255,255,0.12)', borderRadius:9, padding:'0 12px', background:'rgba(255,255,255,0.05)', color:'#EDE9F7', fontFamily:"'JetBrains Mono',monospace", fontSize:13, outline:'none' }} />
+      </div>
+
+      <div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.5)', marginBottom:6 }}>Category</div>
+        <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
+          {['home','fashion','tech','beauty','kids'].map(c => (
+            <button key={c} onClick={() => setForm(f => ({ ...f, category:c }))} style={{ height:32, padding:'0 12px', borderRadius:9999, border: form.category === c ? `1.5px solid ${C.primary}` : '1.5px solid rgba(255,255,255,0.12)', background: form.category === c ? 'rgba(108,77,255,0.2)' : 'transparent', color: form.category === c ? C.primary : 'rgba(255,255,255,0.6)', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, cursor:'pointer', textTransform:'capitalize' }}>{c}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display:'flex', gap:8, marginTop:4 }}>
+        {!isNew && (
+          <Btn size="sm" style={{ color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} onClick={() => onDelete(form)}>
+            <Icon name="x" size={13} color={C.danger} /> Delete
+          </Btn>
+        )}
+        <Btn variant="primary" style={{ flex:1 }} onClick={() => onSave(form)} disabled={!canSave}>{isNew ? 'Create product' : 'Save changes'}</Btn>
+      </div>
+    </>
+  );
+}
+
 // ─── ADMIN — Overview ─────────────────────────────────────────
 function AdminDashboardScreen() {
   const { navigate, goBack } = useNav();
@@ -126,6 +203,7 @@ function AdminDashboardScreen() {
   const [adminStats, setAdminStats] = React.useState(null);
   const [remoteUsers, setRemoteUsers] = React.useState(null);
   const [userDetail, setUserDetail] = React.useState(null);
+  const [productDetail, setProductDetail] = React.useState(null);
   const [, forceTick] = React.useState(0);
 
   React.useEffect(() => {
@@ -155,6 +233,7 @@ function AdminDashboardScreen() {
   const sectionMeta = {
     overview: { title:"Overview", sub:'Last 7 days',          url:'admin.clorivo.com/dashboard' },
     users:    { title:'Users',    sub:'12,480 active accounts',     url:'admin.clorivo.com/users' },
+    products: { title:'Products', sub:`${window.PRODUCTS.length} listed`,  url:'admin.clorivo.com/products' },
     sellers:  { title:'Sellers',        sub:'342 shops · 14 pending', url:'admin.clorivo.com/sellers' },
     reports:  { title:'Reports',    sub:'3 to handle',               url:'admin.clorivo.com/reports' },
     settings: { title:'Settings',      sub:'Platform configuration', url:'admin.clorivo.com/settings' },
@@ -207,12 +286,49 @@ function AdminDashboardScreen() {
     }
     setUserDetail(null);
   }
-  const sellersList = [
+  function openNewProduct() {
+    setProductDetail({
+      id: null, title:'', price:'', oldPrice:'', discount:'', category:'home', seller: window._PROFILE?.name ?? 'Admin', image_url:null,
+    });
+  }
+
+  async function handleSaveProduct(form) {
+    const price = parseFloat(form.price) || 0;
+    const oldPrice = form.oldPrice ? parseFloat(form.oldPrice) : undefined;
+    const discount = form.discount ? parseInt(form.discount) : (oldPrice ? Math.round((1 - price/oldPrice) * 100) : undefined);
+    if (form.id) {
+      const existing = window.PRODUCTS.find(p => p.id === form.id);
+      if (existing) Object.assign(existing, { title: form.title, price, oldPrice, discount, category: form.category, image_url: form.image_url });
+      await sbAdminUpdateProduct(form.id, { title: form.title, price, compare_price: oldPrice ?? null, discount: discount ?? null, image_url: form.image_url });
+    } else {
+      const newId = Math.max(0, ...window.PRODUCTS.map(p => typeof p.id === 'number' ? p.id : 0)) + 1;
+      window.PRODUCTS.push({ id:newId, title: form.title, price, oldPrice, discount, seller: form.seller, rating:4.8, reviews:0, category: form.category, label:'product photo', image_url: form.image_url });
+      await sbAdminCreateProduct({ title: form.title, price, compare_price: oldPrice ?? null, discount: discount ?? null, image_url: form.image_url });
+    }
+    forceTick(t => t + 1);
+    setProductDetail(null);
+  }
+
+  async function handleDeleteProduct(form) {
+    if (form.id) {
+      const idx = window.PRODUCTS.findIndex(p => p.id === form.id);
+      if (idx >= 0) window.PRODUCTS.splice(idx, 1);
+      await sbAdminDeleteProduct(form.id);
+    }
+    forceTick(t => t + 1);
+    setProductDetail(null);
+  }
+
+  const [sellersList, setSellersList] = React.useState(() => [
     { name:'luna.studio',   cat:'Home & Decor', sales:'$12.4k', rating:4.9, status:'verified',  tint:0 },
     { name:'TechZone',      cat:'Electronics',  sales:'$48.1k', rating:4.7, status:'verified',  tint:1 },
     { name:'atelier.lune',  cat:'Crafts',     sales:'—',      rating:0,   status:'pending',  tint:2 },
     { name:'Fashion House', cat:'Fashion',          sales:'$22.7k', rating:4.6, status:'verified',  tint:3 },
-  ];
+  ]);
+
+  function toggleSellerStatus(name) {
+    setSellersList(prev => prev.map(s => s.name === name ? { ...s, status: s.status === 'suspended' ? 'verified' : 'suspended' } : s));
+  }
   const reportsList = [
     { subject:'Counterfeit product',   target:'shop #2841', time:'2h ago', severity:'urgent' },
     { subject:'Fraudulent review',      target:'@fastdeals',     time:'5h ago', severity:'medium' },
@@ -418,6 +534,33 @@ function AdminDashboardScreen() {
             <AdminUserDetail user={userDetail} onBack={() => setUserDetail(null)} onSave={handleSaveUserDetail} />
           )}
 
+          {/* ── PRODUCTS ── */}
+          {section === 'products' && !productDetail && <>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.4)' }}>{window.PRODUCTS.length} products live on Home, Search &amp; Category</div>
+            <Btn variant="primary" size="sm" onClick={openNewProduct}>+ New</Btn>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+            {window.PRODUCTS.map((p, i) => (
+              <div key={p.id ?? i} onClick={() => setProductDetail(p)} style={{ borderRadius:10, overflow:'hidden', background:'#1A1630', cursor:'pointer' }}>
+                <div style={{ height:90, position:'relative', background: p.image_url ? undefined : ['#2a2440','#3a2b28','#1f2c3a','#1f3528','#3a331f'][i % 5] }}>
+                  {p.image_url && <img src={p.image_url} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />}
+                  {p.discount && <div style={{ position:'absolute', top:6, left:6, background:C.danger, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:9999 }}>-{p.discount}%</div>}
+                </div>
+                <div style={{ padding:'8px 10px' }}>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'#EDE9F7', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis' }}>{p.title}</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:700, color:C.primary, marginTop:3 }}>${Number(p.price).toFixed(2)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          </>}
+
+          {/* ── PRODUCTS · DETAIL ── */}
+          {section === 'products' && productDetail && (
+            <AdminProductDetail product={productDetail} onBack={() => setProductDetail(null)} onSave={handleSaveProduct} onDelete={handleDeleteProduct} />
+          )}
+
           {/* ── SELLERS ── */}
           {section === 'sellers' && <>
           <div style={{ display:'flex', gap:8 }}>
@@ -431,7 +574,7 @@ function AdminDashboardScreen() {
           <div style={{ background:'#1A1630', borderRadius:12, overflow:'hidden' }}>
             <div style={{ padding:'10px 14px', borderBottom:'1px solid rgba(255,255,255,0.06)', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:'#EDE9F7' }}>Shops</div>
             {sellersList.map((s, i) => (
-              <div key={i} onClick={() => s.status === 'pending' && navigate('admin-kyc')} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none', cursor:'pointer' }}>
+              <div key={i} onClick={() => s.status === 'pending' && navigate('admin-kyc')} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none', cursor: s.status === 'pending' ? 'pointer' : 'default' }}>
                 <div style={{ width:32, height:32, borderRadius:8, overflow:'hidden', flexShrink:0 }}><Img label="" tint={s.tint} style={{ width:32, height:32 }} /></div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'#EDE9F7' }}>{s.name}</div>
@@ -439,8 +582,13 @@ function AdminDashboardScreen() {
                 </div>
                 <div style={{ textAlign:'right' }}>
                   <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:600, color:'#EDE9F7' }}>{s.sales}</div>
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, color: s.status === 'verified' ? C.success : C.warning }}>{s.status}</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, color: s.status === 'verified' ? C.success : s.status === 'suspended' ? C.danger : C.warning }}>{s.status}</span>
                 </div>
+                {s.status !== 'pending' && (
+                  <button onClick={e => { e.stopPropagation(); toggleSellerStatus(s.name); }} style={{ border:'none', background:'none', cursor:'pointer', padding:'4px 0 4px 6px', flexShrink:0 }}>
+                    <Icon name={s.status === 'suspended' ? 'checkCircle' : 'x'} size={15} color={s.status === 'suspended' ? C.success : C.danger} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -675,8 +823,13 @@ function AdminBannersScreen() {
     { id:'b2', title:"Mother's Day",          is_active:true,  bg_color:'#C97B5A' },
     { id:'b3', title:'Summer preview',        is_active:false, bg_color:'#3B3730' },
   ]);
-  const [editBanner, setEditBanner] = React.useState(null);
-  const [editTitle, setEditTitle]   = React.useState('');
+  const [editBanner, setEditBanner]   = React.useState(null);
+  const [editTitle, setEditTitle]     = React.useState('');
+  const [editSubtitle, setEditSubtitle] = React.useState('');
+  const [editCta, setEditCta]         = React.useState('');
+  const [editColor, setEditColor]     = React.useState(C.primary);
+  const [editUploading, setEditUploading] = React.useState(false);
+  const editFileInputRef = React.useRef(null);
 
   const [signupBanner, setSignupBanner] = React.useState(null);
   const [signupTitle, setSignupTitle]       = React.useState('');
@@ -693,12 +846,44 @@ function AdminBannersScreen() {
     });
   }, []);
 
+  function openEditBanner(b) {
+    setEditBanner(b);
+    setEditTitle(b.title || '');
+    setEditSubtitle(b.subtitle || '');
+    setEditCta(b.cta_text || '');
+    setEditColor(b.bg_color || b.color || C.primary);
+  }
+
+  function openNewBanner() {
+    openEditBanner({ placement:'homepage', is_active:true, position: banners.length + 1 });
+  }
+
   async function handleSaveBanner() {
     if (!editBanner) return;
-    const updated = { ...editBanner, title: editTitle };
+    const updated = { ...editBanner, title: editTitle, subtitle: editSubtitle, cta_text: editCta, bg_color: editColor, placement: editBanner.placement || 'homepage' };
     const { data } = await sbUpsertBanner(updated);
-    if (data) setBanners(prev => prev.map(b => b.id === data.id ? data : b));
+    if (data) {
+      setBanners(prev => prev.some(b => b.id === data.id) ? prev.map(b => b.id === data.id ? data : b) : [...prev, data]);
+    }
     setEditBanner(null);
+  }
+
+  async function handleDeleteBanner(b) {
+    if (!b.id) return;
+    await sbDeleteBanner(b.id);
+    setBanners(prev => prev.filter(x => x.id !== b.id));
+    setEditBanner(null);
+  }
+
+  async function handleEditImageChange(e) {
+    const file = e.target.files?.[0];
+    if (!file || !editBanner) return;
+    setEditUploading(true);
+    const path = `homepage/${Date.now()}-${file.name}`;
+    const { url, error } = await sbUploadFile('banners', path, file);
+    setEditUploading(false);
+    if (error || !url) return;
+    setEditBanner(b => ({ ...b, image_url: url }));
   }
 
   async function handleToggleBanner(b) {
@@ -796,15 +981,16 @@ function AdminBannersScreen() {
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:800, color:'#EDE9F7', letterSpacing:'-0.02em' }}>Homepage Banners</div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)' }}>{banners.filter(b=>b.is_active).length} active</div>
             </div>
-            <Btn variant="primary" size="sm">+ New</Btn>
+            <Btn variant="primary" size="sm" onClick={openNewBanner}>+ New</Btn>
           </div>
 
           {/* Banner cards */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
             {banners.map((b, i) => (
-              <div key={b.id ?? i} onClick={() => { setEditBanner(b); setEditTitle(b.title); }} style={{ borderRadius:10, overflow:'hidden', background:'#1A1630', cursor:'pointer' }}>
-                <div style={{ height:60, background:b.bg_color ?? b.color ?? C.primary, display:'flex', alignItems:'center', padding:'0 10px', position:'relative' }}>
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:'#fff', lineHeight:1.2 }}>{b.title}</span>
+              <div key={b.id ?? i} onClick={() => openEditBanner(b)} style={{ borderRadius:10, overflow:'hidden', background:'#1A1630', cursor:'pointer' }}>
+                <div style={{ height:60, background: b.image_url ? undefined : (b.bg_color ?? b.color ?? C.primary), display:'flex', alignItems:'center', padding:'0 10px', position:'relative' }}>
+                  {b.image_url && <img src={b.image_url} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />}
+                  <span style={{ position:'relative', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:'#fff', lineHeight:1.2, textShadow: b.image_url ? '0 1px 4px rgba(0,0,0,0.6)' : 'none' }}>{b.title || 'Untitled banner'}</span>
                 </div>
                 <div style={{ padding:'6px 8px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <span style={{ background: b.is_active ? '#EFF9F4' : '#F5F5F5', color: b.is_active ? C.success : C.mute, fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:9999 }}>{b.is_active ? 'live' : 'inactive'}</span>
@@ -817,9 +1003,47 @@ function AdminBannersScreen() {
           </div>
           {editBanner && (
             <div style={{ background:'#252138', borderRadius:12, padding:'12px 14px', display:'flex', flexDirection:'column', gap:8 }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:'#EDE9F7' }}>Edit Banner</div>
-              <input value={editTitle} onChange={e => setEditTitle(e.target.value)} style={{ height:38, border:'1.5px solid rgba(255,255,255,0.12)', borderRadius:8, padding:'0 10px', background:'rgba(255,255,255,0.05)', color:'#EDE9F7', fontFamily:"'Inter',sans-serif", fontSize:13, outline:'none' }} />
-              <div style={{ display:'flex', gap:8 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:'#EDE9F7' }}>{editBanner.id ? 'Edit Banner' : 'New Banner'}</div>
+
+              <div onClick={() => editFileInputRef.current?.click()} style={{ height:90, borderRadius:10, overflow:'hidden', position:'relative', cursor:'pointer', background: editBanner.image_url ? undefined : 'rgba(255,255,255,0.05)', border: editBanner.image_url ? 'none' : '1.5px dashed rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {editBanner.image_url ? (
+                  <img src={editBanner.image_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                ) : (
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:5 }}>
+                    <Icon name="camera" size={18} color="rgba(255,255,255,0.4)" />
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'rgba(255,255,255,0.4)' }}>{editUploading ? 'Uploading…' : 'Upload banner photo (optional)'}</span>
+                  </div>
+                )}
+                {editBanner.image_url && (
+                  <div style={{ position:'absolute', bottom:5, right:5, background:'rgba(14,11,31,0.65)', borderRadius:7, padding:'3px 7px', display:'flex', alignItems:'center', gap:4 }}>
+                    <Icon name="camera" size={11} color="#fff" />
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:9, color:'#fff' }}>{editUploading ? 'Uploading…' : 'Replace'}</span>
+                  </div>
+                )}
+              </div>
+              <input ref={editFileInputRef} type="file" accept="image/*" onChange={handleEditImageChange} style={{ display:'none' }} />
+
+              <input value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="Title" style={{ height:38, border:'1.5px solid rgba(255,255,255,0.12)', borderRadius:8, padding:'0 10px', background:'rgba(255,255,255,0.05)', color:'#EDE9F7', fontFamily:"'Inter',sans-serif", fontSize:13, outline:'none' }} />
+              <input value={editSubtitle} onChange={e => setEditSubtitle(e.target.value)} placeholder="Subtitle / kicker (optional)" style={{ height:38, border:'1.5px solid rgba(255,255,255,0.12)', borderRadius:8, padding:'0 10px', background:'rgba(255,255,255,0.05)', color:'#EDE9F7', fontFamily:"'Inter',sans-serif", fontSize:13, outline:'none' }} />
+              <input value={editCta} onChange={e => setEditCta(e.target.value)} placeholder="Button text (default: Shop now)" style={{ height:38, border:'1.5px solid rgba(255,255,255,0.12)', borderRadius:8, padding:'0 10px', background:'rgba(255,255,255,0.05)', color:'#EDE9F7', fontFamily:"'Inter',sans-serif", fontSize:13, outline:'none' }} />
+
+              {!editBanner.image_url && (
+                <div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.4)', marginBottom:6 }}>Background color</div>
+                  <div style={{ display:'flex', gap:7 }}>
+                    {[C.primary, '#C97B5A', '#059669', '#D97706', '#DB2777', '#3B3730'].map(c => (
+                      <button key={c} onClick={() => setEditColor(c)} style={{ width:26, height:26, borderRadius:9999, background:c, border: editColor === c ? '2.5px solid #fff' : '2.5px solid transparent', cursor:'pointer', boxShadow: editColor === c ? `0 0 0 1.5px ${c}` : 'none' }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display:'flex', gap:8, marginTop:4 }}>
+                {editBanner.id && (
+                  <Btn size="sm" style={{ color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} onClick={() => handleDeleteBanner(editBanner)}>
+                    <Icon name="x" size={13} color={C.danger} />
+                  </Btn>
+                )}
                 <Btn size="sm" style={{ flex:1, color:'rgba(255,255,255,0.5)', border:'1.5px solid rgba(255,255,255,0.12)', background:'transparent' }} onClick={() => setEditBanner(null)}>Cancel</Btn>
                 <Btn variant="primary" size="sm" style={{ flex:1 }} onClick={handleSaveBanner}>Save</Btn>
               </div>

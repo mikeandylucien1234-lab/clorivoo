@@ -148,13 +148,18 @@ async function sbGetSignupBanner() {
 }
 
 async function sbUpsertBanner(banner) {
-  if (!_sb) return { error: { message: 'Not configured' } };
+  if (!_sb) {
+    // Demo fallback — echo the banner back (with a generated id if new) so
+    // the admin screen's optimistic local update still works without a
+    // configured backend.
+    return { data: { ...banner, id: banner.id || `local-${Date.now()}` }, error: null };
+  }
   const { data, error } = await _sb.from('banners').upsert(banner).select().single();
   return { data, error };
 }
 
 async function sbDeleteBanner(id) {
-  if (!_sb) return { error: { message: 'Not configured' } };
+  if (!_sb) return { error: null };
   const { error } = await _sb.from('banners').delete().eq('id', id);
   return { error };
 }
@@ -437,9 +442,37 @@ async function sbAdminUpdateUser(id, updates) {
   return { data, error };
 }
 
+async function sbAdminCreateProduct(product) {
+  if (!_sb) return { data: null, error: null };
+  const { data, error } = await _sb.from('products').insert(product).select().single();
+  return { data, error };
+}
+
+async function sbAdminUpdateProduct(id, updates) {
+  if (!_sb) return { data: null, error: null };
+  const { data, error } = await _sb.from('products').update(updates).eq('id', id).select().single();
+  return { data, error };
+}
+
+async function sbAdminDeleteProduct(id) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('products').delete().eq('id', id);
+  return { error };
+}
+
 // ─── FILE UPLOADS ─────────────────────────────────────────────────
 async function sbUploadFile(bucket, path, file) {
-  if (!_sb) return { url: null, error: { message: 'Not configured' } };
+  if (!_sb) {
+    // Demo fallback — no Supabase Storage configured, so read the file
+    // locally as a data URL. The image still shows up immediately across
+    // the app; it just isn't persisted anywhere outside this session.
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ url: reader.result, error: null });
+      reader.onerror = () => resolve({ url: null, error: { message: 'Could not read file' } });
+      reader.readAsDataURL(file);
+    });
+  }
   const { data, error } = await _sb.storage.from(bucket).upload(path, file, { upsert: true });
   if (error) return { url: null, error };
   const { data: { publicUrl } } = _sb.storage.from(bucket).getPublicUrl(path);
@@ -458,6 +491,7 @@ function _prodToSb(p) {
     rating: p.rating ?? 4.8,
     reviews_count: p.reviews ?? 234,
     images: [],
+    image_url: p.image_url ?? null,
     shops: { name: p.seller ?? 'luna.studio', is_verified: true },
     categories: { name: p.category ?? 'Maison' },
     label: p.label ?? '',
@@ -524,6 +558,7 @@ Object.assign(window, {
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
   sbAdminGetStats, sbAdminGetKycRequests, sbAdminUpdateKyc, sbAdminGetUsers, sbAdminUpdateUser,
+  sbAdminCreateProduct, sbAdminUpdateProduct, sbAdminDeleteProduct,
   sbUploadFile,
   _isConfigured,
 });
