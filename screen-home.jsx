@@ -15,6 +15,7 @@ function HomeScreen() {
   const categories = window._HOME_CHIPS || ['All', 'Home', 'Tech', 'Beauty', 'Fashion', 'Kids'];
   const homeSections = window._HOME_SECTIONS || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
   const announcement = window._ANNOUNCEMENT;
+  const defaultAddress = (window._ADDRESSES || []).find(a => a.isDefault) || (window._ADDRESSES || [])[0] || null;
 
   React.useEffect(() => {
     sbGetUser().then(u => setUser(u));
@@ -45,17 +46,9 @@ function HomeScreen() {
 
   const flashDeals = products.slice(0, 4);
   const forYou     = products.slice(2, 8);
-  const displayShops = shops ?? [
-    { id:'demo-s1', name:'luna.studio',    brand_color:'#C97B5A', is_verified:true,  initial:'L', online:true  },
-    { id:'demo-s2', name:'TechZone',       brand_color:'#4A6FD4', is_verified:true,  initial:'T', online:true  },
-    { id:'demo-s3', name:'Fashion House',  brand_color:'#9B59B6', is_verified:true,  initial:'F', online:false },
-    { id:'demo-s4', name:'ceramix.co',     brand_color:'#7A8A6A', is_verified:true,  initial:'C', online:true  },
-    { id:'demo-s5', name:'Luxe Store',     brand_color:'#1A1A2E', is_verified:true,  initial:'L', online:false },
-    { id:'demo-s6', name:'nature.home',    brand_color:'#27AE60', is_verified:false, initial:'N', online:true  },
-    { id:'demo-s7', name:'ElectroWorld',   brand_color:'#E67E22', is_verified:true,  initial:'E', online:false },
-  ];
-  const userName  = user?.user_metadata?.full_name?.split(' ')[0] ?? 'there';
-  const userInitials = user?.user_metadata?.full_name?.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() ?? 'AM';
+  const displayShops = shops ?? [];
+  const userName  = user?.user_metadata?.full_name?.split(' ')[0] ?? window._PROFILE?.name?.split(' ')[0] ?? 'there';
+  const userInitials = user?.user_metadata?.full_name?.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() ?? (window._PROFILE?.name || '').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() ?? '';
 
   function goTab(i) {
     if (i === 1) navigate('categories');
@@ -96,21 +89,27 @@ function HomeScreen() {
             </button>
             <button onClick={() => navigate('messages-list')} style={{ width: 40, height: 40, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
               <Icon name="messageSquare" size={22} color={C.ink} />
-              <Badge count={2} />
+              <Badge count={(window._CONVERSATIONS || []).filter(c => c.unread > 0).length} />
             </button>
             <button onClick={() => navigate('notifications')} style={{ width: 40, height: 40, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
               <Icon name="bell" size={22} color={C.ink} />
-              <Badge count={3} />
+              <Badge count={(window._NOTIFICATIONS || []).filter(n => n.unread).length} />
             </button>
           </div>
         </div>
 
         {/* Delivery address strip */}
-        <div onClick={() => navigate('profile')} style={{ margin: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 8, background: C.primarySoft, borderRadius: 10, padding: '8px 12px', cursor: 'pointer' }}>
+        <div onClick={() => navigate('addresses')} style={{ margin: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 8, background: C.primarySoft, borderRadius: 10, padding: '8px 12px', cursor: 'pointer' }}>
           <Icon name="mapPin" size={15} color={C.primary} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: C.mute }}>Deliver to · </span>
-            <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 600, color: C.primaryDeep }}>14 Roquette Street, 75011 Paris</span>
+            {defaultAddress ? (
+              <>
+                <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: C.mute }}>Deliver to · </span>
+                <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 600, color: C.primaryDeep }}>{defaultAddress.line1}, {defaultAddress.city}</span>
+              </>
+            ) : (
+              <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 600, color: C.primaryDeep }}>Add a delivery address</span>
+            )}
           </div>
           <Icon name="chevronRight" size={14} color={C.primary} />
         </div>
@@ -221,7 +220,7 @@ function HomeScreen() {
         </div>
 
         {/* Featured Shops */}
-        {homeSections.shops && (
+        {homeSections.shops && displayShops.length > 0 && (
         <div style={{ padding: '20px 20px 0' }}>
           <SectionHeader title="Popular Shops" onSeeAll={() => {}} style={{ marginBottom: 14 }} />
           <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 4 }}>
@@ -253,7 +252,7 @@ function HomeScreen() {
         )}
 
         {/* Flash Deals + Super Deals — side by side */}
-        {homeSections.deals && (
+        {homeSections.deals && products.length > 0 && (
         <div style={{ padding: '20px 20px 0' }}>
           <div style={{ display:'flex', gap:10, background:C.white, borderRadius:16, padding:12, boxShadow:'0 2px 12px rgba(14,11,31,0.05)' }}>
 
@@ -343,41 +342,40 @@ function HomeScreen() {
         )}
 
         {/* Promo Banners */}
+        {products.length > 0 && (
         <div style={{ padding: '20px 20px 0' }}>
           <SectionHeader title="Exclusive Offers" onSeeAll={() => {}} style={{ marginBottom: 12 }} />
           <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:4 }}>
-            {[
-              { color:'#059669', badge:'Exclusive · first order', oldPrice:'$39.99', price:'$24.50', desc:'Ribbed Terracotta Vase · M',   tint:0 },
-              { color:'#6C4DFF', badge:'Flash sale · -65%',        oldPrice:'$24.00', price:'$8.99',  desc:'Artisan Ceramic Mug',       tint:1 },
-              { color:'#D97706', badge:'Best seller',              oldPrice:'$58.00', price:'$22.00', desc:'Natural Linen Lampshade',          tint:2 },
-              { color:'#DC2626', badge:'Last pieces',               oldPrice:'$40.00', price:'$15.00', desc:'Bamboo Oil Burner',     tint:3 },
-            ].map((b, i) => (
-              <div key={i} onClick={() => navigate('pdp',{ product: PRODUCTS[i] })} style={{ width:268, height:112, borderRadius:14, background:b.color, display:'flex', alignItems:'center', padding:'12px 14px', cursor:'pointer', flexShrink:0, position:'relative', overflow:'hidden' }}>
+            {products.filter(p => p.discount).slice(0, 4).map((p, i) => (
+              <div key={p.id} onClick={() => navigate('pdp',{ product: p })} style={{ width:268, height:112, borderRadius:14, background:['#059669','#6C4DFF','#D97706','#DC2626'][i % 4], display:'flex', alignItems:'center', padding:'12px 14px', cursor:'pointer', flexShrink:0, position:'relative', overflow:'hidden' }}>
                 {/* bg circle decoration */}
                 <div style={{ position:'absolute', right:-20, top:-20, width:110, height:110, borderRadius:9999, background:'rgba(255,255,255,0.08)' }} />
                 <div style={{ position:'absolute', right:50, bottom:-30, width:70, height:70, borderRadius:9999, background:'rgba(255,255,255,0.06)' }} />
                 {/* Text */}
                 <div style={{ flex:1, zIndex:1 }}>
                   <div style={{ background:'rgba(255,255,255,0.22)', borderRadius:9999, padding:'3px 8px', display:'inline-block', marginBottom:5 }}>
-                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, color:'#fff' }}>{b.badge}</span>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, color:'#fff' }}>-{p.discount}% off</span>
                   </div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.75)', marginBottom:1 }}>
-                    Before: <span style={{ textDecoration:'line-through' }}>{b.oldPrice}</span>
-                  </div>
-                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', lineHeight:1.1, marginBottom:3 }}>{b.price}</div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'rgba(255,255,255,0.85)', lineHeight:1.2 }}>{b.desc}</div>
+                  {p.oldPrice && (
+                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.75)', marginBottom:1 }}>
+                      Before: <span style={{ textDecoration:'line-through' }}>${p.oldPrice}</span>
+                    </div>
+                  )}
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', lineHeight:1.1, marginBottom:3 }}>${p.price.toFixed(2)}</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'rgba(255,255,255,0.85)', lineHeight:1.2 }}>{p.title}</div>
                 </div>
                 {/* Product image */}
                 <div style={{ width:78, height:88, flexShrink:0, borderRadius:10, overflow:'hidden', zIndex:1 }}>
-                  <Img label="" tint={b.tint} style={{ width:78, height:88 }} />
+                  <Img label="" src={p.image_url} tint={i % 5} style={{ width:78, height:88 }} />
                 </div>
               </div>
             ))}
           </div>
         </div>
+        )}
 
         {/* Featured — Sponsored Products */}
-        {homeSections.featured && (
+        {homeSections.featured && products.length > 0 && (
         <div style={{ padding: '20px 20px 0' }}>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:12 }}>
             <div>
@@ -403,48 +401,36 @@ function HomeScreen() {
         )}
 
         {/* Product Videos */}
-        {homeSections.videos && (
+        {homeSections.videos && products.length > 0 && (
         <div style={{ padding:'20px 20px 0' }}>
           <div style={{ marginBottom:12 }}>
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:700, color:C.ink, letterSpacing:'-0.02em' }}>Product Videos</span>
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:2 }}>See the products in action</div>
           </div>
           <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:4 }}>
-            {[
-              { product:PRODUCTS[0], views:'1.2k', caption:'A unique vase\nmade by hand',       tint:0 },
-              { product:PRODUCTS[1], views:'5.6k', caption:'The ceramic\neveryone wants', tint:1 },
-              { product:PRODUCTS[2], views:'3.4k', caption:'Soft light for\nyour home',  tint:2 },
-              { product:PRODUCTS[3], views:'2.1k', caption:'Feel the difference\nevery morning',   tint:3 },
-              { product:PRODUCTS[4], views:'890',  caption:'The perfect bag\nfor every day',  tint:4 },
-              { product:PRODUCTS[5], views:'4.2k', caption:"The chef's apron\nfor home",    tint:0 },
-            ].map((v, i) => (
-              <div key={i} onClick={() => navigate('pdp',{ product:v.product })} style={{ width:148, height:228, borderRadius:14, overflow:'hidden', cursor:'pointer', flexShrink:0, position:'relative', background:'#1a1a2e', boxShadow:'0 4px 16px rgba(14,11,31,0.12)' }}>
+            {products.slice(0, 6).map((p, i) => (
+              <div key={p.id} onClick={() => navigate('pdp',{ product:p })} style={{ width:148, height:228, borderRadius:14, overflow:'hidden', cursor:'pointer', flexShrink:0, position:'relative', background:'#1a1a2e', boxShadow:'0 4px 16px rgba(14,11,31,0.12)' }}>
                 {/* BG placeholder */}
-                <Img label="" tint={v.tint} style={{ position:'absolute', inset:0, width:148, height:228, borderRadius:0 }} />
+                <Img label="" src={p.image_url} tint={i % 5} style={{ position:'absolute', inset:0, width:148, height:228, borderRadius:0 }} />
                 {/* Gradient overlay */}
                 <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, rgba(0,0,0,0.28) 0%, transparent 35%, transparent 50%, rgba(0,0,0,0.72) 100%)' }} />
-                {/* Top: play + views */}
+                {/* Top: play icon */}
                 <div style={{ position:'absolute', top:10, left:10, display:'flex', alignItems:'center', gap:5 }}>
                   <div style={{ width:22, height:22, borderRadius:9999, background:'rgba(255,255,255,0.22)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center' }}>
                     <svg width="7" height="9" viewBox="0 0 7 9" fill="white"><path d="M0.5 0.5l6 4-6 4V0.5z"/></svg>
                   </div>
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'#fff', textShadow:'0 1px 3px rgba(0,0,0,0.6)' }}>{v.views}</span>
-                </div>
-                {/* Caption */}
-                <div style={{ position:'absolute', bottom:66, left:8, right:8, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:'#fff', lineHeight:1.35, textShadow:'0 1px 4px rgba(0,0,0,0.7)', whiteSpace:'pre-line' }}>
-                  {v.caption}
                 </div>
                 {/* Product bar */}
                 <div style={{ position:'absolute', bottom:0, left:0, right:0, background:'rgba(255,255,255,0.96)', backdropFilter:'blur(6px)', padding:'7px 8px', display:'flex', alignItems:'center', gap:6 }}>
                   <div style={{ width:34, height:34, borderRadius:8, overflow:'hidden', flexShrink:0 }}>
-                    <Img label="" tint={v.tint} style={{ width:34, height:34 }} />
+                    <Img label="" src={p.image_url} tint={i % 5} style={{ width:34, height:34 }} />
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:3 }}>{v.product.title}</div>
+                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:3 }}>{p.title}</div>
                     <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-                      <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:700, color:C.ink }}>${v.product.price.toFixed(2)}</span>
-                      {v.product.discount && (
-                        <span style={{ background:C.success, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:800, padding:'1px 5px', borderRadius:4, letterSpacing:'0.02em' }}>{v.product.discount}% OFF</span>
+                      <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:700, color:C.ink }}>${p.price.toFixed(2)}</span>
+                      {p.discount && (
+                        <span style={{ background:C.success, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:800, padding:'1px 5px', borderRadius:4, letterSpacing:'0.02em' }}>{p.discount}% OFF</span>
                       )}
                     </div>
                   </div>

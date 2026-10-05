@@ -1,29 +1,11 @@
 // screen-messages.jsx — Messages Inbox + Individual Chat Conversation
 
-window._CONVERSATIONS = window._CONVERSATIONS || [
-  { id:'luxe',      shop:'Luxe Store',      initial:'L', color:'#1A1420', verified:true, type:'seller', online:true,  last:"Hi! Yes, the product is still available.", time:'10:30 AM', unread:2, pinned:false, archived:false, orderRelated:false, product:{ id:1, title:'iPhone 14 Pro Max', variant:'256GB, Deep Purple', price:1099, tint:0 } },
-  { id:'techzone',  shop:'TechZone Haiti',  initial:'T', color:'#0D9488', verified:true, type:'seller', online:true,  last:"Thank you! I'll check and get back…",       time:'Yesterday', unread:1, pinned:false, archived:false, orderRelated:false },
-  { id:'fashion',   shop:'Fashion House',   initial:'F', color:'#DB2777', verified:true, type:'seller', online:false, last:"Your order #CLV789456 has been shipped.",  time:'Yesterday', unread:0, pinned:false, archived:false, orderRelated:true },
-  { id:'electro',   shop:'ElectroWorld',    initial:'E', color:'#D97706', verified:true, type:'seller', online:false, last:'Do you have this in black color?',          time:'May 18', unread:0, pinned:false, archived:false, orderRelated:false },
-  { id:'support',   shop:'Clorivo Support', initial:'C', color:'#4A6FD4', verified:true, type:'support', online:true, last:'How can we help you today?',               time:'May 15', unread:0, pinned:false, archived:false, orderRelated:false, icon:'headphones' },
-  { id:'home',      shop:'Home Essentials', initial:'H', color:'#16A34A', verified:true, type:'seller', online:false, last:'Thank you for your purchase! We appreciate it.', time:'May 12', unread:0, pinned:false, archived:false, orderRelated:true },
-  { id:'sport',     shop:'Sport Center',    initial:'S', color:'#7C3AED', verified:true, type:'seller', online:false, last:'The size M is available.',                 time:'May 10', unread:0, pinned:false, archived:false, orderRelated:false },
-  { id:'beauty',    shop:'Beauty Store',    initial:'B', color:'#EA580C', verified:true, type:'seller', online:false, last:'New collection is available now!',         time:'May 8', unread:0, pinned:false, archived:false, orderRelated:false },
-];
+window._CONVERSATIONS = window._CONVERSATIONS || [];
 
 const QUICK_REPLIES = ['Is this still available?', "What's the price?", 'Do you ship to my area?', 'Can I get a discount?'];
 
 function seedThread(conv) {
-  if (conv.id === 'luxe') {
-    return [
-      { id:1, from:'them', type:'text', text:'Hi John! Yes, the iPhone 14 Pro Max is still available in Deep Purple.', at:'2024-05-20T10:29:00', status:'seen' },
-      { id:2, from:'me',   type:'text', text:'Hello! Is this iPhone 14 Pro Max still available?', at:'2024-05-20T10:28:00', status:'seen' },
-      { id:3, from:'me',   type:'text', text:'Great! Do you offer delivery in Port-au-Prince?', at:'2024-05-20T10:29:30', status:'seen' },
-      { id:4, from:'them', type:'text', text:'Yes, we do! Delivery in Port-au-Prince takes 1 to 2 business days.', at:'2024-05-20T10:29:45', status:'seen' },
-      { id:5, from:'me',   type:'text', text:"Perfect! I'll place my order then.", at:'2024-05-20T10:30:00', status:'delivered' },
-      { id:6, from:'them', type:'text', text:'Thank you! 🙏 If you have any other questions, feel free to ask.', at:'2024-05-20T10:30:15', status:'seen' },
-    ].sort((a,b) => new Date(a.at) - new Date(b.at));
-  }
+  if (!conv.last) return [];
   return [
     { id:1, from:'them', type:'text', text:conv.last, at:new Date(Date.now()-3600000).toISOString(), status:'seen' },
   ];
@@ -366,7 +348,8 @@ function MessageBubble({ msg, onReply, onEdit, onDelete, onReact, onViewProduct,
 function ChatScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
   const isDesktop = useIsDesktop();
-  const conv = (window._CONVERSATIONS || []).find(c => c.id === params.conversationId) || window._CONVERSATIONS[0];
+  const conv = (window._CONVERSATIONS || []).find(c => c.id === params.conversationId)
+    || { id: params.conversationId || `new-${Date.now()}`, shop: params.shopName || 'Support', initial: (params.shopName || 'S')[0].toUpperCase(), color: C.primary, verified: false, type: 'seller', online: false, last: '', time: '', unread: 0, pinned: false, archived: false, orderRelated: false };
   const shopName = params.shopName || conv.shop;
 
   const [messages, setMessages] = React.useState(() => seedThread(conv));
@@ -415,12 +398,14 @@ function ChatScreen({ params = {} }) {
   }
   function handleVoiceNote() { setToast({ type:'success', message:'Voice messages are coming soon' }); }
   function shareProduct() {
-    const demo = conv.product || { id:1, title:'iPhone 14 Pro Max', variant:'256GB, Deep Purple', price:1099, tint:0 };
-    sendMessage({ type:'product', product: demo });
+    const product = conv.product || (window.PRODUCTS || [])[0];
+    if (!product) { setToast({ type:'error', message:'No product to share yet' }); return; }
+    sendMessage({ type:'product', product });
   }
   function shareOrder() {
     const order = (window.MOCK_ORDERS || [])[0];
-    sendMessage({ type:'order', orderId: order ? order.id : 'CLV789456', status: order ? order.status : 'in_transit' });
+    if (!order) { setToast({ type:'error', message:'No order to share yet' }); return; }
+    sendMessage({ type:'order', orderId: order.id, status: order.status });
   }
   function reactTo(id, emoji) { setMessages(prev => prev.map(m => m.id === id ? { ...m, reaction: m.reaction === emoji ? null : emoji } : m)); }
   function deleteMsg(id) { setMessages(prev => prev.filter(m => m.id !== id)); setToast({ type:'success', message:'Message deleted' }); }

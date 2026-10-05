@@ -8,10 +8,7 @@ const FAQS = [
   { q:'How do I become a seller on CLORIVO?', a:'Visit Profile → Become a Seller and complete the quick verification process.' },
 ];
 
-window._TICKETS = window._TICKETS || [
-  { id:'TCK-3821', subject:'Order not received', status:'open',   createdAt:'2024-05-10' },
-  { id:'TCK-3790', subject:'Refund question',    status:'closed', createdAt:'2024-04-22' },
-];
+window._TICKETS = window._TICKETS || [];
 
 function SupportTicketsScreen() {
   const { navigate, goBack } = useNav();
@@ -112,13 +109,13 @@ function SupportTicketsScreen() {
               </div>
               <Icon name="chevronRight" size={16} color={C.mute} />
             </button>
-            <button onClick={() => setToast({ type:'success', message:'Calling +509 34 56 78 90…' })} style={{ display:'flex', alignItems:'center', gap:14, background:C.white, borderRadius:16, padding:'16px', border:'none', cursor:'pointer', textAlign:'left', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
+            <button onClick={() => setToast({ type:'success', message:'Opening phone dialer…' })} style={{ display:'flex', alignItems:'center', gap:14, background:C.white, borderRadius:16, padding:'16px', border:'none', cursor:'pointer', textAlign:'left', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
               <div style={{ width:44, height:44, borderRadius:9999, background:'#ECFDF5', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                 <Icon name="headphones" size={20} color={C.success} />
               </div>
               <div style={{ flex:1 }}>
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink }}>Call Support</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>+509 34 56 78 90</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Available 9am–6pm</div>
               </div>
               <Icon name="chevronRight" size={16} color={C.mute} />
             </button>

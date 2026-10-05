@@ -1,17 +1,34 @@
 // screen-cart.jsx — Cart + Checkout (redesigned per reference image)
 
 // ─── CART ────────────────────────────────────────────────────
+function cartItemsFromGlobal() {
+  return (window.CART_ITEMS || []).map(ci => ({
+    id: ci.product.id,
+    name: ci.product.title,
+    variant: ci.variant || '',
+    price: ci.product.price,
+    oldPrice: ci.product.oldPrice,
+    qty: ci.qty,
+    inStock: true,
+    seller: ci.seller || ci.product.seller || '',
+    checked: true,
+    _product: ci.product,
+  }));
+}
+
 function CartScreen() {
   const { navigate } = useNav();
   const isDesktop = useIsDesktop();
-  const [items, setItems] = React.useState([
-    { id:1, name:'iPhone 14 Pro Max',  variant:'256GB, Deep Purple', price:1099, oldPrice:1299, qty:1, inStock:true, seller:'TechZone Haiti',  checked:true },
-    { id:2, name:'Sony WH-1000XM5',    variant:'Wireless Headphone',  price:299,  oldPrice:349,  qty:1, inStock:true, seller:'TechZone Haiti',  checked:true },
-    { id:3, name:'Fashion Handbag',     variant:'Brown, Leather',       price:39,   oldPrice:59,   qty:1, inStock:true, seller:'Fashion House',   checked:true },
-    { id:4, name:'Nike Air Max 270',    variant:'Black, Size 42',     price:129,  oldPrice:159,  qty:1, inStock:true, seller:'Sport Center',    checked:true },
-  ]);
+  const [items, setItems] = React.useState(() => cartItemsFromGlobal());
   const [promoCode, setPromoCode]   = React.useState('');
   const [promoApplied, setPromoApplied] = React.useState(false);
+
+  React.useEffect(() => {
+    window.CART_ITEMS = items.map(i => ({
+      product: i._product || { id:i.id, title:i.name, price:i.price, oldPrice:i.oldPrice, seller:i.seller },
+      qty: i.qty, variant: i.variant, seller: i.seller,
+    }));
+  }, [items]);
 
   const checkedItems  = items.filter(i => i.checked);
   const subtotal      = checkedItems.reduce((s, i) => s + i.price * i.qty, 0);

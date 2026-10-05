@@ -488,61 +488,26 @@ function _prodToSb(p) {
     compare_price: p.oldPrice ?? null,
     discount: p.discount ?? null,
     sold_count: parseInt((p.sold ?? '0').replace(/\D/g,'')) || 0,
-    rating: p.rating ?? 4.8,
-    reviews_count: p.reviews ?? 234,
+    rating: p.rating ?? 0,
+    reviews_count: p.reviews ?? 0,
     images: [],
     image_url: p.image_url ?? null,
-    shops: { name: p.seller ?? 'luna.studio', is_verified: true },
-    categories: { name: p.category ?? 'Maison' },
+    shops: { name: p.seller ?? '', is_verified: false },
+    categories: { name: p.category ?? '' },
     label: p.label ?? '',
     tint: p.id % 5,
   };
 }
 
-const _DEMO_SHOPS = [
-  { id:'demo-s1', name:'luna.studio',    brand_color:'#C97B5A', is_verified:true,  followers:2400, initial:'L' },
-  { id:'demo-s2', name:'TechZone',       brand_color:'#4A6FD4', is_verified:true,  followers:5100, initial:'T' },
-  { id:'demo-s3', name:'Fashion House',  brand_color:'#9B59B6', is_verified:true,  followers:1800, initial:'F' },
-  { id:'demo-s4', name:'ceramix.co',     brand_color:'#7A8A6A', is_verified:true,  followers:900,  initial:'C' },
-  { id:'demo-s5', name:'Luxe Store',     brand_color:'#1A1A2E', is_verified:true,  followers:3200, initial:'L' },
-  { id:'demo-s6', name:'nature.home',    brand_color:'#27AE60', is_verified:false, followers:600,  initial:'N' },
-  { id:'demo-s7', name:'ElectroWorld',   brand_color:'#E67E22', is_verified:true,  followers:4000, initial:'E' },
-];
-
-const _DEMO_BANNERS = [
-  { id:'demo-b1', title:"Up to 70% off Home & Kitchen", subtitle:"Spring offer", cta_text:"Shop now", bg_color:'#6C4DFF', position:1 },
-  { id:'demo-b2', title:'New Fashion collection', subtitle:'Spring-summer trends', cta_text:'Discover', bg_color:'#059669', position:2 },
-  { id:'demo-b3', title:'Tech at low prices', subtitle:'Smartphones and accessories', cta_text:'Explore', bg_color:'#D97706', position:3 },
-];
-
-const _DEMO_CONVERSATIONS = [
-  { id:'demo-c1', shops:{ name:'Luxe Store', brand_color:'#1A1A2E', is_verified:true }, last_message:"Thank you! 🙏 If you have any other questions…", last_message_at: new Date(Date.now()-86400000).toISOString(), buyer_unread:1 },
-  { id:'demo-c2', shops:{ name:'TechZone Haiti', brand_color:'#4A6FD4', is_verified:true }, last_message:"Thanks! I'll check and get back to you…", last_message_at: new Date(Date.now()-172800000).toISOString(), buyer_unread:1 },
-  { id:'demo-c3', shops:{ name:'Fashion House', brand_color:'#9B59B6', is_verified:true }, last_message:"📦 Order #CLV789456 — Shipped", last_message_at: new Date(Date.now()-259200000).toISOString(), buyer_unread:0 },
-];
-
-const _DEMO_MESSAGES = [
-  { id:'dm1', sender_id:'seller', content:"Hello! How can I help you?", created_at: new Date(Date.now()-3600000).toISOString() },
-  { id:'dm2', sender_id:'buyer',  content:"Hi, is the product available in size L?", created_at: new Date(Date.now()-3000000).toISOString() },
-  { id:'dm3', sender_id:'seller', content:"Yes, we have it in L! Delivery time: 3-5 days.", created_at: new Date(Date.now()-2400000).toISOString() },
-];
-
-const _DEMO_NOTIFICATIONS = [
-  { id:'dn1', type:'order', title:'Order shipped', body:'Your order #CLV001 is on its way', read_at: null, created_at: new Date(Date.now()-3600000).toISOString() },
-  { id:'dn2', type:'promo', title:'Flash sale — 2h left', body:'Up to -70% on selected items', read_at: null, created_at: new Date(Date.now()-7200000).toISOString() },
-  { id:'dn3', type:'system', title:'Welcome to Clorivo 🎉', body:'Discover thousands of products', read_at: new Date().toISOString(), created_at: new Date(Date.now()-86400000).toISOString() },
-];
-
-const _DEMO_SELLER_STATS = { orders: 127, products: 34, revenue: 5248.00, followers: 2400, rating: 4.9 };
-const _DEMO_SELLER_ORDERS = [
-  { id:'so1', title:'Terracotta Vase', quantity:1, price:24.50, orders:{ status:'pending', created_at: new Date(Date.now()-3600000).toISOString() } },
-  { id:'so2', title:'Ceramic Mug', quantity:2, price:14.99, orders:{ status:'processing', created_at: new Date(Date.now()-86400000).toISOString() } },
-];
-const _DEMO_ADMIN_STATS = { users: 12480, sellers: 843, orders: 5621, gmv: 284920, pendingKyc: 14 };
-const _DEMO_KYC_REQUESTS = [
-  { id:'kyc1', profiles:{ full_name:'Marc Dupont', email:'marc@mail.com' }, shop_name:'Maison Dupont', status:'pending', created_at: new Date(Date.now()-86400000).toISOString() },
-  { id:'kyc2', profiles:{ full_name:'Sophie Legrand', email:'sophie@mail.com' }, shop_name:'Sophie Bijoux', status:'pending', created_at: new Date(Date.now()-172800000).toISOString() },
-];
+const _DEMO_SHOPS = [];
+const _DEMO_BANNERS = [];
+const _DEMO_CONVERSATIONS = [];
+const _DEMO_MESSAGES = [];
+const _DEMO_NOTIFICATIONS = [];
+const _DEMO_SELLER_STATS = { orders:0, products:0, revenue:0, followers:0, rating:0 };
+const _DEMO_SELLER_ORDERS = [];
+const _DEMO_ADMIN_STATS = { users:0, sellers:0, orders:0, gmv:0, pendingKyc:0 };
+const _DEMO_KYC_REQUESTS = [];
 
 // Expose all helpers globally (used by screen files)
 Object.assign(window, {

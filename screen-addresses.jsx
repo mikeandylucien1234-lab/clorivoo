@@ -1,9 +1,6 @@
 // screen-addresses.jsx — Address Management
 
-window._ADDRESSES = window._ADDRESSES || [
-  { id:1, label:'Home', line1:'14 Roquette Street', city:'Paris', country:'France', zip:'75011', phone:'+33 6 12 34 56 78', instructions:'Ring the bell twice', isDefault:true },
-  { id:2, label:'Work', line1:'22 Rue du Faubourg', city:'Paris', country:'France', zip:'75012', phone:'+33 6 98 76 54 32', instructions:'', isDefault:false },
-];
+window._ADDRESSES = window._ADDRESSES || [];
 
 function AddressesScreen() {
   const { goBack } = useNav();

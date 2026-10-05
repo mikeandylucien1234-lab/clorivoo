@@ -2,35 +2,18 @@
 
 // ─── SHARED ADMIN STATE (session-scoped, mirrors window._PROFILE pattern) ──
 window._ADMIN_AUDIT_LOG   = window._ADMIN_AUDIT_LOG   || [];
-window._BRANDS            = window._BRANDS            || [
-  { id:'br1', name:'Clorivo Essentials', logo_url:null },
-  { id:'br2', name:'Nova Home',          logo_url:null },
-  { id:'br3', name:'Pulse Tech',         logo_url:null },
-];
-window._COUPONS           = window._COUPONS           || [
-  { id:'cp1', code:'WELCOME10', discount:10, active:true,  expiresAt:'2026-12-31' },
-  { id:'cp2', code:'FLASH25',   discount:25, active:true,  expiresAt:'2026-11-15' },
-  { id:'cp3', code:'SUMMER20',  discount:20, active:false, expiresAt:'2026-08-01' },
-];
-window._ADMIN_REVIEWS     = window._ADMIN_REVIEWS      || [
-  { id:'rv1', product:'Ribbed Terracotta Vase · M', author:'Alex Martin',  rating:5, text:'Beautiful quality, exactly as pictured.', status:'published' },
-  { id:'rv2', product:'Artisan Ceramic Mug',        author:'Sophie Park',  rating:2, text:'Arrived chipped, disappointed.',          status:'published' },
-  { id:'rv3', product:'Bamboo Oil Burner',          author:'Jun Wei',      rating:1, text:'Obvious fake review spam link: bit.ly/x', status:'published' },
-];
+window._BRANDS             = window._BRANDS            || [];
+window._COUPONS            = window._COUPONS           || [];
+window._ADMIN_REVIEWS      = window._ADMIN_REVIEWS     || [];
 window._STAFF              = window._STAFF             || [
   { id:'st1', name: window._PROFILE?.name || 'You', email: window._PROFILE?.email || '', role:'Owner', tint:0 },
-  { id:'st2', name:'Mireille Jean',  email:'mireille@clorivo.com', role:'Moderator', tint:1 },
-  { id:'st3', name:'Patrick Louis',  email:'patrick@clorivo.com',  role:'Support',   tint:2 },
 ];
 window._REWARDS_CONFIG     = window._REWARDS_CONFIG    || { pointsPerDollar:1, referralBonus:10, minRedeem:500 };
-window._ANNOUNCEMENT       = window._ANNOUNCEMENT       || { enabled:true, text:'Free shipping on orders over $50 — this week only!', link:'' };
+window._ANNOUNCEMENT       = window._ANNOUNCEMENT       || { enabled:false, text:'', link:'' };
 window._HOME_SECTIONS      = window._HOME_SECTIONS      || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
 window._HOME_CHIPS         = window._HOME_CHIPS         || ['All', 'Home', 'Tech', 'Beauty', 'Fashion', 'Kids'];
 window._SEO_CONFIG         = window._SEO_CONFIG         || { ga:'', metaPixel:'', tiktok:'', searchConsole:'' };
-window._LOGIN_HISTORY      = window._LOGIN_HISTORY      || [
-  { who: window._PROFILE?.name || 'You', device:'Chrome · macOS', at: new Date(Date.now()-3600000).toISOString(), ip:'102.89.23.14' },
-  { who: window._PROFILE?.name || 'You', device:'Safari · iPhone', at: new Date(Date.now()-86400000).toISOString(), ip:'102.89.23.14' },
-];
+window._LOGIN_HISTORY      = window._LOGIN_HISTORY      || [];
 window._NOTIF_SETTINGS     = window._NOTIF_SETTINGS     || { newOrders:true, newSellers:true, urgentReports:true, weeklyReports:false, marketingEmails:false };
 window._ROLES_SETTINGS     = window._ROLES_SETTINGS     || { allowInvite:true };
 window._SECURITY_SETTINGS  = window._SECURITY_SETTINGS  || { twoFactor:true, biometric:true, loginAlerts:false };
@@ -298,6 +281,17 @@ function AdminKycPanel({ onBack }) {
   React.useEffect(() => { sbAdminGetKycRequests().then(data => setKycRequests(data ?? [])); }, []);
 
   const current = kycRequests[currentIdx];
+
+  if (kycRequests.length === 0) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:560 }}>
+        <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0, width:'fit-content' }}>
+          <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Sellers</span>
+        </button>
+        <AdminCard><AdminEmptyRow text="No pending KYC requests." /></AdminCard>
+      </div>
+    );
+  }
   const checks = [
     { label:'Document validity', status:'pass' },
     { label:'Name match', status:'pass' },
@@ -330,11 +324,11 @@ function AdminKycPanel({ onBack }) {
         <Avatar size={44} initials={(current?.profiles?.full_name ?? 'KYC').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()} />
         <div style={{ flex:1 }}>
           <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>{current?.profiles?.full_name ?? 'Mary Otieno'}</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>{current?.profiles?.full_name ?? ''}</span>
             <StatusPill tone="danger">pending</StatusPill>
           </div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{current?.profiles?.email ?? 'maryo@mail.com'}</div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Shop: "{current?.shop_name ?? 'kibo.crafts'}"</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{current?.profiles?.email ?? ''}</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Shop: "{current?.shop_name ?? ''}"</div>
         </div>
       </AdminCard>
 
@@ -500,28 +494,35 @@ function AdminTopbar({ title, onNav }) {
 }
 
 // ─── ADMIN — Dashboard Overview ─────────────────────────────────
-function AdminOverview({ adminStats, onNav }) {
+function AdminOverview({ adminStats, onNav, sellersList = [], reviews = [], kycCount = 0 }) {
   const orders = window.MOCK_ORDERS || [];
   const revenue = orders.reduce((s,o) => s + (o.total||0), 0);
   const [chartMode, setChartMode] = React.useState('Revenue');
   const W = 680, H = 160;
-  const data = [60,85,72,105,90,130,118,145,120,160,150,175];
-  const maxV = Math.max(...data);
+  // Last 7 days, bucketed from real orders — $0 across the board until there are real orders.
+  const dayBuckets = [...Array(7)].map((_, i) => {
+    const day = new Date(); day.setDate(day.getDate() - (6 - i)); day.setHours(0,0,0,0);
+    const next = new Date(day); next.setDate(next.getDate() + 1);
+    const dayOrders = orders.filter(o => { const t = new Date(o.placedAt).getTime(); return t >= day.getTime() && t < next.getTime(); });
+    return { revenue: dayOrders.reduce((s,o)=>s+(o.total||0),0), count: dayOrders.length };
+  });
+  const data = dayBuckets.map(b => chartMode === 'Orders' ? b.count : chartMode === 'Profit' ? b.revenue * 0.22 : b.revenue);
+  const maxV = Math.max(1, ...data);
   const pts = data.map((v, i) => [(i / (data.length-1)) * W, H - (v/maxV)*(H-16) - 8]);
   const polyline = pts.map(p => p.join(',')).join(' ');
   const area = `0,${H} ${polyline} ${W},${H}`;
+  const hasAnyData = orders.length > 0;
 
   const kpis = [
-    { icon:'dollarSign', color:C.primary,  k:"Today's Revenue", v:`$${(revenue/8).toFixed(0)}`, d:'+12%', up:true },
-    { icon:'barChart',   color:'#8A6BFF',  k:'Total Revenue',   v:`$${revenue.toFixed(0)}`,       d:'+18%', up:true },
-    { icon:'cart',       color:C.success,  k:'Orders Today',    v:String(Math.round(orders.length/3)), d:'+8%', up:true },
-    { icon:'package',    color:'#D97706',  k:'Total Orders',    v:String(orders.length),          d:'+8%', up:true },
-    { icon:'users',      color:'#2563EB',  k:'Customers',       v: adminStats ? String(adminStats.users ?? 8) : '8', d:'+4%', up:true },
-    { icon:'user',       color:C.success,  k:'New Customers',   v:'2', d:'+100%', up:true },
-    { icon:'zap',        color:'#8A6BFF',  k:'Conversion Rate', v:'3.2%', d:'+0.4', up:true },
-    { icon:'barChart',   color:'#D97706',  k:'Avg Order Value', v:`$${orders.length ? (revenue/orders.length).toFixed(0) : 0}`, d:'−1.2%', up:false },
-    { icon:'wallet',     color:C.success,  k:'Profit',          v:`$${(revenue*0.22).toFixed(0)}`, d:'+9%', up:true },
-    { icon:'refreshCw',  color:C.danger,   k:'Refunds',         v:'$0', d:'—', up:null },
+    { icon:'dollarSign', color:C.primary,  k:"Today's Revenue", v:`$${revenue.toFixed(0)}` },
+    { icon:'barChart',   color:'#8A6BFF',  k:'Total Revenue',   v:`$${revenue.toFixed(0)}` },
+    { icon:'cart',       color:C.success,  k:'Orders Today',    v:String(orders.length) },
+    { icon:'package',    color:'#D97706',  k:'Total Orders',    v:String(orders.length) },
+    { icon:'users',      color:'#2563EB',  k:'Customers',       v: adminStats ? String(adminStats.users ?? 0) : '0' },
+    { icon:'zap',        color:'#8A6BFF',  k:'Conversion Rate', v:'0.0%' },
+    { icon:'barChart',   color:'#D97706',  k:'Avg Order Value', v:`$${orders.length ? (revenue/orders.length).toFixed(0) : 0}` },
+    { icon:'wallet',     color:C.success,  k:'Profit',          v:`$${(revenue*0.22).toFixed(0)}` },
+    { icon:'refreshCw',  color:C.danger,   k:'Refunds',         v:'$0' },
   ];
 
   return (
@@ -553,18 +554,25 @@ function AdminOverview({ adminStats, onNav }) {
             ))}
           </div>
         </div>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:H }}>
-          <defs>
-            <linearGradient id="adminOverviewG" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={C.primary} stopOpacity="0.25"/>
-              <stop offset="100%" stopColor={C.primary} stopOpacity="0"/>
-            </linearGradient>
-          </defs>
-          {[0.25,0.5,0.75].map((f,i) => <line key={i} x1={0} x2={W} y1={H*f} y2={H*f} stroke={C.hairline} strokeDasharray="4 4" />)}
-          <polygon points={area} fill="url(#adminOverviewG)" />
-          <polyline points={polyline} fill="none" stroke={C.primary} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx={pts[pts.length-1][0]} cy={pts[pts.length-1][1]} r="4.5" fill={C.primary} />
-        </svg>
+        <div style={{ position:'relative' }}>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:H }}>
+            <defs>
+              <linearGradient id="adminOverviewG" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={C.primary} stopOpacity="0.25"/>
+                <stop offset="100%" stopColor={C.primary} stopOpacity="0"/>
+              </linearGradient>
+            </defs>
+            {[0.25,0.5,0.75].map((f,i) => <line key={i} x1={0} x2={W} y1={H*f} y2={H*f} stroke={C.hairline} strokeDasharray="4 4" />)}
+            <polygon points={area} fill="url(#adminOverviewG)" />
+            <polyline points={polyline} fill="none" stroke={C.primary} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={pts[pts.length-1][0]} cy={pts[pts.length-1][1]} r="4.5" fill={C.primary} />
+          </svg>
+          {!hasAnyData && (
+            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute, background:C.white, padding:'4px 12px', borderRadius:9999 }}>No sales yet — your trend will appear here</span>
+            </div>
+          )}
+        </div>
       </AdminCard>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
@@ -573,6 +581,7 @@ function AdminOverview({ adminStats, onNav }) {
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Recent orders</span>
             <button onClick={() => onNav('orders')} style={{ border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:C.primary }}>View all</button>
           </div>
+          {orders.length === 0 && <AdminEmptyRow text="No orders yet" />}
           {orders.slice(0,4).map((o,i) => (
             <div key={o.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
               <div style={{ width:30, height:30, borderRadius:8, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -590,11 +599,15 @@ function AdminOverview({ adminStats, onNav }) {
           <div style={{ padding:'12px 16px', borderBottom:`1px solid ${C.hairline}`, display:'flex', justifyContent:'space-between' }}>
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Pending action</span>
           </div>
-          {[
-            { icon:'store', label:'atelier.lune', sub:'New shop pending review', nav:'sellers' },
-            { icon:'lock',  label:'M. Otieno',    sub:'KYC awaiting decision',   nav:'sellers' },
-            { icon:'star',  label:'1 flagged review', sub:'Possible spam',       nav:'reviews' },
-          ].map((p,i) => (
+          {(() => {
+            const pendingSellers = sellersList.filter(s => s.status === 'pending');
+            const items = [
+              ...(pendingSellers.length > 0 ? [{ icon:'store', label:`${pendingSellers.length} shop${pendingSellers.length>1?'s':''} pending review`, sub:pendingSellers.map(s=>s.name).join(', '), nav:'sellers' }] : []),
+              ...(kycCount > 0 ? [{ icon:'lock', label:`${kycCount} KYC request${kycCount>1?'s':''}`, sub:'Awaiting decision', nav:'sellers' }] : []),
+              ...(reviews.length > 0 ? [{ icon:'star', label:`${reviews.length} review${reviews.length>1?'s':''}`, sub:'To moderate', nav:'reviews' }] : []),
+            ];
+            if (items.length === 0) return <AdminEmptyRow text="Nothing pending — all caught up." />;
+            return items.map((p,i) => (
             <div key={i} onClick={() => onNav(p.nav)} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none', cursor:'pointer' }}>
               <div style={{ width:30, height:30, borderRadius:8, background:C.paper, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                 <Icon name={p.icon} size={14} color={C.mute} />
@@ -605,7 +618,8 @@ function AdminOverview({ adminStats, onNav }) {
               </div>
               <Icon name="chevronRight" size={14} color={C.mute} />
             </div>
-          ))}
+            ));
+          })()}
         </AdminCard>
       </div>
     </div>
@@ -845,13 +859,7 @@ function AdminShellScreen({ params = {} }) {
     role: (window._PROFILE?.role ?? 'buyer') === 'seller' ? 'Seller' : (window._PROFILE?.role === 'admin' ? 'Admin' : 'Buyer'),
     status: window._PROFILE?.status ?? 'active',
   };
-  const demoUsers = [
-    { name:'Alex Martin',   email:'alex@mail.com',   role:'Buyer', status:'active',    tint:1 },
-    { name:'Mary Otieno',   email:'maryo@mail.com',  role:'Seller',  status:'active',    tint:2 },
-    { name:'Sophie Park',   email:'spark@mail.com',  role:'Buyer', status:'active',    tint:3 },
-    { name:'Jun Wei',       email:'jwei@mail.com',   role:'Seller',  status:'suspended', tint:4 },
-    { name:'Léa Dubois',    email:'lea.d@mail.com',  role:'Buyer', status:'active',    tint:0 },
-  ];
+  const demoUsers = [];
   const usersList = [youRow, ...(remoteUsers
     ? remoteUsers.filter(u => u.email !== youRow.email).map((u, i) => ({
         id: u.id, name: u.full_name || u.email || 'User', email: u.email || '',
@@ -889,7 +897,7 @@ function AdminShellScreen({ params = {} }) {
       logAdminAction('Updated product', form.title);
     } else {
       const newId = Math.max(0, ...window.PRODUCTS.map(p => typeof p.id === 'number' ? p.id : 0)) + 1;
-      window.PRODUCTS.push({ id:newId, title: form.title, price, oldPrice, discount, seller: form.seller, rating:4.8, reviews:0, category: form.category, label:'product photo', image_url: form.image_url, stock });
+      window.PRODUCTS.push({ id:newId, title: form.title, price, oldPrice, discount, seller: form.seller, rating:0, reviews:0, category: form.category, label:'product photo', image_url: form.image_url, stock });
       await sbAdminCreateProduct({ title: form.title, price, compare_price: oldPrice ?? null, discount: discount ?? null, image_url: form.image_url });
       logAdminAction('Created product', form.title);
     }
@@ -924,12 +932,7 @@ function AdminShellScreen({ params = {} }) {
   }
 
   // ── Sellers ──
-  const [sellersList, setSellersList] = React.useState(() => [
-    { name:'luna.studio',   cat:'Home & Decor', sales:'$12.4k', rating:4.9, status:'verified',  tint:0 },
-    { name:'TechZone',      cat:'Electronics',  sales:'$48.1k', rating:4.7, status:'verified',  tint:1 },
-    { name:'atelier.lune',  cat:'Crafts',     sales:'—',      rating:0,   status:'pending',  tint:2 },
-    { name:'Fashion House', cat:'Fashion',          sales:'$22.7k', rating:4.6, status:'verified',  tint:3 },
-  ]);
+  const [sellersList, setSellersList] = React.useState(() => []);
   function toggleSellerStatus(name) {
     setSellersList(prev => prev.map(s => s.name === name ? { ...s, status: s.status === 'suspended' ? 'verified' : 'suspended' } : s));
     logAdminAction('Toggled seller status', name);
@@ -1038,7 +1041,7 @@ function AdminShellScreen({ params = {} }) {
 
   function renderSection() {
     switch (section) {
-      case 'overview': return <AdminOverview adminStats={adminStats} onNav={onNav} />;
+      case 'overview': return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={window._ADMIN_REVIEWS} kycCount={adminStats?.pendingKyc ?? 0} />;
 
       case 'orders': {
         const orders = window.MOCK_ORDERS || [];
@@ -1115,7 +1118,7 @@ function AdminShellScreen({ params = {} }) {
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
           <SectionTitle title="Brands" sub={`${window._BRANDS.length} brands`} action={<Btn variant="primary" size="sm" onClick={addBrand}>+ New brand</Btn>} />
           <AdminCard padded={false}>
-            {window._BRANDS.map((b, i) => (
+            {window._BRANDS.length === 0 ? <AdminEmptyRow text="No brands yet — add your first one." /> : window._BRANDS.map((b, i) => (
               <div key={b.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
                 <div style={{ width:34, height:34, borderRadius:9, background:C.paper, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><Icon name="tag" size={15} color={C.mute} /></div>
                 <input value={b.name} onChange={e => updateBrand(b.id, e.target.value)} style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }} />
@@ -1210,6 +1213,7 @@ function AdminShellScreen({ params = {} }) {
             ))}
           </div>
           <AdminCard padded={false}>
+            {sellersList.length === 0 && <AdminEmptyRow text="No sellers yet." />}
             {sellersList.map((s, i) => (
               <div key={i} onClick={() => s.status === 'pending' && setSellerPanel('kyc')} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none', cursor: s.status === 'pending' ? 'pointer' : 'default' }}>
                 <div style={{ width:32, height:32, borderRadius:8, overflow:'hidden', flexShrink:0 }}><Img label="" tint={s.tint} style={{ width:32, height:32 }} /></div>
@@ -1234,7 +1238,7 @@ function AdminShellScreen({ params = {} }) {
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
           <SectionTitle title="Reviews" sub={`${window._ADMIN_REVIEWS.length} reviews`} />
           <AdminCard padded={false}>
-            {window._ADMIN_REVIEWS.map((r, i) => (
+            {window._ADMIN_REVIEWS.length === 0 ? <AdminEmptyRow text="No reviews yet." /> : window._ADMIN_REVIEWS.map((r, i) => (
               <div key={r.id} style={{ padding:'12px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none', opacity: r.status === 'hidden' ? 0.5 : 1 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:4 }}>
                   <div>
@@ -1299,6 +1303,7 @@ function AdminShellScreen({ params = {} }) {
             <table style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead><tr><Th>Code</Th><Th align="right">Discount</Th><Th>Expires</Th><Th>Active</Th><Th></Th></tr></thead>
               <tbody>
+                {window._COUPONS.length === 0 && <tr><td colSpan={5}><AdminEmptyRow text="No coupons yet." /></td></tr>}
                 {window._COUPONS.map(c => (
                   <tr key={c.id}>
                     <Td><input value={c.code} onChange={e => updateCoupon(c.id,'code',e.target.value.toUpperCase())} style={{ border:'none', outline:'none', background:'transparent', fontFamily:"'JetBrains Mono',monospace", fontSize:12.5, fontWeight:700, color:C.ink }} /></Td>
@@ -1451,7 +1456,7 @@ function AdminShellScreen({ params = {} }) {
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
           <SectionTitle title="Login History" />
           <AdminCard padded={false}>
-            {window._LOGIN_HISTORY.map((l, i) => (
+            {window._LOGIN_HISTORY.length === 0 ? <AdminEmptyRow text="No login activity recorded yet." /> : window._LOGIN_HISTORY.map((l, i) => (
               <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
                 <Icon name="monitor" size={16} color={C.mute} />
                 <div style={{ flex:1 }}>
@@ -1607,7 +1612,7 @@ function AdminShellScreen({ params = {} }) {
         </div>
       );
 
-      default: return <AdminOverview adminStats={adminStats} onNav={onNav} />;
+      default: return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={window._ADMIN_REVIEWS} kycCount={adminStats?.pendingKyc ?? 0} />;
     }
   }
 

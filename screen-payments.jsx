@@ -25,13 +25,7 @@ function brandLogo(brand, size=40) {
   );
 }
 
-window._PAYMENT_METHODS = window._PAYMENT_METHODS || [
-  { id:1, type:'card', brand:'visa',       last4:'4242', expiry:'08/28', name:'John Doe', isDefault:true },
-  { id:2, type:'card', brand:'mastercard', last4:'8931', expiry:'11/27', name:'John Doe', isDefault:false },
-  { id:3, type:'moncash', label:'MonCash', phone:'+509 34 56 78 90', isDefault:false },
-  { id:4, type:'natcash', label:'NatCash', phone:'+509 34 56 78 90', isDefault:false },
-  { id:5, type:'paypal', label:'PayPal',   email:'john.doe@gmail.com', isDefault:false },
-];
+window._PAYMENT_METHODS = window._PAYMENT_METHODS || [];
 
 function walletLogo(type, size=40) {
   const bg = type === 'moncash' ? 'linear-gradient(135deg,#EE3831 0%,#F58220 100%)'

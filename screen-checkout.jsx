@@ -1,6 +1,6 @@
 // screen-checkout.jsx — Multi-step Checkout: Address → Payment → Confirmation / Failed
 
-const WALLET_BALANCE = 45.50;
+const WALLET_BALANCE = 0;
 
 // ─── STEPPER ─────────────────────────────────────────────────
 function CheckoutStepper({ step }) {

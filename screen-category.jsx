@@ -1,16 +1,16 @@
 // screen-category.jsx — Main Categories hub + Category product listing page
 
 const MAIN_CATEGORIES = [
-  { slug:'Electronics',        tab:'Tech',    icon:'zap',       desc:'Phones, laptops, accessories', count:1250 },
-  { slug:'Fashion',            tab:'Fashion', icon:'tag',       desc:'Clothes, shoes, accessories',  count:980  },
-  { slug:'Home & Living',      tab:'Home',    icon:'home',      desc:'Decor, furniture, kitchenware', count:760  },
-  { slug:'Beauty & Health',    tab:'Beauty',  icon:'heart',     desc:'Perfume, skincare, makeup',    count:540  },
-  { slug:'Baby & Kids',        tab:'Kids',    icon:'star',      desc:'Baby gear, toys, equipment',   count:420  },
-  { slug:'Sports & Outdoors',  tab:'Sport',   icon:'barChart',  desc:'Fitness, camping, cycling',    count:310  },
-  { slug:'Automotive',         tab:'All',     icon:'truck',     desc:'Car & bike accessories',       count:260  },
-  { slug:'Office & Business',  tab:'All',     icon:'briefcase', desc:'Office supplies, stationery',  count:180  },
-  { slug:'Food & Grocery',     tab:'Kitchen', icon:'utensils',  desc:'Local products, drinks, snacks', count:150 },
-  { slug:'Pets',               tab:'All',     icon:'heartFill', desc:'Food, accessories, toys',      count:120  },
+  { slug:'Electronics',        tab:'Tech',    icon:'zap',       desc:'Phones, laptops, accessories', count:0 },
+  { slug:'Fashion',            tab:'Fashion', icon:'tag',       desc:'Clothes, shoes, accessories',  count:0 },
+  { slug:'Home & Living',      tab:'Home',    icon:'home',      desc:'Decor, furniture, kitchenware', count:0 },
+  { slug:'Beauty & Health',    tab:'Beauty',  icon:'heart',     desc:'Perfume, skincare, makeup',    count:0 },
+  { slug:'Baby & Kids',        tab:'Kids',    icon:'star',      desc:'Baby gear, toys, equipment',   count:0 },
+  { slug:'Sports & Outdoors',  tab:'Sport',   icon:'barChart',  desc:'Fitness, camping, cycling',    count:0 },
+  { slug:'Automotive',         tab:'All',     icon:'truck',     desc:'Car & bike accessories',       count:0 },
+  { slug:'Office & Business',  tab:'All',     icon:'briefcase', desc:'Office supplies, stationery',  count:0 },
+  { slug:'Food & Grocery',     tab:'Kitchen', icon:'utensils',  desc:'Local products, drinks, snacks', count:0 },
+  { slug:'Pets',               tab:'All',     icon:'heartFill', desc:'Food, accessories, toys',      count:0 },
 ];
 
 // ─── MAIN CATEGORIES PAGE (hub) ─────────────────────────────────
@@ -97,7 +97,7 @@ function CategoriesScreen() {
                   <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14.5, fontWeight:700, color:C.ink }}>{cat.slug}</div>
                   <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{cat.desc}</div>
                 </div>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:C.mute, flexShrink:0 }}>{cat.count}+</span>
+                {cat.count > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:C.mute, flexShrink:0 }}>{cat.count}+</span>}
                 <Icon name="chevronRight" size={17} color={C.mute} style={{ flexShrink:0 }} />
               </button>
             ))}

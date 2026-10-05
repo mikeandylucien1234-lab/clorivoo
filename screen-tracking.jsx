@@ -30,73 +30,7 @@ function tabForStatus(status) {
 }
 
 // ─── MOCK ORDERS (used when there is no real backend session) ─
-const MOCK_ORDERS = [
-  {
-    id:'CLV789456', status:'in_transit', placedAt:'2024-05-12T10:30:00', total:1409.40,
-    estimatedDelivery:'2024-05-18', carrier:'Flash Express', trackingNumber:'FL123456789HT',
-    origin:'Miami, USA', destination:'Port-au-Prince, Haiti',
-    items:[
-      { title:'iPhone 14 Pro Max',  variant:'256GB, Deep Purple', qty:1, tint:0 },
-      { title:'Sony WH-1000XM5',    variant:'Wireless Headphone', qty:1, tint:1 },
-      { title:'Fashion Handbag',     variant:'Brown, Leather',      qty:1, tint:2 },
-      { title:'Nike Air Max 270',    variant:'Black, Size 42',    qty:1, tint:3 },
-    ],
-    timeline:[
-      { at:'2024-05-15T08:45:00', title:'Your package is in transit', desc:'Arrived at sorting facility — Miami, USA' },
-      { at:'2024-05-14T18:30:00', title:'Package shipped',            desc:'En route to Port-au-Prince, Haiti' },
-      { at:'2024-05-14T14:10:00', title:'Picked up by carrier',       desc:'Miami, USA' },
-      { at:'2024-05-13T11:20:00', title:'Ready for shipment',         desc:'Warehouse — Miami, USA' },
-      { at:'2024-05-12T10:30:00', title:'Order confirmed',            desc:"Thank you! We've received your order." },
-    ],
-  },
-  {
-    id:'CLV782145', status:'delivered', placedAt:'2024-05-05T09:00:00', total:378.00,
-    estimatedDelivery:'2024-05-11', deliveredAt:'2024-05-11',
-    carrier:'Flash Express', trackingNumber:'FL998877665HT', origin:'Miami, USA', destination:'Port-au-Prince, Haiti',
-    items:[
-      { title:'AirPods Pro 2', variant:'White', qty:1, tint:4 },
-      { title:'JBL Charge 5',  variant:'Black', qty:1, tint:1 },
-    ],
-    timeline:[
-      { at:'2024-05-11T15:40:00', title:'Delivered',           desc:'Handed to recipient — Port-au-Prince, Haiti' },
-      { at:'2024-05-10T09:15:00', title:'Out for delivery',    desc:'Port-au-Prince, Haiti' },
-      { at:'2024-05-08T17:00:00', title:'In transit',          desc:'Arrived at local facility' },
-      { at:'2024-05-06T12:00:00', title:'Package shipped',     desc:'Miami, USA' },
-      { at:'2024-05-05T09:00:00', title:'Order confirmed',     desc:"Thank you! We've received your order." },
-    ],
-  },
-  {
-    id:'CLV778812', status:'preparing', placedAt:'2024-04-28T16:20:00', total:399.00,
-    estimatedDelivery:'2024-05-17', carrier:'Flash Express', trackingNumber:'FL554433221HT',
-    origin:'Miami, USA', destination:'Port-au-Prince, Haiti',
-    items:[ { title:'Apple Watch Series 9', variant:'45mm, Midnight', qty:1, tint:2 } ],
-    timeline:[
-      { at:'2024-04-29T09:00:00', title:'Preparing your order', desc:'Seller is packing your items' },
-      { at:'2024-04-28T16:20:00', title:'Order confirmed',      desc:"Thank you! We've received your order." },
-    ],
-  },
-  {
-    id:'CLV775230', status:'cancelled', placedAt:'2024-04-20T13:00:00', total:129.00,
-    cancelledAt:'2024-04-21', carrier:'Flash Express', trackingNumber:'FL112233445HT',
-    origin:'Miami, USA', destination:'Port-au-Prince, Haiti',
-    items:[ { title:'JBL Charge 5', variant:'Blue', qty:1, tint:3 } ],
-    timeline:[
-      { at:'2024-04-21T10:00:00', title:'Order cancelled', desc:'Cancelled at your request' },
-      { at:'2024-04-20T13:00:00', title:'Order confirmed', desc:"Thank you! We've received your order." },
-    ],
-  },
-  {
-    id:'CLV772109', status:'delivered', placedAt:'2024-04-15T11:00:00', total:39.00,
-    estimatedDelivery:'2024-04-17', deliveredAt:'2024-04-17',
-    carrier:'Flash Express', trackingNumber:'FL667788990HT', origin:'Miami, USA', destination:'Port-au-Prince, Haiti',
-    items:[ { title:'Fashion Handbag', variant:'Brown, Leather', qty:1, tint:2 } ],
-    timeline:[
-      { at:'2024-04-17T14:00:00', title:'Delivered',       desc:'Handed to recipient — Port-au-Prince, Haiti' },
-      { at:'2024-04-16T09:00:00', title:'Out for delivery', desc:'Port-au-Prince, Haiti' },
-      { at:'2024-04-15T11:00:00', title:'Order confirmed', desc:"Thank you! We've received your order." },
-    ],
-  },
-];
+const MOCK_ORDERS = [];
 
 function fmtDate(iso, opts) {
   return new Date(iso).toLocaleDateString('en-US', opts || { month:'long', day:'numeric', year:'numeric' });

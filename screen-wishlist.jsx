@@ -2,17 +2,8 @@
 // Pages: WishlistScreen, WishlistSharedScreen, WishlistNotificationsScreen, WishlistAlertsScreen
 // Shared: WishlistQuickActionsSheet
 
-window._WISHLIST = window._WISHLIST || [
-  { id:1, name:'iPhone 14 Pro Max',  variant:'256GB, Deep Purple', price:1099, oldPrice:1299, discount:15, category:'electronics', brand:'Apple', inStock:true,  addedAt:'2024-05-14', popularity:98, tint:0, alertOn:true  },
-  { id:2, name:'Sony WH-1000XM5',    variant:'Wireless Headphone',  price:299,  oldPrice:349,  discount:14, category:'electronics', brand:'Sony',  inStock:true,  addedAt:'2024-05-10', popularity:87, tint:1, alertOn:false },
-  { id:3, name:'Fashion Handbag',     variant:'Brown, Leather',       price:39,   oldPrice:59,   discount:34, category:'fashion',     brand:'Fashion House', inStock:true, addedAt:'2024-05-02', popularity:62, tint:2, alertOn:false },
-  { id:4, name:'Nike Air Max 270',    variant:'Black, Size 42',     price:129,  oldPrice:159,  discount:19, category:'fashion',     brand:'Nike',   inStock:false, addedAt:'2024-04-28', popularity:91, tint:3, alertOn:true  },
-];
-window._PRICE_ALERT_LOG = window._PRICE_ALERT_LOG || [
-  { id:1, itemName:'iPhone 14 Pro Max', kind:'price_drop', message:'Price dropped from $1,299 to $1,099 (−15%)', at:'2024-05-15T09:00:00', read:false },
-  { id:2, itemName:'Nike Air Max 270',  kind:'back_in_stock', message:'Back in stock at your saved size', at:'2024-05-13T14:00:00', read:false },
-  { id:3, itemName:'Sony WH-1000XM5',   kind:'price_drop', message:'Price dropped from $349 to $299 (−14%)', at:'2024-05-09T11:00:00', read:true },
-];
+window._WISHLIST = window._WISHLIST || [];
+window._PRICE_ALERT_LOG = window._PRICE_ALERT_LOG || [];
 
 const SORTS = [
   { key:'newest',       label:'Newest First' },

@@ -3,7 +3,7 @@
 function ProductDetailsScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
   const isDesktop = useIsDesktop();
-  const product  = params.product || PRODUCTS[0];
+  const product  = params.product || null;
   const p        = product;
 
   const [selectedColor, setSelectedColor] = React.useState(0);
@@ -18,6 +18,16 @@ function ProductDetailsScreen({ params = {} }) {
   const [specsExpanded, setSpecsExpanded] = React.useState(false);
   const [cartCount,     setCartCount]     = React.useState((window.CART_ITEMS || []).length);
 
+  if (!p) {
+    return (
+      <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14, padding:24 }}>
+        <Icon name="package" size={40} color={C.mute} />
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:700, color:C.ink }}>Product not found</div>
+        <Btn variant="primary" onClick={() => navigate('home')}>Back to Home</Btn>
+      </div>
+    );
+  }
+
   const colors  = [
     { name:'Deep Purple', hex:'#3B3760' },
     { name:'Gold',        hex:'#C9A876' },
@@ -30,16 +40,12 @@ function ProductDetailsScreen({ params = {} }) {
   const category = (p.category || 'home').charAt(0).toUpperCase() + (p.category || 'home').slice(1);
 
   const ratingBreakdown = [
-    { stars:5, pct:80 }, { stars:4, pct:13 }, { stars:3, pct:4 }, { stars:2, pct:2 }, { stars:1, pct:1 },
+    { stars:5, pct:0 }, { stars:4, pct:0 }, { stars:3, pct:0 }, { stars:2, pct:0 }, { stars:1, pct:0 },
   ];
-  const reviews = [
-    { name:'David L.', rating:5, verified:true, text:'Excellent product! Quality is amazing and it matches the photos perfectly.', date:'May 12, 2024' },
-    { name:'Marie P.', rating:5, verified:true, text:"I love this item, it's exactly as described and shipping was fast.", date:'May 10, 2024' },
-    { name:'Thomas R.', rating:4, verified:true, text:'Beautiful product, careful finishing. I recommend it.', date:'Apr 28, 2024' },
-  ];
+  const reviews = [];
 
   const specs = [
-    { icon:'store',   label:'Brand',    value: p.seller || 'luna.studio' },
+    { icon:'store',   label:'Brand',    value: p.seller || '—' },
     { icon:'tag',     label:'Category', value: category },
     { icon:'package', label:'Model',    value: p.title },
     { icon:'zap',     label:'Material', value:'Premium natural materials' },
@@ -205,16 +211,12 @@ Dimensions: Ø 12 × H 22 cm · Weight: 680 g · Material: premium certified mat
 
           {/* Seller strip */}
           <div onClick={() => navigate('store', { shopName: p.seller })} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', border:`1.5px solid ${C.hairline}`, borderRadius:12, cursor:'pointer' }}>
-            <Avatar size={40} initials={p.seller ? p.seller[0].toUpperCase() : 'L'} />
+            <Avatar size={40} initials={p.seller ? p.seller[0].toUpperCase() : 'S'} />
             <div style={{ flex:1 }}>
               <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
-                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, color:C.ink }}>{p.seller || 'luna.studio'}</span>
-                <div style={{ background:'#EFF9F4', borderRadius:9999, padding:'2px 7px', display:'flex', alignItems:'center', gap:3 }}>
-                  <Icon name="check" size={11} color={C.success} sw={2.5} />
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:C.success }}>Verified</span>
-                </div>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, color:C.ink }}>{p.seller || 'Unknown seller'}</span>
               </div>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>2.4k followers · 99% positive reviews</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>0 followers · New seller</span>
             </div>
             <Icon name="chevronRight" size={18} color={C.mute} />
           </div>

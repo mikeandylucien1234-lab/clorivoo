@@ -28,24 +28,7 @@ const NOTIF_META = {
 function agoISO(hoursAgo) { return new Date(Date.now() - hoursAgo * 3600000).toISOString(); }
 function inISO(hoursFromNow) { return new Date(Date.now() + hoursFromNow * 3600000).toISOString(); }
 
-window._NOTIFICATIONS = window._NOTIFICATIONS || [
-  { id:1, category:'orders', kind:'shipped', title:'Your order #CLV789456 has shipped', body:'Good news! Your package is on its way. It will be delivered in 3 days.', createdAt:agoISO(0.3), unread:true, archived:false,
-    orderId:'CLV789456', status:'In Transit', carrier:'Flash Express', trackingNumber:'FL123456789HT', shipDate:agoISO(0.4), estimatedDelivery:inISO(72),
-    items:[ { title:'iPhone 14 Pro Max', variant:'256GB, Deep Purple', price:1099, tint:0 }, { title:'Sony WH-1000XM5', variant:'Wireless Headphone', price:299, tint:1 }, { title:'Fashion Handbag', variant:'Brown, Leather', price:39, tint:2 } ] },
-  { id:2, category:'promotions', kind:'flash_sale', title:'Special promo just for you 🎉', body:'Enjoy 20% off all Fashion items. Offer valid for 10 more days.', createdAt:agoISO(2), unread:true, archived:false, discount:20, expiresAt:inISO(240) },
-  { id:3, category:'orders', kind:'delivered', title:'Order delivered', body:'Order #CLV782145 was delivered successfully. Thanks for choosing CLORIVO!', createdAt:agoISO(20), unread:true, archived:false,
-    orderId:'CLV782145', status:'Delivered', carrier:'Flash Express', trackingNumber:'FL998877665HT', shipDate:agoISO(96), estimatedDelivery:agoISO(24),
-    items:[ { title:'AirPods Pro 2', variant:'White', price:189, tint:4 } ] },
-  { id:4, category:'system', kind:'wishlist', title:'Added to your favorites', body:'"Nike Air Max 270" was added to your wishlist. Find it anytime you like!', createdAt:agoISO(30), unread:true, archived:false },
-  { id:5, category:'promotions', kind:'new_arrival', title:'New arrivals just dropped', body:'Discover the newest electronics now available on CLORIVO.', createdAt:agoISO(48), unread:true, archived:false, discount:null },
-  { id:6, category:'security', kind:'password_changed', title:'Account security', body:'Your password was changed successfully. If this wasn\'t you, contact us immediately.', createdAt:agoISO(72), unread:false, archived:false },
-  { id:7, category:'wallet', kind:'wallet_credit', title:'Wallet credited', body:'Your wallet was credited with $20.00. New balance: $45.50.', createdAt:agoISO(96), unread:true, archived:false, amount:20.00 },
-  { id:8, category:'system', kind:'reminder', title:'Reminder', body:'You have items waiting in your cart! Complete your order before they\'re gone.', createdAt:agoISO(150), unread:false, archived:false },
-  { id:9, category:'messages', kind:'seller_reply', title:'TechZone Haiti replied to your message', body:'"Thank you for your order! Your item will ship within 24 hours."', createdAt:agoISO(170), unread:true, archived:false, shopName:'TechZone Haiti' },
-  { id:10, category:'security', kind:'login_alert', title:'New login detected', body:'A new login was detected from Chrome on Windows in Miami, USA.', createdAt:agoISO(190), unread:true, archived:false },
-  { id:11, category:'wallet', kind:'payment_failed', title:'Payment failed', body:'Your payment for order #CLV775230 could not be processed. Please try again.', createdAt:agoISO(220), unread:false, archived:false, amount:129.00 },
-  { id:12, category:'orders', kind:'cancelled', title:'Order cancelled', body:'Order #CLV775230 was cancelled as requested.', createdAt:agoISO(400), unread:false, archived:false, orderId:'CLV775230', status:'Cancelled' },
-];
+window._NOTIFICATIONS = window._NOTIFICATIONS || [];
 
 function groupOf(createdAt) {
   const days = (Date.now() - new Date(createdAt)) / 86400000;
@@ -362,7 +345,7 @@ function NotificationDetailScreen({ params = {} }) {
             <span style={{ display:'inline-block', fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, color: heroColor, background: notif.kind==='delivered' ? '#ECFDF5' : notif.kind==='cancelled' ? '#FEF2F2' : C.primarySoft, borderRadius:9999, padding:'4px 12px', marginBottom:10 }}>{notif.status}</span>
           )}
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink, lineHeight:1.6, marginTop:6 }}>
-            Hello John Doe,<br /><br />{notif.body}
+            Hello {(window._PROFILE?.name || '').split(' ')[0] || 'there'},<br /><br />{notif.body}
           </div>
         </div>
 

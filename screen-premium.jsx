@@ -112,11 +112,8 @@ function InviteFriendsScreen() {
   const { goBack } = useNav();
   const isDesktop = useIsDesktop();
   const [toast, setToast] = React.useState(null);
-  const referralCode = 'JOHN2024';
-  const invited = [
-    { name:'Marie L.', status:'joined', reward:10 },
-    { name:'Paul S.',  status:'pending', reward:0 },
-  ];
+  const referralCode = ((window._PROFILE?.name || 'USER').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 8) || 'USER') + new Date().getFullYear();
+  const invited = [];
   const totalEarned = invited.filter(i => i.status === 'joined').reduce((s,i)=>s+i.reward, 0);
 
   function copyCode() {
@@ -171,6 +168,9 @@ function InviteFriendsScreen() {
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>Your Invites</span>
             <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700, color:C.success }}>+${totalEarned.toFixed(2)} earned</span>
           </div>
+          {invited.length === 0 && (
+            <div style={{ textAlign:'center', padding:'16px 0', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No invites yet. Share your link to start earning.</div>
+          )}
           {invited.map((f, i) => (
             <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderTop: i > 0 ? `1px solid ${C.hairline}` : 'none' }}>
               <Avatar size={36} initials={f.name.split(' ').map(n=>n[0]).join('')} />

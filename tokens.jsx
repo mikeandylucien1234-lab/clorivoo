@@ -38,25 +38,11 @@ function useIsDesktop() {
   return isDesktop;
 }
 
-// Demo product data
-const PRODUCTS = [
-  { id:1, title:'Ribbed Terracotta Vase · M', price:24.50, oldPrice:39, discount:37, sold:'12k sold', seller:'luna.studio', rating:4.8, reviews:2341, category:'home', label:'product photo' },
-  { id:2, title:'Artisan Ceramic Mug', price:8.99, oldPrice:24, discount:65, sold:'2.1k sold', seller:'ceramix.co', rating:4.7, reviews:892, category:'home', label:'product photo' },
-  { id:3, title:'Natural Linen Lampshade', price:22.00, oldPrice:58, discount:60, sold:'890 sold', seller:'maison.deco', rating:4.6, reviews:340, category:'home', label:'product photo' },
-  { id:4, title:'Bamboo Oil Burner', price:15.00, oldPrice:40, discount:62, sold:'1.4k sold', seller:'nature.home', rating:4.9, reviews:1102, category:'home', label:'product photo' },
-  { id:5, title:'Natural Canvas Tote Bag', price:14.50, seller:'atelier.l', rating:4.5, reviews:234, category:'fashion', label:'product photo' },
-  { id:6, title:'Washed Linen Apron · oat', price:28.00, seller:'slowthread', rating:4.8, reviews:567, category:'fashion', label:'product photo' },
-  { id:7, title:'Beeswax Lavender Candle', price:11.00, seller:'waxcraft', rating:4.7, reviews:445, category:'home', label:'product photo' },
-  { id:8, title:'Terracotta Velvet Cushion', price:32.00, oldPrice:48, discount:33, seller:'softroom', rating:4.6, reviews:189, category:'home', label:'product photo' },
-  { id:9, title:'Gold Steel Oval Sunglasses', price:18.00, oldPrice:45, discount:60, sold:'3.2k sold', seller:'studio.vue', rating:4.4, reviews:678, category:'fashion', label:'product photo' },
-  { id:10, title:'Marble & Brass Table Lamp', price:54.00, oldPrice:89, discount:39, seller:'lux.home', rating:4.9, reviews:312, category:'home', label:'product photo' },
-];
+// Product catalog — empty until added via Admin > Products
+const PRODUCTS = [];
 
 // Cart state (shared across screens via window)
-window.CART_ITEMS = window.CART_ITEMS || [
-  { product: PRODUCTS[0], qty: 1, variant: 'M · terracotta', seller: 'luna.studio' },
-  { product: PRODUCTS[6], qty: 2, variant: 'lavender', seller: 'waxcraft' },
-];
+window.CART_ITEMS = window.CART_ITEMS || [];
 
 // Icons — Lucide-compatible (24×24 viewBox, stroke paths)
 const ICONS = {

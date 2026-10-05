@@ -1,13 +1,7 @@
 // screen-wallet.jsx — CLORIVO Wallet
 
-window._WALLET_BALANCE = window._WALLET_BALANCE ?? 45.50;
-window._WALLET_TX = window._WALLET_TX || [
-  { id:1, type:'cashback', label:'Cashback · Order #CLV782145', amount:+7.56,  date:'2024-05-11' },
-  { id:2, type:'deposit',  label:'Top up via MonCash',           amount:+50.00, date:'2024-05-08' },
-  { id:3, type:'payment',  label:'Order #CLV775230',             amount:-12.90, date:'2024-04-21' },
-  { id:4, type:'promo',    label:'Welcome bonus',                amount:+10.00, date:'2024-04-01' },
-  { id:5, type:'payment',  label:'Order #CLV772109',             amount:-39.00, date:'2024-04-15' },
-];
+window._WALLET_BALANCE = window._WALLET_BALANCE ?? 0;
+window._WALLET_TX = window._WALLET_TX || [];
 
 function txMeta(type) {
   if (type === 'deposit')  return { icon:'download', color:C.success, bg:'#ECFDF5' };

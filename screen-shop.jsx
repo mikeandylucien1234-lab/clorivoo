@@ -5,13 +5,10 @@ function ShopCustomizeScreen() {
   const [tab, setTab] = React.useState('preview'); // preview | edit
 
   // Editable shop state
-  const [shopName, setShopName]   = React.useState('luna.studio');
-  const [shopBio, setShopBio]     = React.useState('Handmade decor pieces · ceramic & linen');
+  const [shopName, setShopName]   = React.useState(window._PROFILE?.name || 'My Shop');
+  const [shopBio, setShopBio]     = React.useState('');
   const [accent, setAccent]       = React.useState('#6C4DFF');
-  const [banners, setBanners]     = React.useState([
-    { id:1, title:'New spring collection', sub:'-20% this week', color:'#6C4DFF', tint:0 },
-    { id:2, title:'Limited terracotta edition',     sub:'One-of-a-kind pieces',      color:'#C97B5A', tint:1 },
-  ]);
+  const [banners, setBanners]     = React.useState([]);
   const [bannerIdx, setBannerIdx] = React.useState(0);
 
   const accentOptions = ['#6C4DFF', '#C97B5A', '#1F8A5B', '#2563EB', '#DB2777'];
@@ -63,7 +60,7 @@ function ShopCustomizeScreen() {
                   <Icon name="check" size={9} color="#fff" sw={3} />
                 </div>
               </div>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>2.4k followers · ⭐ 4.9</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>0 followers · New seller</span>
             </div>
             <button style={{ background:accent, border:'none', borderRadius:9999, padding:'6px 14px', color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600 }}>Follow</button>
           </div>

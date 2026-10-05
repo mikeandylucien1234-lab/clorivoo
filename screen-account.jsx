@@ -1,10 +1,10 @@
 // screen-account.jsx — Wishlist + Profile Home + Personal Information + Edit Profile
 
-// ─── DEMO PROFILE (persisted only for this session) ───────────
+// ─── PROFILE (persisted only for this session, until a real backend is connected) ──
 window._PROFILE = window._PROFILE || {
-  name:'John Doe', email:'john.doe@gmail.com', phone:'+509 34 56 78 90',
-  dob:'1995-05-15', gender:'Male', nationality:'Haitian',
-  memberSince:'2024-01-01', verified:true, avatar:null,
+  name:'New User', email:'', phone:'',
+  dob:'', gender:'', nationality:'',
+  memberSince: new Date().toISOString().slice(0,10), verified:false, avatar:null,
   role:'buyer', status:'active',
 };
 

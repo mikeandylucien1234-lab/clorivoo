@@ -1,21 +1,12 @@
 // screen-search.jsx — Search Results Page
 
-const IPHONE_VARIANTS = [
-  { id:901, title:'iPhone 14 Pro Max', variant:'256GB, Deep Purple', price:1099, oldPrice:1299, discount:15, rating:4.9, reviews:128, category:'electronics', brand:'Apple', color:'Purple', inStock:true,  freeDelivery:true, condition:'New', tint:0, sold:'2.1k sold' },
-  { id:902, title:'iPhone 14 Pro Max', variant:'256GB, Gold',        price:1099, oldPrice:1299, discount:10, rating:4.8, reviews:96,  category:'electronics', brand:'Apple', color:'Gold',   inStock:true,  freeDelivery:true, condition:'New', tint:4, sold:'1.8k sold' },
-  { id:903, title:'iPhone 14 Pro Max', variant:'256GB, Silver',      price:1099, oldPrice:1299, discount:15, rating:4.8, reviews:76,  category:'electronics', brand:'Apple', color:'Silver', inStock:false, freeDelivery:true, condition:'New', tint:2, sold:'980 sold' },
-  { id:904, title:'iPhone 14 Pro Max', variant:'256GB, Space Black', price:1099, oldPrice:1299, discount:15, rating:4.9, reviews:112, category:'electronics', brand:'Apple', color:'Black',  inStock:true,  freeDelivery:true, condition:'New', tint:3, sold:'2.4k sold' },
-];
-const SEARCH_INDEX = [
-  ...IPHONE_VARIANTS,
-  ...PRODUCTS.map((p, i) => ({
-    ...p, variant:'', brand: p.seller || 'CLORIVO', color: ['Purple','Gold','Silver','Black','Blue'][i % 5],
-    inStock: p.id !== 5, freeDelivery: p.price > 15, condition:'New', tint: i % 5,
-  })),
-];
+const SEARCH_INDEX = PRODUCTS.map((p, i) => ({
+  ...p, variant:'', brand: p.seller || 'CLORIVO', color: ['Purple','Gold','Silver','Black','Blue'][i % 5],
+  inStock: true, freeDelivery: p.price > 15, condition:'New', tint: i % 5,
+}));
 
-window._RECENT_SEARCHES = window._RECENT_SEARCHES || ['iPhone 15 Pro Max', 'Samsung S24 Ultra', 'AirPods Pro 2'];
-const POPULAR_SEARCHES = ['iPhone 15 Pro Max', 'Samsung S24 Ultra', 'AirPods Pro 2', 'iPhone 13', 'iPhone Case', 'iPhone Charger'];
+window._RECENT_SEARCHES = window._RECENT_SEARCHES || [];
+const POPULAR_SEARCHES = [];
 const CAT_TABS = [
   { key:'all',        label:'All',         icon:'grid' },
   { key:'electronics',label:'Phones',      icon:'smartphone' },
@@ -299,6 +290,7 @@ function SearchScreen({ params = {} }) {
                 </div>
               )}
 
+              {POPULAR_SEARCHES.length > 0 && (
               <div>
                 <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:10 }}>
                   <Icon name="zap" size={15} color={C.primary} />
@@ -310,7 +302,9 @@ function SearchScreen({ params = {} }) {
                   ))}
                 </div>
               </div>
+              )}
 
+              {recentlyViewed.length > 0 && (
               <div>
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:10 }}>Recently Viewed</div>
                 <div style={{ display:'grid', gridTemplateColumns: isDesktop ? 'repeat(4, 1fr)' : '1fr 1fr', gap:12 }}>
@@ -319,6 +313,7 @@ function SearchScreen({ params = {} }) {
                   ))}
                 </div>
               </div>
+              )}
             </div>
           )}
 

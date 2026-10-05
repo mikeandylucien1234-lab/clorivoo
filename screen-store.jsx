@@ -1,45 +1,20 @@
 // screen-store.jsx — Public Seller Store Page
 
 const STORE_SELLER = {
-  id:'luxe-store', name:'Luxe Store', verified:true, rating:4.8, reviews:256, followers:1247,
-  memberSince:'2023-01-01', level:'Gold Seller', location:'Port-au-Prince, Haiti', responseTime:'Under 2 hours',
-  bio:'Your one-stop shop for premium electronics, fashion and home goods at unbeatable prices. Trusted by thousands of happy customers across Haiti.',
-  shipping:'Ships within 1–2 business days via Flash Express.',
-  returns:'Free returns within 7 days of delivery, no questions asked.',
-  hours:'Monday – Saturday, 9:00 AM – 6:00 PM',
-  phone:'+509 34 56 78 90', email:'contact@luxestore.com',
+  id:'shop', name:'', verified:false, rating:0, reviews:0, followers:0,
+  memberSince: new Date().toISOString().slice(0,10), level:'New Seller', location:'', responseTime:'',
+  bio:'',
+  shipping:'',
+  returns:'',
+  hours:'',
+  phone:'', email:'',
 };
 
-const STORE_BANNERS = [
-  { id:1, title:'Flash Sale Today',   subtitle:'Up to 50% off electronics', tint:0, active:true },
-  { id:2, title:'New Arrivals',       subtitle:'This week\'s freshest drops', tint:1, active:true },
-  { id:3, title:'Free Shipping',      subtitle:'On all orders over $50',    tint:2, active:true },
-  { id:4, title:'Member Rewards',     subtitle:'Earn cashback on every order', tint:3, active:true },
-];
-
-const STORE_ANNOUNCEMENTS = [
-  '🔥 Flash Sale Today — up to 50% off electronics',
-  '🚚 Free Shipping on orders over $50',
-  '🎉 New Arrivals just dropped — check them out',
-];
-
-const STORE_CATEGORIES = [
-  { key:'smartphones', label:'Smartphones', icon:'smartphone', count:24 },
-  { key:'electronics', label:'Electronics', icon:'zap',        count:18 },
-  { key:'accessories', label:'Accessories', icon:'headphones', count:35 },
-  { key:'fashion',     label:'Fashion',     icon:'shoppingBag',count:22 },
-  { key:'home',        label:'Home',        icon:'home',       count:16 },
-];
-
-const STORE_REVIEWS = [
-  { id:1, name:'Marc D.',  verified:true,  rating:5, date:'2024-05-12', comment:'Excellent service and quality products. Fast delivery and well packaged. I recommend!', images:[0,1], reply:null },
-  { id:2, name:'Sophia R.', verified:true, rating:5, date:'2024-05-08', comment:'The iPhone arrived in perfect condition, exactly as described. Will buy again from this store.', images:[], reply:'Thank you so much for your kind words, Sophia! 🙏' },
-  { id:3, name:'Jean P.',  verified:true,  rating:4, date:'2024-05-02', comment:'Good product overall, delivery took a bit longer than expected but support was very responsive.', images:[], reply:null },
-  { id:4, name:'Alicia M.', verified:false, rating:5, date:'2024-04-27', comment:'Beautiful handbag, great quality leather. Exceeded my expectations!', images:[2], reply:null },
-  { id:5, name:'Kevin T.', verified:true,  rating:3, date:'2024-04-20', comment:'Product is fine but packaging could be improved.', images:[], reply:'Thanks for the feedback, we\'ll work on it!' },
-  { id:6, name:'Nadia F.', verified:true,  rating:5, date:'2024-04-14', comment:'Best seller on CLORIVO! Always fast, always genuine products.', images:[], reply:null },
-];
-const RATING_BREAKDOWN = [ { stars:5, pct:82 }, { stars:4, pct:12 }, { stars:3, pct:4 }, { stars:2, pct:1 }, { stars:1, pct:1 } ];
+const STORE_BANNERS = [];
+const STORE_ANNOUNCEMENTS = [];
+const STORE_CATEGORIES = [];
+const STORE_REVIEWS = [];
+const RATING_BREAKDOWN = [ { stars:5, pct:0 }, { stars:4, pct:0 }, { stars:3, pct:0 }, { stars:2, pct:0 }, { stars:1, pct:0 } ];
 
 const SORTS = [
   { key:'popular', label:'Popular' },
@@ -146,7 +121,7 @@ function StarRow({ rating, size=12 }) {
 function SellerStoreScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
   const isDesktop = useIsDesktop();
-  const seller = STORE_SELLER;
+  const seller = { ...STORE_SELLER, name: params.shopName || STORE_SELLER.name || 'Shop' };
 
   const [loading, setLoading] = React.useState(true);
   const [tab, setTab] = React.useState('home');
@@ -232,7 +207,7 @@ function SellerStoreScreen({ params = {} }) {
         )}
       </div>
 
-      <AnnouncementBar items={STORE_ANNOUNCEMENTS} />
+      {STORE_ANNOUNCEMENTS.length > 0 && <AnnouncementBar items={STORE_ANNOUNCEMENTS} />}
 
       <div style={{ flex:1, overflowY:'auto', paddingBottom: isDesktop ? 40 : NAV_H + HOME_H + 16 }}>
         <div style={{ maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined, width: isDesktop ? '100%' : undefined, padding: isDesktop ? '20px 32px 0' : undefined }}>

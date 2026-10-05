@@ -553,7 +553,7 @@ function SellerDashboardScreen() {
   const { navigate } = useNav();
   const [stats, setStats] = React.useState(null);
   const [shopId, setShopId] = React.useState(null);
-  const [sellerName, setSellerName] = React.useState('luna.studio');
+  const [sellerName, setSellerName] = React.useState(window._PROFILE?.name || 'My Shop');
 
   React.useEffect(() => {
     sbGetUser().then(async user => {
@@ -566,27 +566,28 @@ function SellerDashboardScreen() {
         const shop = await sbGetShop(profile.shop_id);
         if (shop?.name) setSellerName(shop.name);
       } else {
-        setStats(_DEMO_SELLER_STATS ?? { orders:38, products:15, revenue:2481.04, followers:2400, rating:4.9 });
+        setStats(_DEMO_SELLER_STATS ?? { orders:0, products:0, revenue:0, followers:0, rating:0 });
       }
     });
   }, []);
 
   const kpis = [
-    { k:'Orders', v: stats ? String(stats.orders)  : '38',   delta:'+12', up:true  },
-    { k:'Revenue',   v: stats ? '$' + (stats.revenue ?? 842).toFixed(0) : '$842', delta:'+8%', up:true },
-    { k:'Products',  v: stats ? String(stats.products) : '15',  delta:'+2',  up:true  },
-    { k:'Rating',      v: stats ? String(stats.rating ?? 4.9) : '4.9', delta:'stable', up:true },
+    { k:'Orders',   v: stats ? String(stats.orders)  : '0' },
+    { k:'Revenue',  v: stats ? '$' + (stats.revenue ?? 0).toFixed(0) : '$0' },
+    { k:'Products', v: stats ? String(stats.products) : '0' },
+    { k:'Rating',   v: stats && stats.rating ? String(stats.rating) : '—' },
   ];
-  const data = [120, 185, 142, 210, 175, 260, 230];
+  const sellerOrders = window._DEMO_SELLER_ORDERS || [];
+  const data = [0,0,0,0,0,0,0];
   const days = ['M','T','W','T','F','S','S'];
-  const maxV = Math.max(...data);
+  const maxV = Math.max(1, ...data);
   const W = 310, H = 80;
   const pts = data.map((v, i) => [(i / (data.length-1)) * W, H - (v/maxV)*(H-10) - 5]);
   const polyline = pts.map(p => p.join(',')).join(' ');
   const area = `0,${H} ${polyline} ${W},${H}`;
 
   const navItems = [
-    { icon:'package',  label:'Orders', badge:12, action: () => navigate('seller-orders') },
+    { icon:'package',  label:'Orders', badge:sellerOrders.filter(o=>o.orders?.status==='pending').length, action: () => navigate('seller-orders') },
     { icon:'store',    label:'Products',  badge:0,  action: () => {} },
     { icon:'creditCard',label:'Wallet',   badge:0,  action: () => {} },
     { icon:'barChart', label:'Analytics', badge:0,  action: () => {} },
@@ -601,7 +602,7 @@ function SellerDashboardScreen() {
       <div style={{ paddingTop:STATUS_H, background:`linear-gradient(135deg, ${C.primary} 0%, ${C.primaryDeep} 100%)`, padding:`${STATUS_H + 12}px 20px 20px`, flexShrink:0, position:'relative', overflow:'hidden' }}>
         <div style={{ position:'absolute', right:-20, top:-20, width:140, height:140, borderRadius:9999, background:'rgba(255,255,255,0.07)' }} />
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
-          <Avatar size={36} initials="LS" bg="rgba(255,255,255,0.2)" style={{ border:'2px solid rgba(255,255,255,0.3)' }} />
+          <Avatar size={36} initials={sellerName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()} bg="rgba(255,255,255,0.2)" style={{ border:'2px solid rgba(255,255,255,0.3)' }} />
           <div style={{ flex:1 }}>
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.75)' }}>Welcome,</div>
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:700, color:'#fff' }}>{sellerName}</div>
@@ -640,9 +641,6 @@ function SellerDashboardScreen() {
             <div key={i} style={{ background:C.white, borderRadius:14, padding:'12px 14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:4 }}>{k.k}</div>
               <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color:C.ink, letterSpacing:'-0.01em' }}>{k.v}</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color: k.up ? C.success : C.danger, marginTop:2 }}>
-                {k.up ? '↗' : '↘'} {k.delta} vs yesterday
-              </div>
             </div>
           ))}
         </div>
@@ -695,13 +693,8 @@ function SellerDashboardScreen() {
 function SellerOrdersScreen() {
   const { navigate, goBack } = useNav();
   const [filter, setFilter] = React.useState(1);
-  const filters = ['All 47','New 12','Packed 8','Shipped 23','Returns 4'];
-  const orders = [
-    { id:'#CL-29841', buyer:'A. Martin', sku:'Terracotta vase · M', qty:1, price:'$24.50', status:'new', urgent:true },
-    { id:'#CL-29839', buyer:'M. Otieno',  sku:'Linen apron · oat', qty:2, price:'$56.00', status:'new', urgent:false },
-    { id:'#CL-29836', buyer:'S. Park',    sku:'Oil burner',    qty:1, price:'$15.00', status:'packed', urgent:false },
-    { id:'#CL-29830', buyer:'J. Wei',     sku:'Ceramic mug × 4', qty:4, price:'$36.00', status:'packed', urgent:false },
-  ];
+  const filters = ['All','New','Packed','Shipped','Returns'];
+  const orders = [];
   return (
     <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
       <StatusBar />
@@ -716,6 +709,11 @@ function SellerOrdersScreen() {
         </div>
       </div>
       <div style={{ flex:1, overflowY:'auto', padding:'12px 16px', display:'flex', flexDirection:'column', gap:10, paddingBottom:30 }}>
+        {orders.length === 0 && (
+          <div style={{ padding:'40px 16px', textAlign:'center' }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No orders yet</span>
+          </div>
+        )}
         {orders.map((o, i) => (
           <div key={i} style={{ background:C.white, borderRadius:14, padding:'12px 14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)', display:'flex', gap:12 }}>
             <Img label="" tint={i % 5} style={{ width:52, height:52, borderRadius:10, flexShrink:0 }} />
