@@ -31,6 +31,10 @@ window._LOGIN_HISTORY      = window._LOGIN_HISTORY      || [
   { who: window._PROFILE?.name || 'You', device:'Chrome · macOS', at: new Date(Date.now()-3600000).toISOString(), ip:'102.89.23.14' },
   { who: window._PROFILE?.name || 'You', device:'Safari · iPhone', at: new Date(Date.now()-86400000).toISOString(), ip:'102.89.23.14' },
 ];
+window._NOTIF_SETTINGS     = window._NOTIF_SETTINGS     || { newOrders:true, newSellers:true, urgentReports:true, weeklyReports:false, marketingEmails:false };
+window._ROLES_SETTINGS     = window._ROLES_SETTINGS     || { allowInvite:true };
+window._SECURITY_SETTINGS  = window._SECURITY_SETTINGS  || { twoFactor:true, biometric:true, loginAlerts:false };
+window._PLATFORM_SETTINGS  = window._PLATFORM_SETTINGS  || { freeShipping:true, realTimeTracking:true };
 
 function logAdminAction(action, detail) {
   window._ADMIN_AUDIT_LOG = [{ action, detail, at:new Date().toISOString(), by: window._PROFILE?.name || 'Admin' }, ...window._ADMIN_AUDIT_LOG].slice(0, 200);
@@ -1024,6 +1028,12 @@ function AdminShellScreen({ params = {} }) {
   // ── Rewards ──
   function saveRewards(field, value) { window._REWARDS_CONFIG = { ...window._REWARDS_CONFIG, [field]: value }; forceTick(t => t + 1); }
 
+  // ── Notifications / Roles / Security / Platform Settings toggles ──
+  function toggleNotif(field, value) { window._NOTIF_SETTINGS = { ...window._NOTIF_SETTINGS, [field]: value }; forceTick(t => t + 1); }
+  function toggleRole(field, value) { window._ROLES_SETTINGS = { ...window._ROLES_SETTINGS, [field]: value }; forceTick(t => t + 1); }
+  function toggleSecurity(field, value) { window._SECURITY_SETTINGS = { ...window._SECURITY_SETTINGS, [field]: value }; logAdminAction('Changed security setting', `${field} → ${value}`); forceTick(t => t + 1); }
+  function togglePlatformSetting(field, value) { window._PLATFORM_SETTINGS = { ...window._PLATFORM_SETTINGS, [field]: value }; logAdminAction('Changed platform setting', `${field} → ${value}`); forceTick(t => t + 1); }
+
   const title = ADMIN_TITLES[section] || 'Dashboard';
 
   function renderSection() {
@@ -1378,12 +1388,15 @@ function AdminShellScreen({ params = {} }) {
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
           <SectionTitle title="System Notifications" />
           <AdminSettingsRows rows={[
-            { type:'toggle', k:'New orders', on:true },
-            { type:'toggle', k:'New sellers', on:true },
-            { type:'toggle', k:'Urgent reports', on:true },
-            { type:'toggle', k:'Weekly reports', on:false },
-            { type:'toggle', k:'Marketing emails', on:false },
-          ]} />
+            { type:'toggle', k:'New orders', on:window._NOTIF_SETTINGS.newOrders },
+            { type:'toggle', k:'New sellers', on:window._NOTIF_SETTINGS.newSellers },
+            { type:'toggle', k:'Urgent reports', on:window._NOTIF_SETTINGS.urgentReports },
+            { type:'toggle', k:'Weekly reports', on:window._NOTIF_SETTINGS.weeklyReports },
+            { type:'toggle', k:'Marketing emails', on:window._NOTIF_SETTINGS.marketingEmails },
+          ]} onToggle={(k, v) => {
+            const map = { 'New orders':'newOrders', 'New sellers':'newSellers', 'Urgent reports':'urgentReports', 'Weekly reports':'weeklyReports', 'Marketing emails':'marketingEmails' };
+            toggleNotif(map[k], v);
+          }} />
         </div>
       );
 
@@ -1394,8 +1407,8 @@ function AdminShellScreen({ params = {} }) {
             { type:'kv', k:'Owner', v:`${window._STAFF.filter(s=>s.role==='Owner').length} member` },
             { type:'kv', k:'Moderator', v:`${window._STAFF.filter(s=>s.role==='Moderator').length} members` },
             { type:'kv', k:'Support', v:`${window._STAFF.filter(s=>s.role==='Support').length} members` },
-            { type:'toggle', k:'Allow staff to invite new members', on:true },
-          ]} />
+            { type:'toggle', k:'Allow staff to invite new members', on:window._ROLES_SETTINGS.allowInvite },
+          ]} onToggle={(k, v) => toggleRole('allowInvite', v)} />
         </div>
       );
 
@@ -1422,12 +1435,15 @@ function AdminShellScreen({ params = {} }) {
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
           <SectionTitle title="Security & 2FA" />
           <AdminSettingsRows rows={[
-            { type:'toggle', k:'Two-factor authentication', on:true },
-            { type:'toggle', k:'Biometric login', on:true },
-            { type:'toggle', k:'Login alerts', on:false },
+            { type:'toggle', k:'Two-factor authentication', on:window._SECURITY_SETTINGS.twoFactor },
+            { type:'toggle', k:'Biometric login', on:window._SECURITY_SETTINGS.biometric },
+            { type:'toggle', k:'Login alerts', on:window._SECURITY_SETTINGS.loginAlerts },
             { type:'kv', k:'Active sessions', v:'3 devices' },
             { type:'kv', k:'Last security check', v:'2d ago' },
-          ]} />
+          ]} onToggle={(k, v) => {
+            const map = { 'Two-factor authentication':'twoFactor', 'Biometric login':'biometric', 'Login alerts':'loginAlerts' };
+            toggleSecurity(map[k], v);
+          }} />
         </div>
       );
 
@@ -1556,9 +1572,12 @@ function AdminShellScreen({ params = {} }) {
             { type:'kv', k:'Standard shipping', v:'$3.99' },
             { type:'kv', k:'Express shipping', v:'$8.99' },
             { type:'kv', k:'Free shipping threshold', v:'$30.00' },
-            { type:'toggle', k:'Free shipping enabled', on:true },
-            { type:'toggle', k:'Real-time tracking', on:true },
-          ]} />
+            { type:'toggle', k:'Free shipping enabled', on:window._PLATFORM_SETTINGS.freeShipping },
+            { type:'toggle', k:'Real-time tracking', on:window._PLATFORM_SETTINGS.realTimeTracking },
+          ]} onToggle={(k, v) => {
+            const map = { 'Free shipping enabled':'freeShipping', 'Real-time tracking':'realTimeTracking' };
+            togglePlatformSetting(map[k], v);
+          }} />
         </div>
       );
 
