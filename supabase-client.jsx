@@ -377,7 +377,7 @@ async function sbGetSellerStats(shopId) {
     products: productsCount ?? 0,
     revenue: (shop.data?.total_sales ?? 0) * 25,
     followers: shop.data?.followers ?? 0,
-    rating: shop.data?.rating ?? 4.9,
+    rating: shop.data?.rating ?? 0,
   };
 }
 
@@ -392,22 +392,99 @@ async function sbGetSellerOrders(shopId) {
 }
 
 // ─── ADMIN HELPERS ────────────────────────────────────────────────
+// Revenue is recognized on payment_status='paid' (covers 'delivered' orders too, since
+// those are paid by the time they ship). Refunds are tracked separately so they net out
+// of revenue without being hidden. Commission rate is admin-configurable (Settings →
+// Platform), not hardcoded, so Profit reflects whatever the admin has actually set.
 async function sbAdminGetStats() {
   if (!_sb) return _DEMO_ADMIN_STATS;
-  const [users, sellers, orders, kyc] = await Promise.all([
-    _sb.from('profiles').select('id', { count: 'exact', head: true }),
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  const commissionRate = window._PLATFORM_SETTINGS?.commissionRate ?? 0.10;
+
+  const [users, sellers, allOrders, todayOrders, kyc, recentOrdersRes] = await Promise.all([
+    _sb.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'buyer'),
     _sb.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'seller'),
-    _sb.from('orders').select('total', { count: 'exact' }),
+    _sb.from('orders').select('total_amount, status, payment_status, created_at'),
+    _sb.from('orders').select('total_amount, status, payment_status, created_at').gte('created_at', startOfToday.toISOString()),
     _sb.from('kyc_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    _sb.from('orders').select('id, total_amount, status, created_at, profiles(full_name, email)').order('created_at', { ascending: false }).limit(5),
   ]);
-  const gmv = (orders.data ?? []).reduce((s, o) => s + (o.total ?? 0), 0);
+
+  const orders = allOrders.data ?? [];
+  const paid = orders.filter(o => o.payment_status === 'paid');
+  const refunded = orders.filter(o => o.status === 'refunded' || o.payment_status === 'refunded');
+  const totalRevenue = paid.reduce((s, o) => s + (o.total_amount ?? 0), 0);
+  const todaysRevenue = (todayOrders.data ?? []).filter(o => o.payment_status === 'paid').reduce((s, o) => s + (o.total_amount ?? 0), 0);
+  const totalRefunds = refunded.reduce((s, o) => s + (o.total_amount ?? 0), 0);
+
   return {
     users: users.count ?? 0,
     sellers: sellers.count ?? 0,
-    orders: orders.count ?? 0,
-    gmv,
+    orders: orders.length,
+    ordersToday: (todayOrders.data ?? []).length,
+    gmv: totalRevenue,
+    totalRevenue,
+    todaysRevenue,
+    avgOrderValue: orders.length ? totalRevenue / orders.length : 0,
+    profit: totalRevenue * commissionRate,
+    refunds: totalRefunds,
     pendingKyc: kyc.count ?? 0,
+    recentOrders: recentOrdersRes.data ?? [],
   };
+}
+
+// Buckets paid orders for the Sales Analytics chart. `range` is 'day' (last 24h, hourly),
+// 'week' (7 days), 'month' (30 days) or 'year' (12 months). Aggregation happens
+// client-side (consistent with the rest of this file) rather than via a SQL view, since
+// the row volume here is small enough not to need one.
+const _TIMESERIES_RANGES = {
+  day:   { unit:'hour',  count:24 },
+  week:  { unit:'day',   count:7 },
+  month: { unit:'day',   count:30 },
+  year:  { unit:'month', count:12 },
+};
+async function sbAdminGetSalesTimeseries(range = 'week') {
+  if (!_sb) return [];
+  const { unit, count } = _TIMESERIES_RANGES[range] || _TIMESERIES_RANGES.week;
+  const commissionRate = window._PLATFORM_SETTINGS?.commissionRate ?? 0.10;
+
+  const since = new Date();
+  if (unit === 'hour') { since.setMinutes(0, 0, 0); since.setHours(since.getHours() - (count - 1)); }
+  else if (unit === 'month') { since.setHours(0, 0, 0, 0); since.setDate(1); since.setMonth(since.getMonth() - (count - 1)); }
+  else { since.setHours(0, 0, 0, 0); since.setDate(since.getDate() - (count - 1)); }
+
+  const { data } = await _sb.from('orders')
+    .select('total_amount, payment_status, created_at')
+    .gte('created_at', since.toISOString())
+    .eq('payment_status', 'paid');
+  const orders = data ?? [];
+
+  return [...Array(count)].map((_, i) => {
+    const bucket = new Date(since);
+    const next = new Date(since);
+    if (unit === 'hour') { bucket.setHours(bucket.getHours() + i); next.setTime(bucket.getTime()); next.setHours(next.getHours() + 1); }
+    else if (unit === 'month') { bucket.setMonth(bucket.getMonth() + i); next.setTime(bucket.getTime()); next.setMonth(next.getMonth() + 1); }
+    else { bucket.setDate(bucket.getDate() + i); next.setTime(bucket.getTime()); next.setDate(next.getDate() + 1); }
+    const bucketOrders = orders.filter(o => { const t = new Date(o.created_at).getTime(); return t >= bucket.getTime() && t < next.getTime(); });
+    const revenue = bucketOrders.reduce((s, o) => s + (o.total_amount ?? 0), 0);
+    return { date: bucket.toISOString(), revenue, orders: bucketOrders.length, profit: revenue * commissionRate };
+  });
+}
+
+// Realtime: any insert/update on orders refreshes the dashboard without a manual reload.
+// Supabase Realtime (Postgres logical replication over a WebSocket) is the native
+// equivalent of a Socket.io push here — no separate socket server needed or possible on
+// a serverless/static host like Vercel.
+let _adminOrdersChannelSeq = 0;
+function sbSubscribeAdminOrders(callback) {
+  if (!_sb) return () => {};
+  // Each caller gets its own uniquely-named channel — reusing a channel name across
+  // concurrent subscribers makes supabase-js reject the second .on() with
+  // "cannot add postgres_changes callbacks after subscribe()".
+  const channel = _sb.channel(`admin-orders-${++_adminOrdersChannelSeq}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, callback)
+    .subscribe();
+  return () => _sb.removeChannel(channel);
 }
 
 async function sbAdminGetKycRequests() {
@@ -506,7 +583,7 @@ const _DEMO_MESSAGES = [];
 const _DEMO_NOTIFICATIONS = [];
 const _DEMO_SELLER_STATS = { orders:0, products:0, revenue:0, followers:0, rating:0 };
 const _DEMO_SELLER_ORDERS = [];
-const _DEMO_ADMIN_STATS = { users:0, sellers:0, orders:0, gmv:0, pendingKyc:0 };
+const _DEMO_ADMIN_STATS = { users:0, sellers:0, orders:0, ordersToday:0, gmv:0, totalRevenue:0, todaysRevenue:0, avgOrderValue:0, profit:0, refunds:0, pendingKyc:0, recentOrders:[] };
 const _DEMO_KYC_REQUESTS = [];
 
 // Expose all helpers globally (used by screen files)
@@ -522,7 +599,8 @@ Object.assign(window, {
   sbSubscribeToMessages, sbMarkConversationRead, sbGetOrCreateConversation,
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
-  sbAdminGetStats, sbAdminGetKycRequests, sbAdminUpdateKyc, sbAdminGetUsers, sbAdminUpdateUser,
+  sbAdminGetStats, sbAdminGetSalesTimeseries, sbSubscribeAdminOrders,
+  sbAdminGetKycRequests, sbAdminUpdateKyc, sbAdminGetUsers, sbAdminUpdateUser,
   sbAdminCreateProduct, sbAdminUpdateProduct, sbAdminDeleteProduct,
   sbUploadFile,
   _isConfigured,

@@ -17,7 +17,7 @@ window._LOGIN_HISTORY      = window._LOGIN_HISTORY      || [];
 window._NOTIF_SETTINGS     = window._NOTIF_SETTINGS     || { newOrders:true, newSellers:true, urgentReports:true, weeklyReports:false, marketingEmails:false };
 window._ROLES_SETTINGS     = window._ROLES_SETTINGS     || { allowInvite:true };
 window._SECURITY_SETTINGS  = window._SECURITY_SETTINGS  || { twoFactor:true, biometric:true, loginAlerts:false };
-window._PLATFORM_SETTINGS  = window._PLATFORM_SETTINGS  || { freeShipping:true, realTimeTracking:true };
+window._PLATFORM_SETTINGS  = window._PLATFORM_SETTINGS  || { freeShipping:true, realTimeTracking:true, commissionRate:0.10 };
 
 function logAdminAction(action, detail) {
   window._ADMIN_AUDIT_LOG = [{ action, detail, at:new Date().toISOString(), by: window._PROFILE?.name || 'Admin' }, ...window._ADMIN_AUDIT_LOG].slice(0, 200);
@@ -495,34 +495,44 @@ function AdminTopbar({ title, onNav }) {
 
 // ─── ADMIN — Dashboard Overview ─────────────────────────────────
 function AdminOverview({ adminStats, onNav, sellersList = [], reviews = [], kycCount = 0 }) {
-  const orders = window.MOCK_ORDERS || [];
-  const revenue = orders.reduce((s,o) => s + (o.total||0), 0);
+  const s = adminStats || _DEMO_ADMIN_STATS;
+  const recentOrders = s.recentOrders ?? [];
   const [chartMode, setChartMode] = React.useState('Revenue');
+  const [range, setRange] = React.useState('week'); // day | week | month | year
+  const [series, setSeries] = React.useState([]);
   const W = 680, H = 160;
-  // Last 7 days, bucketed from real orders — $0 across the board until there are real orders.
-  const dayBuckets = [...Array(7)].map((_, i) => {
-    const day = new Date(); day.setDate(day.getDate() - (6 - i)); day.setHours(0,0,0,0);
-    const next = new Date(day); next.setDate(next.getDate() + 1);
-    const dayOrders = orders.filter(o => { const t = new Date(o.placedAt).getTime(); return t >= day.getTime() && t < next.getTime(); });
-    return { revenue: dayOrders.reduce((s,o)=>s+(o.total||0),0), count: dayOrders.length };
-  });
-  const data = dayBuckets.map(b => chartMode === 'Orders' ? b.count : chartMode === 'Profit' ? b.revenue * 0.22 : b.revenue);
+
+  const loadSeries = React.useCallback(() => {
+    sbAdminGetSalesTimeseries(range).then(data => setSeries(data || []));
+  }, [range]);
+
+  React.useEffect(() => {
+    loadSeries();
+    // Live updates: any order insert/update re-pulls this range's buckets —
+    // the Supabase equivalent of a Socket.io push, no separate socket server needed.
+    const unsubscribe = sbSubscribeAdminOrders(() => loadSeries());
+    return unsubscribe;
+  }, [loadSeries]);
+
+  const bucketCount = { day:24, week:7, month:30, year:12 }[range] || 7;
+  const filledSeries = series.length ? series : [...Array(bucketCount)].map(() => ({ revenue:0, orders:0, profit:0 }));
+  const data = filledSeries.map(b => chartMode === 'Orders' ? b.orders : chartMode === 'Profit' ? b.profit : b.revenue);
   const maxV = Math.max(1, ...data);
-  const pts = data.map((v, i) => [(i / (data.length-1)) * W, H - (v/maxV)*(H-16) - 8]);
+  const pts = data.map((v, i) => [(i / Math.max(1, data.length-1)) * W, H - (v/maxV)*(H-16) - 8]);
   const polyline = pts.map(p => p.join(',')).join(' ');
   const area = `0,${H} ${polyline} ${W},${H}`;
-  const hasAnyData = orders.length > 0;
+  const hasAnyData = (s.orders ?? 0) > 0;
 
   const kpis = [
-    { icon:'dollarSign', color:C.primary,  k:"Today's Revenue", v:`$${revenue.toFixed(0)}` },
-    { icon:'barChart',   color:'#8A6BFF',  k:'Total Revenue',   v:`$${revenue.toFixed(0)}` },
-    { icon:'cart',       color:C.success,  k:'Orders Today',    v:String(orders.length) },
-    { icon:'package',    color:'#D97706',  k:'Total Orders',    v:String(orders.length) },
-    { icon:'users',      color:'#2563EB',  k:'Customers',       v: adminStats ? String(adminStats.users ?? 0) : '0' },
+    { icon:'dollarSign', color:C.primary,  k:"Today's Revenue", v:`$${(s.todaysRevenue ?? 0).toFixed(0)}` },
+    { icon:'barChart',   color:'#8A6BFF',  k:'Total Revenue',   v:`$${(s.totalRevenue ?? 0).toFixed(0)}` },
+    { icon:'cart',       color:C.success,  k:'Orders Today',    v:String(s.ordersToday ?? 0) },
+    { icon:'package',    color:'#D97706',  k:'Total Orders',    v:String(s.orders ?? 0) },
+    { icon:'users',      color:'#2563EB',  k:'Customers',       v:String(s.users ?? 0) },
     { icon:'zap',        color:'#8A6BFF',  k:'Conversion Rate', v:'0.0%' },
-    { icon:'barChart',   color:'#D97706',  k:'Avg Order Value', v:`$${orders.length ? (revenue/orders.length).toFixed(0) : 0}` },
-    { icon:'wallet',     color:C.success,  k:'Profit',          v:`$${(revenue*0.22).toFixed(0)}` },
-    { icon:'refreshCw',  color:C.danger,   k:'Refunds',         v:'$0' },
+    { icon:'barChart',   color:'#D97706',  k:'Avg Order Value', v:`$${(s.avgOrderValue ?? 0).toFixed(0)}` },
+    { icon:'wallet',     color:C.success,  k:'Profit',          v:`$${(s.profit ?? 0).toFixed(0)}` },
+    { icon:'refreshCw',  color:C.danger,   k:'Refunds',         v:`$${(s.refunds ?? 0).toFixed(0)}` },
   ];
 
   return (
@@ -546,12 +556,19 @@ function AdminOverview({ adminStats, onNav, sellersList = [], reviews = [], kycC
       </div>
 
       <AdminCard>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:10 }}>
           <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink }}>Sales Analytics</span>
-          <div style={{ display:'flex', gap:4, background:C.paper, borderRadius:9999, padding:3 }}>
-            {['Revenue','Orders','Profit'].map(m => (
-              <button key={m} onClick={() => setChartMode(m)} style={{ border:'none', borderRadius:9999, padding:'6px 14px', cursor:'pointer', background: chartMode === m ? C.primary : 'transparent', color: chartMode === m ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600 }}>{m}</button>
-            ))}
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            <div style={{ display:'flex', gap:4, background:C.paper, borderRadius:9999, padding:3 }}>
+              {[['day','Day'],['week','Week'],['month','Month'],['year','Year']].map(([k,label]) => (
+                <button key={k} onClick={() => setRange(k)} style={{ border:'none', borderRadius:9999, padding:'6px 12px', cursor:'pointer', background: range === k ? C.ink : 'transparent', color: range === k ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600 }}>{label}</button>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:4, background:C.paper, borderRadius:9999, padding:3 }}>
+              {['Revenue','Orders','Profit'].map(m => (
+                <button key={m} onClick={() => setChartMode(m)} style={{ border:'none', borderRadius:9999, padding:'6px 14px', cursor:'pointer', background: chartMode === m ? C.primary : 'transparent', color: chartMode === m ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600 }}>{m}</button>
+              ))}
+            </div>
           </div>
         </div>
         <div style={{ position:'relative' }}>
@@ -581,17 +598,17 @@ function AdminOverview({ adminStats, onNav, sellersList = [], reviews = [], kycC
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Recent orders</span>
             <button onClick={() => onNav('orders')} style={{ border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:C.primary }}>View all</button>
           </div>
-          {orders.length === 0 && <AdminEmptyRow text="No orders yet" />}
-          {orders.slice(0,4).map((o,i) => (
+          {recentOrders.length === 0 && <AdminEmptyRow text="No orders yet" />}
+          {recentOrders.slice(0,4).map((o,i) => (
             <div key={o.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
               <div style={{ width:30, height:30, borderRadius:8, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                 <Icon name="package" size={14} color={C.primary} />
               </div>
               <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.ink }}>#{o.id}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.ink }}>#{String(o.id).slice(0,8)} · {o.profiles?.full_name || o.profiles?.email || 'Buyer'}</div>
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{(o.status||'').replace('_',' ')}</div>
               </div>
-              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12.5, fontWeight:700, color:C.ink }}>${o.total?.toFixed(2)}</span>
+              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12.5, fontWeight:700, color:C.ink }}>${(o.total_amount ?? 0).toFixed(2)}</span>
             </div>
           ))}
         </AdminCard>
@@ -627,7 +644,7 @@ function AdminOverview({ adminStats, onNav, sellersList = [], reviews = [], kycC
 }
 
 // ─── Reusable simple settings-list section (kv / toggle rows) ──
-function AdminSettingsRows({ rows, onToggle }) {
+function AdminSettingsRows({ rows, onToggle, onNumber }) {
   return (
     <AdminCard padded={false}>
       {rows.map((r, i) => (
@@ -642,6 +659,16 @@ function AdminSettingsRows({ rows, onToggle }) {
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink }}>{r.k}</span>
               <Switch checked={r.on} onChange={v => onToggle && onToggle(r.k, v)} />
+            </div>
+          )}
+          {r.type === 'number' && (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink }}>{r.k}</span>
+              <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                <input type="number" min={0} max={100} step={0.5} value={r.v} onChange={e => onNumber && onNumber(r.k, e.target.value)}
+                  style={{ width:60, textAlign:'right', border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'4px 6px', fontFamily:"'JetBrains Mono',monospace", fontSize:13.5, fontWeight:700, color:C.ink }} />
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>%</span>
+              </div>
             </div>
           )}
         </div>
@@ -842,7 +869,9 @@ function AdminShellScreen({ params = {} }) {
     sbAdminGetStats().then(s => setAdminStats(s));
     sbAdminGetUsers().then(u => { if (u) setRemoteUsers(u); });
     const id = setInterval(() => forceTick(t => t + 1), 800);
-    return () => clearInterval(id);
+    // Live dashboard: any order insert/update refreshes the KPI cards without a manual reload.
+    const unsubscribe = sbSubscribeAdminOrders(() => { sbAdminGetStats().then(s => setAdminStats(s)); });
+    return () => { clearInterval(id); unsubscribe(); };
   }, []);
 
   function onNav(key) {
@@ -1571,17 +1600,21 @@ function AdminShellScreen({ params = {} }) {
 
       case 'settings': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Platform Settings" />
+          <SectionTitle title="Platform Settings" sub="Changes apply immediately to new orders and the Business Overview KPIs." />
           <AdminSettingsRows rows={[
-            { type:'kv', k:'Overall commission rate', v:'8.5%' },
-            { type:'kv', k:'Standard shipping', v:'$3.99' },
-            { type:'kv', k:'Express shipping', v:'$8.99' },
-            { type:'kv', k:'Free shipping threshold', v:'$30.00' },
+            { type:'number', k:'Marketplace commission rate', v: (window._PLATFORM_SETTINGS.commissionRate * 100).toFixed(1) },
             { type:'toggle', k:'Free shipping enabled', on:window._PLATFORM_SETTINGS.freeShipping },
             { type:'toggle', k:'Real-time tracking', on:window._PLATFORM_SETTINGS.realTimeTracking },
           ]} onToggle={(k, v) => {
             const map = { 'Free shipping enabled':'freeShipping', 'Real-time tracking':'realTimeTracking' };
             togglePlatformSetting(map[k], v);
+          }} onNumber={(k, v) => {
+            if (k === 'Marketplace commission rate') {
+              const pct = Math.max(0, Math.min(100, parseFloat(v) || 0));
+              window._PLATFORM_SETTINGS = { ...window._PLATFORM_SETTINGS, commissionRate: pct / 100 };
+              logAdminAction('Changed platform setting', `commissionRate → ${pct}%`);
+              forceTick(t => t + 1);
+            }
           }} />
         </div>
       );
