@@ -622,10 +622,14 @@ function RegisterScreen() {
     setTouched(true);
     if (!name.trim() || !/^\S+@\S+\.\S+$/.test(email) || !phone.trim() || pass.length < 6 || confirmPass !== pass || !agreed) return;
     setLoading(true); setErrorMsg('');
-    const { error } = await sbSignUp(email, pass, name);
+    const { data, error } = await sbSignUp(email, pass, name);
     setLoading(false);
     if (error) { setErrorMsg(error.message || 'Unable to create your account.'); return; }
-    navigate('auth-success', { kind:'signup' });
+    // signUp() returns no session when the project requires email confirmation —
+    // the account and profile (role=buyer, status=active) already exist at this
+    // point via the on_auth_user_created trigger, but the user can't sign in
+    // until they confirm, so the two cases need visibly different copy.
+    navigate('auth-success', { kind: data?.session ? 'signup' : 'signup-confirm' });
   }
 
   return (
@@ -1000,6 +1004,8 @@ function AuthSuccessScreen({ params = {} }) {
 
   const copy = kind === 'reset'
     ? { title:'Password Reset Successful', sub:'Your password has been updated. You can now sign in with your new password.' }
+    : kind === 'signup-confirm'
+    ? { title:'Confirm Your Email', sub:'We sent a confirmation link to your email address. Please check your inbox and confirm it before signing in.' }
     : { title:'Account Successfully Created', sub:'Welcome to CLORIVO — start exploring millions of products from trusted sellers.' };
 
   return (
@@ -1028,7 +1034,7 @@ function AuthSuccessScreen({ params = {} }) {
         </div>
 
         <div style={{ width:'100%', marginTop:32 }}>
-          <Btn variant="primary" size="lg" wide onClick={() => navigate(kind === 'reset' ? 'login' : 'home')} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 10px 28px rgba(108,77,255,0.35)' }}>
+          <Btn variant="primary" size="lg" wide onClick={() => navigate(kind === 'signup' ? 'home' : 'login')} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 10px 28px rgba(108,77,255,0.35)' }}>
             Continue
           </Btn>
         </div>

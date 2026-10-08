@@ -25,11 +25,22 @@ if (_isConfigured && window.supabase) {
 window._supabase = _sb;
 
 // ─── AUTH HELPERS ─────────────────────────────────────────────────
+// emailRedirectTo/redirectTo below use the browser's own origin rather than a
+// hardcoded domain — the confirmation/recovery link then always points back at
+// wherever the app is actually deployed (production domain, a preview deploy,
+// etc.) instead of whatever Dashboard "Site URL" happens to be set to. The
+// Supabase Dashboard's Redirect URLs allowlist must still include that origin
+// (see the Phase 1 report) — this is a defense-in-depth code fix, not a
+// substitute for that Dashboard setting.
+function _authReturnUrl() {
+  try { return window.location.origin + window.location.pathname; } catch (e) { return undefined; }
+}
+
 async function sbSignUp(email, password, fullName) {
   if (!_sb) return { error: { message: 'Supabase not configured' } };
   const { data, error } = await _sb.auth.signUp({
     email, password,
-    options: { data: { full_name: fullName } },
+    options: { data: { full_name: fullName }, emailRedirectTo: _authReturnUrl() },
   });
   return { data, error };
 }
@@ -47,7 +58,7 @@ async function sbSignOut() {
 
 async function sbResetPasswordForEmail(email) {
   if (!_sb) return { error: { message: 'Not configured' } };
-  const { data, error } = await _sb.auth.resetPasswordForEmail(email);
+  const { data, error } = await _sb.auth.resetPasswordForEmail(email, { redirectTo: _authReturnUrl() });
   return { data, error };
 }
 
