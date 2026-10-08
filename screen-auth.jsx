@@ -15,6 +15,19 @@ const SPLASH_STAGES = [
 function checkMaintenanceMode() { return false; }
 function checkForceUpdate() { return null; } // would return a min version string to block on
 
+// Shared by the splash screen AND the login screen — a role/status redirect
+// decided in only one of the two would leave the other as a bypass. Status is
+// the account-level gate (independent of role): RLS enforces it for every
+// data operation regardless, but a suspended/banned user should never even
+// land on a normal screen implying they can act freely.
+function decidePostAuthDestination(profile) {
+  if (profile?.status === 'suspended' || profile?.status === 'banned') return { screen: 'account-suspended', params: { status: profile.status } };
+  if (profile?.role === 'admin')  return { screen: 'admin', params: {} };
+  if (profile?.role === 'staff')  return { screen: 'admin', params: {} };
+  if (profile?.role === 'seller') return { screen: 'seller-home', params: {} };
+  return { screen: 'home', params: {} };
+}
+
 async function decideSplashDestination() {
   if (checkMaintenanceMode()) return 'onboarding'; // would be 'maintenance' with a real screen
   try {
@@ -27,9 +40,7 @@ async function decideSplashDestination() {
     }
     const user = await sbGetUser();
     const profile = user ? await sbGetProfile(user.id) : null;
-    if (profile?.role === 'admin')  return 'admin';
-    if (profile?.role === 'seller') return 'seller-home';
-    return 'home';
+    return decidePostAuthDestination(profile).screen;
   } catch (e) {
     return 'onboarding';
   }
@@ -445,10 +456,12 @@ function LoginScreen() {
     setTouched(true);
     if (!identifier.trim() || !pass) return;
     setLoading(true); setErrorMsg('');
-    const { error } = await sbSignIn(identifier.trim(), pass);
+    const { data, error } = await sbSignIn(identifier.trim(), pass);
+    if (error) { setLoading(false); setErrorMsg(error.message || 'Unable to sign in. Please check your credentials.'); return; }
+    const profile = data?.user ? await sbGetProfile(data.user.id) : null;
     setLoading(false);
-    if (error) { setErrorMsg(error.message || 'Unable to sign in. Please check your credentials.'); return; }
-    navigate('home');
+    const dest = decidePostAuthDestination(profile);
+    navigate(dest.screen, dest.params);
   }
 
   return (
@@ -504,7 +517,12 @@ function LoginScreen() {
           </Btn>
         </div>
 
-        <SocialAuthBlock onDone={() => navigate('home')} />
+        <SocialAuthBlock onDone={async () => {
+          const u = await sbGetUser();
+          const profile = u ? await sbGetProfile(u.id) : null;
+          const dest = decidePostAuthDestination(profile);
+          navigate(dest.screen, dest.params);
+        }} />
 
         <div style={{ textAlign:'center', marginTop:24, fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute }}>
           Don't have an account?{' '}
@@ -1019,7 +1037,52 @@ function AuthSuccessScreen({ params = {} }) {
   );
 }
 
+// Reached when decideSplashDestination() finds profiles.status in
+// ('suspended','banned') — the account-level gate that's independent of role.
+// This screen is purely informational: RLS (is_active_account() inside every
+// gated policy) is what actually blocks the account from doing anything,
+// regardless of whether this screen is ever reached.
+function AccountSuspendedScreen({ params = {} }) {
+  const { navigate } = useNav();
+  const isDesktop = useIsDesktop();
+  const [status, setStatus] = React.useState(params.status || 'suspended');
+
+  React.useEffect(() => {
+    if (params.status) return;
+    sbGetUser().then(async u => { if (u) { const p = await sbGetProfile(u.id); if (p?.status) setStatus(p.status); } });
+  }, []);
+
+  async function handleSignOut() {
+    try { await sbSignOut(); } catch (e) {}
+    navigate('login');
+  }
+
+  return (
+    <AuthShell isDesktop={isDesktop}>
+      <div style={{ padding:'24px 24px 40px', display:'flex', flexDirection:'column', alignItems:'center' }}>
+        <div style={{ width:120, height:120, borderRadius:9999, background:'#FDEDED', display:'flex', alignItems:'center', justifyContent:'center', margin:'20px 0 24px' }}>
+          <Icon name="lock" size={48} color={C.danger} sw={1.75} />
+        </div>
+        <div style={{ textAlign:'center' }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:24, fontWeight:800, color:C.ink, letterSpacing:'-0.03em' }}>
+            {status === 'banned' ? 'Account Banned' : 'Account Suspended'}
+          </div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, color:C.mute, marginTop:10, lineHeight:1.5, maxWidth:320 }}>
+            {status === 'banned'
+              ? 'This account has been permanently banned from CLORIVO. If you believe this is a mistake, contact support.'
+              : 'This account has been temporarily suspended by an administrator. Contact support for more information.'}
+          </div>
+        </div>
+        <div style={{ width:'100%', marginTop:32 }}>
+          <Btn variant="primary" size="lg" wide onClick={handleSignOut}>Sign Out</Btn>
+        </div>
+      </div>
+    </AuthShell>
+  );
+}
+
 Object.assign(window, {
   SplashScreen, OnboardingScreen, LoginScreen, RegisterScreen,
   ForgotPasswordScreen, OtpVerifyScreen, ResetPasswordScreen, AuthSuccessScreen,
+  AccountSuspendedScreen,
 });

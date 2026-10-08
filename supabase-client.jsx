@@ -87,6 +87,154 @@ async function sbUpdateProfile(userId, updates) {
   return { data, error };
 }
 
+// ─── RBAC — permissions / staff roles / staff members ─────────────────────
+// profiles.role stays a simple top-level discriminator (buyer/seller/admin/staff).
+// A 'staff' account's *actual* capabilities come entirely from staff_members →
+// staff_role_id → role_permissions → permissions, never from the role name
+// itself — new staff roles (Catalog Manager, Finance Manager, …) are just rows,
+// no code change needed. role='admin' bypasses all of this (Super Admin).
+const _DEMO_ACCESS_CONTEXT = { role: null, status: 'active', isAdmin: false, isStaff: false, staffRoleId: null, staffRoleName: null, permissions: [] };
+
+// What the CURRENT signed-in user can do — used to gate UI (never the real
+// barrier; RLS + has_permission() on the server are). Returns null if signed out.
+async function sbGetMyAccessContext() {
+  if (!_sb) return null;
+  const user = await sbGetUser();
+  if (!user) return null;
+  const profile = await sbGetProfile(user.id);
+  if (!profile) return null;
+  const ctx = { role: profile.role, status: profile.status, isAdmin: profile.role === 'admin', isStaff: false, staffRoleId: null, staffRoleName: null, permissions: [] };
+  if (ctx.isAdmin) return ctx;
+  const { data: staffRow } = await _sb.from('staff_members').select('id, status, staff_role_id, staff_roles(name)').eq('user_id', user.id).maybeSingle();
+  if (staffRow && staffRow.status === 'active') {
+    ctx.isStaff = true;
+    ctx.staffRoleId = staffRow.staff_role_id;
+    ctx.staffRoleName = staffRow.staff_roles?.name ?? null;
+    const { data: perms } = await _sb.from('role_permissions').select('permission_key').eq('role_id', staffRow.staff_role_id);
+    ctx.permissions = (perms || []).map(p => p.permission_key);
+  }
+  return ctx;
+}
+
+// Real, server-side check for one permission — use this (not the cached
+// context above) before anything consequential, since has_permission() is
+// SECURITY DEFINER and always reflects the live grant, not a stale client copy.
+async function sbHasPermission(permissionKey) {
+  if (!_sb) return false;
+  const user = await sbGetUser();
+  if (!user) return false;
+  const { data, error } = await _sb.rpc('has_permission', { p_user_id: user.id, p_permission: permissionKey });
+  return !error && data === true;
+}
+
+async function sbGetPermissionsCatalog() {
+  if (!_sb) return [];
+  const { data } = await _sb.from('permissions').select('*').order('module', { ascending: true });
+  return data ?? [];
+}
+
+async function sbAdminGetStaffRoles() {
+  if (!_sb) return [];
+  const { data } = await _sb.from('staff_roles').select('*, role_permissions(permission_key)').order('created_at', { ascending: true });
+  return (data || []).map(r => ({ ...r, permissions: (r.role_permissions || []).map(p => p.permission_key) }));
+}
+
+async function sbAdminCreateStaffRole(name, description) {
+  if (!_sb) return { data: null, error: null };
+  const { data, error } = await _sb.from('staff_roles').insert({ name, description: description || null }).select().single();
+  return { data, error };
+}
+
+async function sbAdminUpdateStaffRole(id, updates) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('staff_roles').update(updates).eq('id', id);
+  return { error };
+}
+
+async function sbAdminDeleteStaffRole(id) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('staff_roles').delete().eq('id', id);
+  return { error };
+}
+
+// Replace-all pattern for a role's permission set (delete then insert), same
+// approach as sbSetProductCategories — simplest correct option without a
+// multi-statement transaction primitive available from the client.
+async function sbAdminSetRolePermissions(roleId, permissionKeys) {
+  if (!_sb) return { error: null };
+  await _sb.from('role_permissions').delete().eq('role_id', roleId);
+  if (!permissionKeys?.length) return { error: null };
+  const { error } = await _sb.from('role_permissions').insert(permissionKeys.map(permission_key => ({ role_id: roleId, permission_key })));
+  return { error };
+}
+
+async function sbAdminGetStaffMembers() {
+  if (!_sb) return [];
+  const { data } = await _sb.from('staff_members').select('*, profiles(full_name, email), staff_roles(name)').order('created_at', { ascending: false });
+  return data ?? [];
+}
+
+// No user-search UI exists yet, so staff are added by the email of an
+// existing account — looks it up via profiles (RLS-readable: profiles has no
+// blanket public-read policy, so this only resolves accounts the admin's own
+// session is already allowed to see, which is fine since the caller is admin).
+async function sbAdminFindUserByEmail(email) {
+  if (!_sb || !email) return null;
+  const { data } = await _sb.from('profiles').select('id, email, full_name, role').ilike('email', email.trim()).maybeSingle();
+  return data ?? null;
+}
+
+async function sbAdminAddStaffMember(userId, staffRoleId) {
+  if (!_sb) return { data: null, error: null };
+  const user = await sbGetUser();
+  const { data, error } = await _sb.from('staff_members').insert({ user_id: userId, staff_role_id: staffRoleId, invited_by: user?.id ?? null }).select().single();
+  if (!error) await _sb.from('profiles').update({ role: 'staff' }).eq('id', userId).neq('role', 'admin');
+  return { data, error };
+}
+
+async function sbAdminUpdateStaffMember(id, updates) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('staff_members').update(updates).eq('id', id);
+  return { error };
+}
+
+async function sbAdminRemoveStaffMember(id, userId) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('staff_members').delete().eq('id', id);
+  if (!error && userId) await _sb.from('profiles').update({ role: 'buyer' }).eq('id', userId).eq('role', 'staff');
+  return { error };
+}
+
+// ─── ACCOUNT STATUS (suspend/ban — admins and sellers.suspend/customers.suspend) ──
+async function sbAdminSetAccountStatus(userId, status) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('profiles').update({ status }).eq('id', userId);
+  return { error };
+}
+
+// ─── AUDIT LOG ──────────────────────────────────────────────────────
+// actor_id is always derived server-side from auth.uid() inside log_audit() —
+// never a parameter here — so a client can log its own actions but can never
+// forge an entry attributed to someone else.
+async function sbLogAudit(action, resourceType, resourceId, before, after) {
+  if (!_sb) return;
+  try { await _sb.rpc('log_audit', { p_action: action, p_resource_type: resourceType ?? null, p_resource_id: resourceId != null ? String(resourceId) : null, p_before: before ?? null, p_after: after ?? null }); }
+  catch (e) { /* audit logging must never break the admin action it's logging */ }
+}
+
+async function sbAdminGetAuditLogs({ page = 1, limit = 30, resourceType = '', search = '' } = {}) {
+  const empty = { logs: [], total: 0, totalPages: 0, currentPage: page };
+  if (!_sb) return empty;
+  let query = _sb.from('audit_logs').select('*, profiles(full_name, email)', { count: 'exact' });
+  if (resourceType) query = query.eq('resource_type', resourceType);
+  const q = (search || '').trim();
+  if (q) query = query.or(`action.ilike.%${q}%,resource_id.ilike.%${q}%`);
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
+  if (error) return empty;
+  return { logs: data ?? [], total: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
 // ─── PRODUCTS ────────────────────────────────────────────────────
 async function sbGetProducts({ categorySlug, limit = 20, offset = 0, featured } = {}) {
   if (!_sb) return { data: PRODUCTS.map(_prodToSb), error: null };
@@ -1114,6 +1262,10 @@ Object.assign(window, {
   sbAdminCreateProduct, sbAdminUpdateProduct, sbAdminDeleteProduct,
   sbAdminGetProducts, sbAdminModerateProduct, sbAdminTogglePublish, sbSubscribeAdminProducts,
   sbGetCategoriesList,
+  sbGetMyAccessContext, sbHasPermission, sbGetPermissionsCatalog,
+  sbAdminGetStaffRoles, sbAdminCreateStaffRole, sbAdminUpdateStaffRole, sbAdminDeleteStaffRole, sbAdminSetRolePermissions,
+  sbAdminGetStaffMembers, sbAdminFindUserByEmail, sbAdminAddStaffMember, sbAdminUpdateStaffMember, sbAdminRemoveStaffMember,
+  sbAdminSetAccountStatus, sbLogAudit, sbAdminGetAuditLogs,
   sbGetCategoryTree, sbGetCategoryBySlug, sbGetCategoryBreadcrumb, sbGetFeaturedCategories,
   sbGetCategoryAttributes, sbGetProductsByCategory,
   sbAdminGetCategories, sbAdminGetCategory, sbAdminCreateCategory, sbAdminUpdateCategory,

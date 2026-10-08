@@ -5,21 +5,24 @@ window._ADMIN_AUDIT_LOG   = window._ADMIN_AUDIT_LOG   || [];
 window._BRANDS             = window._BRANDS            || [];
 window._COUPONS            = window._COUPONS           || [];
 window._ADMIN_REVIEWS      = window._ADMIN_REVIEWS     || [];
-window._STAFF              = window._STAFF             || [
-  { id:'st1', name: window._PROFILE?.name || 'You', email: window._PROFILE?.email || '', role:'Owner', tint:0 },
-];
 window._REWARDS_CONFIG     = window._REWARDS_CONFIG    || { pointsPerDollar:1, referralBonus:10, minRedeem:500 };
 window._ANNOUNCEMENT       = window._ANNOUNCEMENT       || { enabled:false, text:'', link:'' };
 window._HOME_SECTIONS      = window._HOME_SECTIONS      || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
 window._SEO_CONFIG         = window._SEO_CONFIG         || { ga:'', metaPixel:'', tiktok:'', searchConsole:'' };
 window._LOGIN_HISTORY      = window._LOGIN_HISTORY      || [];
 window._NOTIF_SETTINGS     = window._NOTIF_SETTINGS     || { newOrders:true, newSellers:true, urgentReports:true, weeklyReports:false, marketingEmails:false };
-window._ROLES_SETTINGS     = window._ROLES_SETTINGS     || { allowInvite:true };
 window._SECURITY_SETTINGS  = window._SECURITY_SETTINGS  || { twoFactor:true, biometric:true, loginAlerts:false };
 window._PLATFORM_SETTINGS  = window._PLATFORM_SETTINGS  || { freeShipping:true, realTimeTracking:true, commissionRate:0.10 };
 
-function logAdminAction(action, detail) {
+// Local, instant-feedback mirror of the audit log — the real, tamper-resistant
+// record lives in the `audit_logs` table (written via the log_audit() RPC,
+// which hardcodes actor_id to auth.uid() server-side so a client can never
+// forge an entry). This local array just avoids a round-trip before the
+// Audit Log screen's "recent activity" widgets can show the action.
+window._ADMIN_AUDIT_LOG   = window._ADMIN_AUDIT_LOG   || [];
+function logAdminAction(action, detail, resourceType, resourceId) {
   window._ADMIN_AUDIT_LOG = [{ action, detail, at:new Date().toISOString(), by: window._PROFILE?.name || 'Admin' }, ...window._ADMIN_AUDIT_LOG].slice(0, 200);
+  sbLogAudit(action, resourceType || null, resourceId || null, null, detail ? { detail } : null);
 }
 
 // ─── NAV CONFIG (matches the reference dashboard's grouping) ──────
@@ -1405,6 +1408,269 @@ function AdminCategoryDeleteModal({ category, allCategoriesFlat, onClose, onDone
   );
 }
 
+// ─── ADMIN — Staff & RBAC (real backend: staff_roles, role_permissions, staff_members) ──
+function AdminStaffSection({ initialTab = 'team' }) {
+  const [tab, setTab] = React.useState(initialTab);
+  const [roles, setRoles] = React.useState([]);
+  const [members, setMembers] = React.useState([]);
+  const [catalog, setCatalog] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [editingRole, setEditingRole] = React.useState(null); // role object or {} for new
+  const [inviting, setInviting] = React.useState(false);
+  const [toast, setToast] = React.useState(null);
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    Promise.all([sbAdminGetStaffRoles(), sbAdminGetStaffMembers(), sbGetPermissionsCatalog()])
+      .then(([r, m, c]) => { setRoles(r); setMembers(m); setCatalog(c); setLoading(false); });
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  async function handleRemoveMember(m) {
+    await sbAdminRemoveStaffMember(m.id, m.user_id);
+    logAdminAction('Removed staff member', m.profiles?.email || m.user_id, 'staff_members', m.id);
+    load();
+  }
+  async function handleToggleMemberStatus(m) {
+    const next = m.status === 'active' ? 'suspended' : 'active';
+    await sbAdminUpdateStaffMember(m.id, { status: next });
+    logAdminAction(next === 'suspended' ? 'Suspended staff member' : 'Reactivated staff member', m.profiles?.email || m.user_id, 'staff_members', m.id);
+    load();
+  }
+  async function handleDeleteRole(role) {
+    if (role.is_system) return;
+    await sbAdminDeleteStaffRole(role.id);
+    logAdminAction('Deleted staff role', role.name, 'staff_roles', role.id);
+    load();
+  }
+
+  const byModule = catalog.reduce((acc, p) => { (acc[p.module] = acc[p.module] || []).push(p); return acc; }, {});
+
+  if (editingRole) {
+    return <AdminStaffRoleEditor role={editingRole} byModule={byModule} onBack={() => { setEditingRole(null); load(); }} />;
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Staff & Permissions" sub={`${members.length} team member${members.length===1?'':'s'} · ${roles.length} role${roles.length===1?'':'s'}`} />
+
+      <div style={{ display:'flex', gap:4, background:C.paper, borderRadius:9999, padding:3, width:'fit-content' }}>
+        {[['team','Team Members'],['roles','Roles & Permissions']].map(([k,label]) => (
+          <button key={k} onClick={() => setTab(k)} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: tab === k ? C.primary : 'transparent', color: tab === k ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600 }}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'team' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <Btn variant="primary" size="sm" style={{ width:'fit-content' }} onClick={() => setInviting(true)}>+ Invite team member</Btn>
+          {inviting && <AdminStaffInviteForm roles={roles} onClose={() => setInviting(false)} onDone={() => { setInviting(false); load(); }} onLog={logAdminAction} />}
+          <AdminCard padded={false}>
+            {loading ? <AdminEmptyRow text="Loading…" /> : members.length === 0 ? (
+              <AdminEmptyRow text="No staff members yet — invite your first teammate." />
+            ) : members.map((m, i) => (
+              <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+                <Avatar size={30} initials={(m.profiles?.full_name || m.profiles?.email || '?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{m.profiles?.full_name || 'Unnamed'}</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{m.profiles?.email}</div>
+                </div>
+                <StatusPill tone="primary">{m.staff_roles?.name || '—'}</StatusPill>
+                <StatusPill tone={m.status === 'active' ? 'success' : 'warning'}>{m.status}</StatusPill>
+                <button onClick={() => handleToggleMemberStatus(m)} title={m.status === 'active' ? 'Suspend' : 'Reactivate'} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <Icon name={m.status === 'active' ? 'x' : 'check'} size={13} color={m.status === 'active' ? C.warning : C.success} />
+                </button>
+                <button onClick={() => handleRemoveMember(m)} title="Remove" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <Icon name="trash" size={13} color={C.danger} />
+                </button>
+              </div>
+            ))}
+          </AdminCard>
+        </div>
+      )}
+
+      {tab === 'roles' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <Btn variant="primary" size="sm" style={{ width:'fit-content' }} onClick={() => setEditingRole({ name:'', description:'', permissions:[] })}>+ New role</Btn>
+          <AdminCard padded={false}>
+            {loading ? <AdminEmptyRow text="Loading…" /> : roles.length === 0 ? (
+              <AdminEmptyRow text="No roles yet." />
+            ) : roles.map((r, i) => (
+              <div key={r.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+                <div style={{ width:34, height:34, borderRadius:9, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><Icon name="shield" size={15} color={C.primary} /></div>
+                <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={() => setEditingRole(r)}>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{r.name}{r.is_system && <span style={{ marginLeft:6 }}><StatusPill tone="mute">system</StatusPill></span>}</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{r.permissions.length} permission{r.permissions.length===1?'':'s'}{r.description ? ` · ${r.description}` : ''}</div>
+                </div>
+                <button onClick={() => setEditingRole(r)} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}><Icon name="edit" size={13} color={C.mute} /></button>
+                {!r.is_system && (
+                  <button onClick={() => handleDeleteRole(r)} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}><Icon name="trash" size={13} color={C.danger} /></button>
+                )}
+              </div>
+            ))}
+          </AdminCard>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminStaffInviteForm({ roles, onClose, onDone, onLog }) {
+  const [email, setEmail] = React.useState('');
+  const [roleId, setRoleId] = React.useState(roles[0]?.id || '');
+  const [error, setError] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+
+  async function submit() {
+    setError(''); setBusy(true);
+    const user = await sbAdminFindUserByEmail(email);
+    if (!user) { setBusy(false); setError('No account found with this email — they need to sign up first.'); return; }
+    if (!roleId) { setBusy(false); setError('Choose a role.'); return; }
+    const { error: addError } = await sbAdminAddStaffMember(user.id, roleId);
+    setBusy(false);
+    if (addError) { setError(addError.message || 'Could not add staff member.'); return; }
+    onLog('Invited staff member', email, 'staff_members', user.id);
+    onDone();
+  }
+
+  return (
+    <AdminCard style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      <AdminField label="Account email"><AdminTextInput value={email} onChange={setEmail} placeholder="teammate@clorivo.com" /></AdminField>
+      <AdminField label="Role">
+        <select value={roleId} onChange={e => setRoleId(e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+          {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+      </AdminField>
+      {error && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.danger }}>{error}</div>}
+      <div style={{ display:'flex', gap:8 }}>
+        <Btn size="sm" style={{ color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={onClose}>Cancel</Btn>
+        <Btn variant="primary" size="sm" style={{ flex:1 }} onClick={submit} disabled={busy || !email.trim()}>{busy ? 'Adding…' : 'Add to team'}</Btn>
+      </div>
+    </AdminCard>
+  );
+}
+
+function AdminStaffRoleEditor({ role, byModule, onBack }) {
+  const isNew = !role.id;
+  const [name, setName] = React.useState(role.name || '');
+  const [description, setDescription] = React.useState(role.description || '');
+  const [selected, setSelected] = React.useState(new Set(role.permissions || []));
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  function toggle(key) { setSelected(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; }); }
+
+  async function save() {
+    if (!name.trim()) { setError('Role name is required'); return; }
+    setSaving(true); setError('');
+    let roleId = role.id;
+    if (isNew) {
+      const { data, error: createError } = await sbAdminCreateStaffRole(name, description);
+      if (createError || !data) { setSaving(false); setError(createError?.message || 'Could not create role'); return; }
+      roleId = data.id;
+    } else {
+      await sbAdminUpdateStaffRole(roleId, { name, description });
+    }
+    await sbAdminSetRolePermissions(roleId, [...selected]);
+    logAdminAction(isNew ? 'Created staff role' : 'Updated staff role', name, 'staff_roles', roleId);
+    setSaving(false);
+    onBack();
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:640 }}>
+      <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0, width:'fit-content' }}>
+        <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Roles</span>
+      </button>
+      <SectionTitle title={isNew ? 'New Role' : `Edit "${role.name}"`} />
+      {error && <div style={{ background:'#FDEDED', border:`1px solid ${C.danger}`, borderRadius:10, padding:'10px 14px', fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{error}</div>}
+
+      <AdminCard style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        <AdminField label="Role name"><AdminTextInput value={name} onChange={setName} placeholder="e.g. Catalog Manager" /></AdminField>
+        <AdminField label="Description"><AdminTextInput value={description} onChange={setDescription} placeholder="Optional" /></AdminField>
+      </AdminCard>
+
+      <AdminCard style={{ display:'flex', flexDirection:'column', gap:16 }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Permissions</div>
+        {Object.keys(byModule).length === 0 && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>No permissions in the catalog.</div>}
+        {Object.entries(byModule).map(([module, perms]) => (
+          <div key={module} style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, color:C.mute, textTransform:'uppercase', letterSpacing:'0.04em' }}>{module}</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              {perms.map(p => (
+                <label key={p.key} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input type="checkbox" checked={selected.has(p.key)} onChange={() => toggle(p.key)} />
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.ink }}>{p.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </AdminCard>
+
+      <div style={{ display:'flex', gap:8 }}>
+        <Btn size="sm" style={{ color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={onBack}>Cancel</Btn>
+        <Btn variant="primary" style={{ flex:1 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : isNew ? 'Create role' : 'Save changes'}</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ─── ADMIN — Audit Log (real backend: audit_logs, written via log_audit() RPC) ──
+function AdminAuditLogSection() {
+  const [result, setResult] = React.useState({ logs:[], total:0, totalPages:0, currentPage:1 });
+  const [loading, setLoading] = React.useState(true);
+  const [page, setPage] = React.useState(1);
+  const [search, setSearch] = React.useState('');
+  const [searchInput, setSearchInput] = React.useState('');
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    sbAdminGetAuditLogs({ page, limit:30, search }).then(r => { setResult(r); setLoading(false); });
+  }, [page, search]);
+  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setSearch(searchInput); }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const { logs, total, totalPages } = result;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Audit Log" sub={`${total} action${total===1?'':'s'} recorded · who did what, on what, and when`} />
+      <div style={{ position:'relative' }}>
+        <Icon name="search" size={15} color={C.mute} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)' }} />
+        <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search by action or resource…"
+          style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px 9px 34px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+      </div>
+      <AdminCard padded={false}>
+        {loading ? <AdminEmptyRow text="Loading…" /> : logs.length === 0 ? (
+          <AdminEmptyRow text="No admin actions recorded yet — changes made in this console will show up here." />
+        ) : logs.map((a, i) => (
+          <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+            <div style={{ width:28, height:28, borderRadius:8, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><Icon name="fileText" size={13} color={C.primary} /></div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{a.action}</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {a.resource_type && <>{a.resource_type}{a.resource_id ? ` #${String(a.resource_id).slice(0,8)}` : ''} · </>}
+                by {a.profiles?.full_name || a.profiles?.email || a.actor_role || 'system'}
+              </div>
+            </div>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, flexShrink:0 }}>{new Date(a.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+          </div>
+        ))}
+      </AdminCard>
+      {totalPages > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:10 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Previous</button>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Next</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ADMIN — Products (moderation, publish toggle, search/filter, pagination) ──
 const PRODUCT_PAGE_SIZE = 12;
 
@@ -1838,6 +2104,8 @@ function AdminShellScreen({ params = {} }) {
   const [sellerPanel, setSellerPanel] = React.useState(null); // 'kyc' | null
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [, forceTick] = React.useState(0);
+  // undefined = still checking, null = checked and denied, object = granted context.
+  const [accessCtx, setAccessCtx] = React.useState(undefined);
 
   React.useEffect(() => {
     sbAdminGetStats().then(s => setAdminStats(s));
@@ -1846,6 +2114,16 @@ function AdminShellScreen({ params = {} }) {
     // Live dashboard: any order insert/update refreshes the KPI cards without a manual reload.
     const unsubscribe = sbSubscribeAdminOrders(() => { sbAdminGetStats().then(s => setAdminStats(s)); });
     return () => { clearInterval(id); unsubscribe(); };
+  }, []);
+
+  // UI-level guard only — defense in depth, never the real barrier. RLS (and
+  // has_permission() server-side) is what actually blocks a non-admin/non-staff
+  // account from reading or writing anything here, even if this check were
+  // bypassed entirely. Checked on mount; _sb null (demo mode) is let through
+  // so the console stays usable without a configured backend.
+  React.useEffect(() => {
+    if (!window._supabase) { setAccessCtx({ isAdmin: true, isStaff: false, permissions: [] }); return; }
+    sbGetMyAccessContext().then(ctx => setAccessCtx(ctx && (ctx.isAdmin || ctx.isStaff) ? ctx : null));
   }, []);
 
   function onNav(key) {
@@ -1936,22 +2214,6 @@ function AdminShellScreen({ params = {} }) {
     forceTick(t => t + 1);
   }
 
-  // ── Staff ──
-  function addStaff() {
-    window._STAFF = [...window._STAFF, { id:`st${Date.now()}`, name:'New teammate', email:'', role:'Support', tint: window._STAFF.length % 5 }];
-    logAdminAction('Invited staff member', 'New teammate');
-    forceTick(t => t + 1);
-  }
-  function updateStaff(id, field, value) {
-    window._STAFF = window._STAFF.map(s => s.id === id ? { ...s, [field]: value } : s);
-    forceTick(t => t + 1);
-  }
-  function removeStaff(id) {
-    window._STAFF = window._STAFF.filter(s => s.id !== id);
-    logAdminAction('Removed staff member', id);
-    forceTick(t => t + 1);
-  }
-
   // ── Inventory / Flash deals ──
   function updateStock(id, value) {
     const p = window.PRODUCTS.find(p => p.id === id);
@@ -1977,7 +2239,6 @@ function AdminShellScreen({ params = {} }) {
 
   // ── Notifications / Roles / Security / Platform Settings toggles ──
   function toggleNotif(field, value) { window._NOTIF_SETTINGS = { ...window._NOTIF_SETTINGS, [field]: value }; forceTick(t => t + 1); }
-  function toggleRole(field, value) { window._ROLES_SETTINGS = { ...window._ROLES_SETTINGS, [field]: value }; forceTick(t => t + 1); }
   function toggleSecurity(field, value) { window._SECURITY_SETTINGS = { ...window._SECURITY_SETTINGS, [field]: value }; logAdminAction('Changed security setting', `${field} → ${value}`); forceTick(t => t + 1); }
   function togglePlatformSetting(field, value) { window._PLATFORM_SETTINGS = { ...window._PLATFORM_SETTINGS, [field]: value }; logAdminAction('Changed platform setting', `${field} → ${value}`); forceTick(t => t + 1); }
 
@@ -2283,36 +2544,9 @@ function AdminShellScreen({ params = {} }) {
         </div>
       );
 
-      case 'roles': return (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Roles & Permissions" />
-          <AdminSettingsRows rows={[
-            { type:'kv', k:'Owner', v:`${window._STAFF.filter(s=>s.role==='Owner').length} member` },
-            { type:'kv', k:'Moderator', v:`${window._STAFF.filter(s=>s.role==='Moderator').length} members` },
-            { type:'kv', k:'Support', v:`${window._STAFF.filter(s=>s.role==='Support').length} members` },
-            { type:'toggle', k:'Allow staff to invite new members', on:window._ROLES_SETTINGS.allowInvite },
-          ]} onToggle={(k, v) => toggleRole('allowInvite', v)} />
-        </div>
-      );
+      case 'roles': return <AdminStaffSection initialTab="roles" />;
 
-      case 'staff': return (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Staff" sub={`${window._STAFF.length} team members`} action={<Btn variant="primary" size="sm" onClick={addStaff}>+ Invite</Btn>} />
-          <AdminCard padded={false}>
-            {window._STAFF.map((s, i) => (
-              <div key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
-                <Avatar size={30} initials={(s.name||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()} />
-                <input value={s.name} onChange={e => updateStaff(s.id,'name',e.target.value)} style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }} />
-                <input value={s.email} onChange={e => updateStaff(s.id,'email',e.target.value)} placeholder="email" style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }} />
-                <select value={s.role} onChange={e => updateStaff(s.id,'role',e.target.value)} style={{ border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'5px 8px', fontFamily:"'Inter',sans-serif", fontSize:12, color:C.ink, background:C.white }}>
-                  {['Owner','Moderator','Support','Analyst'].map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-                <button onClick={() => removeStaff(s.id)} style={{ border:'none', background:'none', cursor:'pointer' }}><Icon name="trash" size={15} color={C.danger} /></button>
-              </div>
-            ))}
-          </AdminCard>
-        </div>
-      );
+      case 'staff': return <AdminStaffSection initialTab="team" />;
 
       case 'security': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
@@ -2348,23 +2582,7 @@ function AdminShellScreen({ params = {} }) {
         </div>
       );
 
-      case 'auditlog': return (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Audit Log" sub="Every admin action taken this session, newest first" />
-          <AdminCard padded={false}>
-            {window._ADMIN_AUDIT_LOG.length === 0 ? <AdminEmptyRow text="No admin actions yet — changes you make elsewhere in this console will show up here." /> : window._ADMIN_AUDIT_LOG.map((a, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
-                <div style={{ width:28, height:28, borderRadius:8, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><Icon name="fileText" size={13} color={C.primary} /></div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{a.action}</div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.detail} · by {a.by}</div>
-                </div>
-                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, flexShrink:0 }}>{fmtRelativeShort(a.at)}</span>
-              </div>
-            ))}
-          </AdminCard>
-        </div>
-      );
+      case 'auditlog': return <AdminAuditLogSection />;
 
       case 'integrations': {
         const supaConfigured = !!window._supabase;
@@ -2497,6 +2715,26 @@ function AdminShellScreen({ params = {} }) {
 
       default: return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={window._ADMIN_REVIEWS} kycCount={adminStats?.pendingKyc ?? 0} />;
     }
+  }
+
+  if (accessCtx === undefined) {
+    return (
+      <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <StatusBar />
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Checking access…</span>
+      </div>
+    );
+  }
+  if (accessCtx === null) {
+    return (
+      <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14, padding:24 }}>
+        <StatusBar />
+        <Icon name="lock" size={36} color={C.mute} />
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:700, color:C.ink }}>Access restricted</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, textAlign:'center', maxWidth:320 }}>Your account doesn't have admin or staff access to this console.</div>
+        <Btn variant="primary" onClick={() => navigate('home')}>Back to Home</Btn>
+      </div>
+    );
   }
 
   return (
