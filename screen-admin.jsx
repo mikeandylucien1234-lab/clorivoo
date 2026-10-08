@@ -200,8 +200,8 @@ function AdminUserDetail({ user, onBack, onSave }) {
 function AdminProductDetail({ product, onBack, onSave, onDelete }) {
   const [form, setForm] = React.useState({
     id: product.id, title: product.title || '', price: String(product.price ?? ''),
-    oldPrice: product.oldPrice != null ? String(product.oldPrice) : '', discount: product.discount != null ? String(product.discount) : '',
-    category: product.category || 'home', seller: product.seller || '', image_url: product.image_url || null,
+    oldPrice: product.oldPrice != null ? String(product.oldPrice) : '',
+    category: product.category || 'home', sku: product.sku || '', image_url: product.image_url || null,
     stock: product.stock != null ? String(product.stock) : '50',
   });
   const [uploading, setUploading] = React.useState(false);
@@ -252,10 +252,11 @@ function AdminProductDetail({ product, onBack, onSave, onDelete }) {
         <AdminTextInput value={form.oldPrice} onChange={v => setForm(f => ({ ...f, oldPrice:v }))} placeholder="Compare-at (optional)" mono />
         <AdminTextInput value={form.stock} onChange={v => setForm(f => ({ ...f, stock:v }))} placeholder="Stock" mono />
       </div>
+      <AdminTextInput value={form.sku} onChange={v => setForm(f => ({ ...f, sku:v }))} placeholder="SKU (optional)" mono />
 
       <AdminField label="Category">
         <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
-          {['home','fashion','tech','beauty','kids'].map(c => (
+          {PRODUCT_CATEGORY_CHOICES.map(c => (
             <button key={c} onClick={() => setForm(f => ({ ...f, category:c }))} style={{ height:32, padding:'0 12px', borderRadius:9999, border: form.category === c ? `1.5px solid ${C.primary}` : `1.5px solid ${C.hairline}`, background: form.category === c ? C.primarySoft : C.white, color: form.category === c ? C.primaryDeep : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, cursor:'pointer', textTransform:'capitalize' }}>{c}</button>
           ))}
         </div>
@@ -853,6 +854,214 @@ function AdminBannersSection({ onLog }) {
   );
 }
 
+// ─── ADMIN — Products (moderation, publish toggle, search/filter, pagination) ──
+const PRODUCT_PAGE_SIZE = 12;
+
+function AdminProductsSection() {
+  const [result, setResult] = React.useState({ products:[], totalProducts:0, totalPages:0, currentPage:1, liveProductsCount:0 });
+  const [loading, setLoading] = React.useState(true);
+  const [page, setPage] = React.useState(1);
+  const [status, setStatus] = React.useState('ALL');
+  const [categoryId, setCategoryId] = React.useState('');
+  const [categories, setCategories] = React.useState([]);
+  const [searchInput, setSearchInput] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [editing, setEditing] = React.useState(null); // product row being edited, or {} for new
+  const [rejecting, setRejecting] = React.useState(null); // product row being rejected
+  const [rejectReason, setRejectReason] = React.useState('');
+  const [newProductFlash, setNewProductFlash] = React.useState(false);
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    sbAdminGetProducts({ page, limit:PRODUCT_PAGE_SIZE, status, search, categoryId }).then(r => { setResult(r); setLoading(false); });
+  }, [page, status, search, categoryId]);
+
+  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => { sbGetCategoriesList().then(setCategories); }, []);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setSearch(searchInput); }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  React.useEffect(() => {
+    // Live list + live-count: a product insert/update/delete anywhere refreshes this page —
+    // the Supabase Realtime equivalent of the Socket.io push the spec asks for.
+    const unsubscribe = sbSubscribeAdminProducts(payload => {
+      load();
+      if (payload.eventType === 'INSERT') { setNewProductFlash(true); setTimeout(() => setNewProductFlash(false), 4000); }
+    });
+    return unsubscribe;
+  }, [load]);
+
+  async function handleModerate(product, decision) {
+    await sbAdminModerateProduct(product.id, decision, decision === 'rejected' ? rejectReason : '');
+    logAdminAction(decision === 'approved' ? 'Approved product' : 'Rejected product', product.title);
+    setRejecting(null); setRejectReason('');
+    load();
+  }
+
+  async function handleTogglePublish(product, published) {
+    await sbAdminTogglePublish(product.id, published);
+    logAdminAction(published ? 'Published product' : 'Unpublished product', product.title);
+    load();
+  }
+
+  async function handleDelete(product) {
+    await sbAdminDeleteProduct(product.id);
+    logAdminAction('Deleted product', product.title);
+    load();
+  }
+
+  async function handleSave(form) {
+    const payload = {
+      title: form.title, price: parseFloat(form.price) || 0,
+      oldPrice: form.oldPrice ? parseFloat(form.oldPrice) : null,
+      stock: parseInt(form.stock) || 0, category: form.category, sku: form.sku || null,
+      image_url: form.image_url,
+    };
+    if (form.id) {
+      await sbAdminUpdateProduct(form.id, payload);
+      logAdminAction('Updated product', form.title);
+    } else {
+      await sbAdminCreateProduct(payload);
+      logAdminAction('Created product', form.title);
+    }
+    setEditing(null);
+    load();
+  }
+
+  if (editing) {
+    return <AdminProductDetail product={editing} onBack={() => setEditing(null)} onSave={handleSave} onDelete={async (f) => { await handleDelete(f); setEditing(null); }} />;
+  }
+
+  const { products, totalProducts, totalPages, liveProductsCount } = result;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Products" sub={`${liveProductsCount} product${liveProductsCount === 1 ? '' : 's'} live on Home, Search & Category · ${totalProducts} total`}
+        action={<Btn variant="primary" size="sm" onClick={() => setEditing({ id:null, title:'', price:'', oldPrice:'', category:'home', sku:'', image_url:null, stock:'50' })}>+ New product</Btn>} />
+
+      {newProductFlash && (
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:C.primarySoft, border:`1px solid ${C.primary}`, borderRadius:12, padding:'10px 14px' }}>
+          <Icon name="bell" size={15} color={C.primaryDeep} />
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.primaryDeep }}>Catalog changed — list refreshed.</span>
+        </div>
+      )}
+
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ flex:'1 1 220px', position:'relative' }}>
+          <Icon name="search" size={15} color={C.mute} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)' }} />
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Product name, SKU or seller…"
+            style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px 9px 34px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        </div>
+        <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setPage(1); }}
+          style={{ border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }}>
+          <option value="">All categories</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+        {[['ALL','All'],['PENDING','Pending Approval'],['PUBLISHED','Published'],['OUT_OF_STOCK','Out of Stock'],['REJECTED','Rejected']].map(([k,label]) => (
+          <button key={k} onClick={() => { setStatus(k); setPage(1); }} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: status === k ? C.ink : C.paper, color: status === k ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600 }}>{label}</button>
+        ))}
+      </div>
+
+      <AdminCard padded={false} style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead><tr><Th>Product</Th><Th>Seller</Th><Th>Category</Th><Th align="right">Price & Stock</Th><Th>Visibility</Th><Th align="right">Actions</Th></tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={6}><AdminEmptyRow text="Loading products…" /></td></tr>
+            ) : result.timedOut ? (
+              <tr><td colSpan={6}><AdminEmptyRow text="Couldn't reach the server — check your connection and try again." /></td></tr>
+            ) : products.length === 0 ? (
+              <tr><td colSpan={6}><AdminEmptyRow text="No products yet — add your first one." /></td></tr>
+            ) : products.map(p => {
+              const img = p.images?.[0];
+              const outOfStock = (p.stock ?? 0) === 0;
+              const lowStock = !outOfStock && (p.stock ?? 0) < 10;
+              return (
+                <tr key={p.id}>
+                  <Td>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} onClick={() => setEditing({ id:p.id, title:p.title, price:p.price, oldPrice:p.compare_price, category:p.category || 'home', sku:p.sku, image_url:img || null, stock:p.stock })}>
+                      <div style={{ width:36, height:36, borderRadius:8, overflow:'hidden', flexShrink:0, background:C.paper, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {img ? <img src={img} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <Icon name="package" size={15} color={C.mute} />}
+                      </div>
+                      <div style={{ minWidth:0 }}>
+                        <div style={{ fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:220 }}>{p.title}</div>
+                        <div style={{ fontSize:11, color:C.mute, fontFamily:"'JetBrains Mono',monospace" }}>{p.sku || '—'}</div>
+                      </div>
+                    </div>
+                  </Td>
+                  <Td>{p.shops?.name || 'Platform'}</Td>
+                  <Td style={{ textTransform:'capitalize' }}>{p.category || '—'}</Td>
+                  <Td align="right">
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>${(p.price ?? 0).toFixed(2)}</div>
+                    <StatusPill tone={outOfStock ? 'danger' : lowStock ? 'warning' : 'mute'}>{outOfStock ? 'out of stock' : `${p.stock ?? 0} in stock`}</StatusPill>
+                  </Td>
+                  <Td>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6, alignItems:'flex-start' }}>
+                      <StatusPill tone={p.approval_status === 'approved' ? 'success' : p.approval_status === 'rejected' ? 'danger' : 'warning'}>{p.approval_status === 'pending' ? 'pending approval' : p.approval_status}</StatusPill>
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <Switch checked={p.status === 'active'} onChange={v => handleTogglePublish(p, v)} />
+                        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{p.status === 'active' ? 'Published' : 'Draft'}</span>
+                      </div>
+                    </div>
+                  </Td>
+                  <Td align="right">
+                    <div style={{ display:'flex', gap:6, justifyContent:'flex-end', flexWrap:'wrap' }}>
+                      {p.approval_status === 'pending' && (
+                        <>
+                          <button onClick={() => handleModerate(p, 'approved')} title="Approve" style={{ border:`1px solid ${C.success}`, background:'#EFF9F4', borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            <Icon name="check" size={14} color={C.success} sw={2.5} />
+                          </button>
+                          <button onClick={() => setRejecting(p)} title="Reject" style={{ border:`1px solid ${C.danger}`, background:'#FDEDED', borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            <Icon name="x" size={14} color={C.danger} sw={2.5} />
+                          </button>
+                        </>
+                      )}
+                      <button onClick={() => setEditing({ id:p.id, title:p.title, price:p.price, oldPrice:p.compare_price, category:p.category || 'home', sku:p.sku, image_url:img || null, stock:p.stock })} title="Edit" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        <Icon name="edit" size={14} color={C.mute} />
+                      </button>
+                      <button onClick={() => handleDelete(p)} title="Delete" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        <Icon name="trash" size={14} color={C.danger} />
+                      </button>
+                    </div>
+                  </Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </AdminCard>
+
+      {totalPages > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:10 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Previous</button>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Next</button>
+        </div>
+      )}
+
+      {rejecting && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(14,11,31,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:100, padding:16 }} onClick={() => setRejecting(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.white, borderRadius:16, padding:20, maxWidth:380, width:'100%', display:'flex', flexDirection:'column', gap:12 }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink }}>Reject "{rejecting.title}"</div>
+            <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Reason (sent to the seller)" rows={3}
+              style={{ border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'10px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, resize:'none' }} />
+            <div style={{ display:'flex', gap:8 }}>
+              <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => { setRejecting(null); setRejectReason(''); }}>Cancel</Btn>
+              <Btn size="sm" style={{ flex:1, color:'#fff', background:C.danger, border:'none' }} onClick={() => handleModerate(rejecting, 'rejected')}>Reject product</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ADMIN — Orders (search, filter, date range, pagination, status + refund) ──
 const ORDER_STATUS_TONE = { pending:'warning', confirmed:'info', processing:'info', shipped:'primary', delivered:'success', cancelled:'danger', refunded:'mute' };
 const PAGE_SIZE = 10;
@@ -1075,7 +1284,6 @@ function AdminShellScreen({ params = {} }) {
   const [adminStats, setAdminStats] = React.useState(null);
   const [remoteUsers, setRemoteUsers] = React.useState(null);
   const [userDetail, setUserDetail] = React.useState(null);
-  const [productDetail, setProductDetail] = React.useState(null);
   const [sellerPanel, setSellerPanel] = React.useState(null); // 'kyc' | null
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [, forceTick] = React.useState(0);
@@ -1091,7 +1299,7 @@ function AdminShellScreen({ params = {} }) {
 
   function onNav(key) {
     setSection(key);
-    setUserDetail(null); setProductDetail(null); setSellerPanel(null);
+    setUserDetail(null); setSellerPanel(null);
     setMobileNavOpen(false);
   }
 
@@ -1125,39 +1333,6 @@ function AdminShellScreen({ params = {} }) {
     setUserDetail(null);
   }
 
-  // ── Products ──
-  function openNewProduct() {
-    setProductDetail({ id:null, title:'', price:'', oldPrice:'', discount:'', category:'home', seller: window._PROFILE?.name ?? 'Admin', image_url:null, stock:'50' });
-  }
-  async function handleSaveProduct(form) {
-    const price = parseFloat(form.price) || 0;
-    const oldPrice = form.oldPrice ? parseFloat(form.oldPrice) : undefined;
-    const discount = form.discount ? parseInt(form.discount) : (oldPrice ? Math.round((1 - price/oldPrice) * 100) : undefined);
-    const stock = form.stock !== undefined ? parseInt(form.stock) || 0 : 50;
-    if (form.id) {
-      const existing = window.PRODUCTS.find(p => p.id === form.id);
-      if (existing) Object.assign(existing, { title: form.title, price, oldPrice, discount, category: form.category, image_url: form.image_url, stock });
-      await sbAdminUpdateProduct(form.id, { title: form.title, price, compare_price: oldPrice ?? null, discount: discount ?? null, image_url: form.image_url });
-      logAdminAction('Updated product', form.title);
-    } else {
-      const newId = Math.max(0, ...window.PRODUCTS.map(p => typeof p.id === 'number' ? p.id : 0)) + 1;
-      window.PRODUCTS.push({ id:newId, title: form.title, price, oldPrice, discount, seller: form.seller, rating:0, reviews:0, category: form.category, label:'product photo', image_url: form.image_url, stock });
-      await sbAdminCreateProduct({ title: form.title, price, compare_price: oldPrice ?? null, discount: discount ?? null, image_url: form.image_url });
-      logAdminAction('Created product', form.title);
-    }
-    forceTick(t => t + 1);
-    setProductDetail(null);
-  }
-  async function handleDeleteProduct(form) {
-    if (form.id) {
-      const idx = window.PRODUCTS.findIndex(p => p.id === form.id);
-      if (idx >= 0) window.PRODUCTS.splice(idx, 1);
-      await sbAdminDeleteProduct(form.id);
-      logAdminAction('Deleted product', form.title);
-    }
-    forceTick(t => t + 1);
-    setProductDetail(null);
-  }
 
   // ── Categories ──
   function addCategory() {
@@ -1282,27 +1457,7 @@ function AdminShellScreen({ params = {} }) {
 
       case 'orders': return <AdminOrdersSection />;
 
-      case 'products': return productDetail ? (
-        <AdminProductDetail product={productDetail} onBack={() => setProductDetail(null)} onSave={handleSaveProduct} onDelete={handleDeleteProduct} />
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Products" sub={`${window.PRODUCTS.length} products live on Home, Search & Category`} action={<Btn variant="primary" size="sm" onClick={openNewProduct}>+ New product</Btn>} />
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(170px, 1fr))', gap:12 }}>
-            {window.PRODUCTS.map((p, i) => (
-              <div key={p.id ?? i} onClick={() => setProductDetail(p)} style={{ borderRadius:12, overflow:'hidden', border:`1px solid ${C.hairline}`, cursor:'pointer', background:C.white }}>
-                <div style={{ height:100, position:'relative', background: p.image_url ? undefined : ['#F0ECFD','#FDF0EC','#ECF4FD','#ECFDF4','#FDFAEC'][i % 5] }}>
-                  {p.image_url && <img src={p.image_url} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />}
-                  {p.discount && <div style={{ position:'absolute', top:6, left:6, background:C.danger, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:9999 }}>-{p.discount}%</div>}
-                </div>
-                <div style={{ padding:'8px 10px' }}>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:C.ink, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis' }}>{p.title}</div>
-                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:700, color:C.primary, marginTop:3 }}>${Number(p.price).toFixed(2)}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
+      case 'products': return <AdminProductsSection />;
 
       case 'categories': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>

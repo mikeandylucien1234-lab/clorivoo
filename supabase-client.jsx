@@ -93,6 +93,7 @@ async function sbGetProducts({ categorySlug, limit = 20, offset = 0, featured } 
   let q = _sb.from('products')
     .select('*, shops(id, name, slug, is_verified, rating), categories(id, name, slug)')
     .eq('status', 'active')
+    .eq('approval_status', 'approved')
     .range(offset, offset + limit - 1)
     .order('created_at', { ascending: false });
   if (featured) q = q.eq('is_featured', true);
@@ -622,15 +623,33 @@ async function sbAdminUpdateUser(id, updates) {
   return { data, error };
 }
 
+// Maps the admin product form's shape (title/price/oldPrice/image_url/…) onto the real
+// `products` columns (compare_price/images[]/…) — the form previously sent fields that
+// don't exist on the table (discount, image_url) and omitted ones that are required
+// (stock was dropped entirely on create), so every admin-created product silently failed
+// to persist and only ever existed in the client-side window.PRODUCTS array.
+function _productFormToSb(form) {
+  const payload = {};
+  if (form.title !== undefined) payload.title = form.title;
+  if (form.price !== undefined) payload.price = form.price;
+  if (form.oldPrice !== undefined) payload.compare_price = form.oldPrice || null;
+  if (form.stock !== undefined) payload.stock = form.stock ?? 0;
+  if (form.category !== undefined) payload.category = form.category || null;
+  if (form.sku !== undefined) payload.sku = form.sku || null;
+  if (form.image_url !== undefined) payload.images = form.image_url ? [form.image_url] : [];
+  return payload;
+}
+
 async function sbAdminCreateProduct(product) {
   if (!_sb) return { data: null, error: null };
-  const { data, error } = await _sb.from('products').insert(product).select().single();
+  const payload = { ..._productFormToSb(product), status: 'active', approval_status: 'approved' };
+  const { data, error } = await _sb.from('products').insert(payload).select().single();
   return { data, error };
 }
 
 async function sbAdminUpdateProduct(id, updates) {
   if (!_sb) return { data: null, error: null };
-  const { data, error } = await _sb.from('products').update(updates).eq('id', id).select().single();
+  const { data, error } = await _sb.from('products').update(_productFormToSb(updates)).eq('id', id).select().single();
   return { data, error };
 }
 
@@ -638,6 +657,93 @@ async function sbAdminDeleteProduct(id) {
   if (!_sb) return { error: null };
   const { error } = await _sb.from('products').delete().eq('id', id);
   return { error };
+}
+
+const PRODUCT_CATEGORY_CHOICES = ['home','fashion','tech','beauty','kids'];
+
+// Paginated, filterable, searchable product list for the admin Products table, plus the
+// live-on-site count shown in the page subtitle. Search matches title, SKU or shop name —
+// same two-step approach as sbAdminGetOrders, since PostgREST can't ilike through a join.
+async function sbAdminGetProducts(opts = {}) {
+  const { page = 1 } = opts;
+  const emptyResult = { products: [], totalProducts: 0, totalPages: 0, currentPage: page, liveProductsCount: 0 };
+  if (!_sb) return emptyResult;
+  return _withTimeout(_sbAdminGetProductsImpl(opts), 10000, { ...emptyResult, timedOut: true });
+}
+async function _sbAdminGetProductsImpl({ page = 1, limit = 12, status = 'ALL', search = '', categoryId = '' } = {}) {
+  let shopIdsFromSearch = null;
+  const q = (search || '').trim();
+  if (q) {
+    const { data } = await _sb.from('shops').select('id').ilike('name', `%${q}%`);
+    shopIdsFromSearch = (data || []).map(s => s.id);
+  }
+
+  let query = _sb.from('products').select('*, shops(name)', { count: 'exact' });
+  if (status === 'PENDING') query = query.eq('approval_status', 'pending');
+  else if (status === 'REJECTED') query = query.eq('approval_status', 'rejected');
+  else if (status === 'PUBLISHED') query = query.eq('status', 'active').eq('approval_status', 'approved');
+  else if (status === 'OUT_OF_STOCK') query = query.eq('stock', 0);
+  if (categoryId) query = query.eq('category_id', categoryId);
+  if (q) {
+    const orClauses = [`title.ilike.%${q}%`, `sku.ilike.%${q}%`];
+    if (shopIdsFromSearch.length) orClauses.push(`shop_id.in.(${shopIdsFromSearch.join(',')})`);
+    query = query.or(orClauses.join(','));
+  }
+
+  const from = (page - 1) * limit;
+  const [{ data, count, error }, { count: liveCount }] = await Promise.all([
+    query.order('created_at', { ascending: false }).range(from, from + limit - 1),
+    _sb.from('products').select('id', { count: 'exact', head: true }).eq('status', 'active').eq('approval_status', 'approved'),
+  ]);
+  if (error) return { products: [], totalProducts: 0, totalPages: 0, currentPage: page, liveProductsCount: liveCount ?? 0 };
+
+  return { products: data ?? [], totalProducts: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page, liveProductsCount: liveCount ?? 0 };
+}
+
+// Approve publishes the product immediately; reject unpublishes it and records why.
+// Either way, the seller (if any — admin-created products have no seller_id) gets a
+// notification row, same mechanism sbGetNotifications already reads from.
+async function sbAdminModerateProduct(id, decision, reason = '') {
+  if (!_sb) return { error: null };
+  const patch = decision === 'approved'
+    ? { approval_status: 'approved', status: 'active', rejection_reason: null }
+    : { approval_status: 'rejected', status: 'draft', rejection_reason: reason || null };
+  const { data, error } = await _sb.from('products').update(patch).eq('id', id).select().single();
+  if (!error && data?.seller_id) {
+    await _sb.from('notifications').insert({
+      user_id: data.seller_id,
+      type: decision === 'approved' ? 'product_approved' : 'product_rejected',
+      title: decision === 'approved' ? 'Product approved' : 'Product rejected',
+      body: decision === 'approved'
+        ? `"${data.title}" was approved and is now live.`
+        : `"${data.title}" was rejected.${reason ? ' Reason: ' + reason : ''}`,
+      data: { product_id: id },
+    });
+  }
+  return { data, error };
+}
+
+async function sbAdminTogglePublish(id, published) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('products').update({ status: published ? 'active' : 'draft' }).eq('id', id);
+  return { error };
+}
+
+let _adminProductsChannelSeq = 0;
+function sbSubscribeAdminProducts(callback) {
+  if (!_sb) return () => {};
+  const channel = _sb.channel(`admin-products-${++_adminProductsChannelSeq}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, callback)
+    .subscribe();
+  return () => _sb.removeChannel(channel);
+}
+
+async function sbGetCategoriesList() {
+  if (!_sb) return [];
+  return _withTimeout((async () => {
+    const { data } = await _sb.from('categories').select('id, name').order('position', { ascending: true });
+    return data ?? [];
+  })(), 10000, []);
 }
 
 // ─── FILE UPLOADS ─────────────────────────────────────────────────
@@ -706,6 +812,8 @@ Object.assign(window, {
   sbAdminGetOrders, sbAdminGetOrderDetail, sbAdminUpdateOrderStatus, ORDER_STATUSES,
   sbAdminGetKycRequests, sbAdminUpdateKyc, sbAdminGetUsers, sbAdminUpdateUser,
   sbAdminCreateProduct, sbAdminUpdateProduct, sbAdminDeleteProduct,
+  sbAdminGetProducts, sbAdminModerateProduct, sbAdminTogglePublish, sbSubscribeAdminProducts,
+  sbGetCategoriesList, PRODUCT_CATEGORY_CHOICES,
   sbUploadFile,
   _isConfigured,
 });
