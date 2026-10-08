@@ -115,6 +115,308 @@ async function sbGetProduct(id) {
   return data;
 }
 
+// ─── CATEGORIES — the one source of truth for the whole marketplace ──────
+// `categories` (Supabase) replaces the old hardcoded MAIN_CATEGORIES JS arrays that
+// used to live separately in screen-admin.jsx and screen-category.jsx. Every screen
+// below reads this same table, so an edit in the admin is immediately what Home, the
+// Categories page, Search, and seller product creation all see — there is no second
+// list to fall out of sync.
+const CATEGORY_FALLBACK = []; // no local demo category list anymore — see note above
+
+function _buildCategoryTree(flat) {
+  const byId = new Map(flat.map(c => [c.id, { ...c, children: [] }]));
+  const roots = [];
+  for (const c of byId.values()) {
+    if (c.parent_id && byId.has(c.parent_id)) byId.get(c.parent_id).children.push(c);
+    else roots.push(c);
+  }
+  const sortRec = (list) => { list.sort((a, b) => (a.position ?? 0) - (b.position ?? 0)); list.forEach(c => sortRec(c.children)); };
+  sortRec(roots);
+  return roots;
+}
+
+// Public: full active category tree, nested. Used by Home (nav/featured), the
+// Categories hub, Category product-listing tabs, Search filters, and the seller/admin
+// product category picker — one query, one shape, everywhere.
+async function sbGetCategoryTree() {
+  if (!_sb) return CATEGORY_FALLBACK;
+  return _withTimeout((async () => {
+    const { data, error } = await _sb.from('categories').select('*').order('position', { ascending: true });
+    if (error || !data) return CATEGORY_FALLBACK;
+    return _buildCategoryTree(data);
+  })(), 10000, CATEGORY_FALLBACK);
+}
+
+async function sbGetCategoryBySlug(slug) {
+  if (!_sb || !slug) return null;
+  const { data } = await _sb.from('categories').select('*').eq('slug', slug).eq('status', 'active').single();
+  return data ?? null;
+}
+
+// Ancestor chain root→leaf, for breadcrumbs and for "N-level" category URLs
+// (/category/fashion/men/shoes).
+async function sbGetCategoryBreadcrumb(categoryId) {
+  if (!_sb || !categoryId) return [];
+  const { data } = await _sb.from('categories').select('id, name, slug, parent_id');
+  if (!data) return [];
+  const byId = new Map(data.map(c => [c.id, c]));
+  const chain = [];
+  let cur = byId.get(categoryId);
+  while (cur) { chain.unshift(cur); cur = cur.parent_id ? byId.get(cur.parent_id) : null; }
+  return chain;
+}
+
+async function sbGetFeaturedCategories(limit = 8) {
+  if (!_sb) return CATEGORY_FALLBACK;
+  return _withTimeout((async () => {
+    const { data } = await _sb.from('categories').select('*')
+      .eq('is_featured', true).eq('show_on_homepage', true)
+      .order('position', { ascending: true }).limit(limit);
+    return data ?? [];
+  })(), 10000, CATEGORY_FALLBACK);
+}
+
+async function sbGetCategoryAttributes(categoryId) {
+  if (!_sb || !categoryId) return [];
+  const { data } = await _sb.from('category_attributes').select('*').eq('category_id', categoryId).order('display_order', { ascending: true });
+  return data ?? [];
+}
+
+// All descendant ids (self included) — used so "Fashion" also pulls products filed
+// under its subcategories (Men, Women, …) instead of only directly-tagged ones.
+function _collectDescendantIds(categoryId, flat) {
+  const byParent = new Map();
+  flat.forEach(c => { const k = c.parent_id || '__root__'; if (!byParent.has(k)) byParent.set(k, []); byParent.get(k).push(c.id); });
+  const ids = [categoryId];
+  const queue = [categoryId];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const childId of byParent.get(cur) || []) { ids.push(childId); queue.push(childId); }
+  }
+  return ids;
+}
+
+async function sbGetProductsByCategory(categoryIdOrSlug, { limit = 24, offset = 0, sort = 'popular' } = {}) {
+  if (!_sb || !categoryIdOrSlug) return { data: [], category: null };
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(categoryIdOrSlug);
+  const { data: category } = await _sb.from('categories').select('*')
+    .eq(isUuid ? 'id' : 'slug', categoryIdOrSlug).single();
+  if (!category) return { data: [], category: null };
+
+  const { data: allCats } = await _sb.from('categories').select('id, parent_id');
+  const ids = _collectDescendantIds(category.id, allCats || [category]);
+
+  let q = _sb.from('products').select('*, shops(id, name, slug, is_verified, rating), categories(id, name, slug)')
+    .eq('status', 'active').eq('approval_status', 'approved')
+    .in('category_id', ids)
+    .range(offset, offset + limit - 1);
+  if (sort === 'price_asc') q = q.order('price', { ascending: true });
+  else if (sort === 'price_desc') q = q.order('price', { ascending: false });
+  else if (sort === 'newest') q = q.order('created_at', { ascending: false });
+  else q = q.order('sold_count', { ascending: false });
+
+  const { data } = await q;
+  return { data: data ?? [], category };
+}
+
+// ─── CATEGORIES — ADMIN ────────────────────────────────────────────
+async function sbAdminGetCategories(opts = {}) {
+  const emptyResult = { categories: [], totalCategories: 0, totalPages: 0, currentPage: opts.page || 1 };
+  if (!_sb) return emptyResult;
+  return _withTimeout(_sbAdminGetCategoriesImpl(opts), 10000, { ...emptyResult, timedOut: true });
+}
+async function _sbAdminGetCategoriesImpl({ page = 1, limit = 20, status = 'ALL', search = '', parentId = '' } = {}) {
+  let query = _sb.from('categories').select('*', { count: 'exact' });
+  if (status !== 'ALL') query = query.eq('status', status.toLowerCase());
+  if (parentId === 'ROOT') query = query.is('parent_id', null);
+  else if (parentId) query = query.eq('parent_id', parentId);
+  const q = (search || '').trim();
+  if (q) query = query.or(`name.ilike.%${q}%,slug.ilike.%${q}%`);
+
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('position', { ascending: true }).range(from, from + limit - 1);
+  if (error) return { categories: [], totalCategories: 0, totalPages: 0, currentPage: page };
+
+  const ids = (data || []).map(c => c.id);
+  let productCounts = {}, childCounts = {};
+  if (ids.length) {
+    const [{ data: prodRows }, { data: childRows }] = await Promise.all([
+      _sb.from('products').select('category_id').in('category_id', ids),
+      _sb.from('categories').select('parent_id').in('parent_id', ids),
+    ]);
+    (prodRows || []).forEach(r => { productCounts[r.category_id] = (productCounts[r.category_id] || 0) + 1; });
+    (childRows || []).forEach(r => { childCounts[r.parent_id] = (childCounts[r.parent_id] || 0) + 1; });
+  }
+  const categories = (data || []).map(c => ({ ...c, productCount: productCounts[c.id] || 0, subcategoryCount: childCounts[c.id] || 0 }));
+
+  return { categories, totalCategories: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
+async function sbAdminGetCategory(id) {
+  if (!_sb || !id) return null;
+  return _withTimeout((async () => {
+    const [{ data: category }, attributes, breadcrumb] = await Promise.all([
+      _sb.from('categories').select('*').eq('id', id).single(),
+      sbGetCategoryAttributes(id),
+      sbGetCategoryBreadcrumb(id),
+    ]);
+    if (!category) return null;
+    return { ...category, attributes, breadcrumb };
+  })(), 10000, null);
+}
+
+// True circularity guard: walks the proposed parent's own ancestor chain and refuses
+// if the category being edited would become its own ancestor (Fashion → Men → Fashion).
+async function _wouldCreateCycle(categoryId, proposedParentId) {
+  if (!proposedParentId || proposedParentId === categoryId) return !!proposedParentId && proposedParentId === categoryId;
+  const chain = await sbGetCategoryBreadcrumb(proposedParentId);
+  return chain.some(c => c.id === categoryId);
+}
+
+function _categoryPayload(form) {
+  const payload = {};
+  const fields = ['name','slug','icon','parent_id','description','short_description','image_url',
+    'banner_desktop_url','banner_tablet_url','banner_mobile_url','status','is_featured',
+    'show_on_homepage','show_in_navigation','show_in_menu','show_in_search',
+    'seo_title','seo_description','seo_keywords','canonical_url','og_image_url',
+    'default_view','product_sort_default','position'];
+  fields.forEach(f => { if (form[f] !== undefined) payload[f] = form[f] === '' && f === 'parent_id' ? null : form[f]; });
+  return payload;
+}
+
+async function sbAdminCreateCategory(form) {
+  if (!_sb) return { data: null, error: null };
+  // A brand-new category has no id yet, so it can't already be its own ancestor —
+  // the cycle check only matters on update, once the category exists.
+  const user = await sbGetUser();
+  const payload = { ..._categoryPayload(form), created_by: user?.id ?? null, updated_by: user?.id ?? null };
+  const { data, error } = await _sb.from('categories').insert(payload).select().single();
+  if (error?.code === '23505') return { data: null, error: { message: 'A category with this slug already exists' } };
+  return { data, error };
+}
+
+async function sbAdminUpdateCategory(id, form) {
+  if (!_sb) return { data: null, error: null };
+  const payload = _categoryPayload(form);
+  if (payload.parent_id) {
+    const cyclic = await _wouldCreateCycle(id, payload.parent_id);
+    if (cyclic) return { data: null, error: { message: 'Invalid parent category — a category cannot be its own descendant' } };
+  }
+  const user = await sbGetUser();
+  payload.updated_by = user?.id ?? null;
+  payload.updated_at = new Date().toISOString();
+  const { data, error } = await _sb.from('categories').update(payload).eq('id', id).select().single();
+  if (error?.code === '23505') return { data: null, error: { message: 'A category with this slug already exists' } };
+  return { data, error };
+}
+
+async function sbAdminSetCategoryStatus(id, status) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('categories').update({ status }).eq('id', id);
+  return { error };
+}
+
+async function sbAdminBulkCategoryStatus(ids, status) {
+  if (!_sb || !ids?.length) return { error: null };
+  const { error } = await _sb.from('categories').update({ status }).in('id', ids);
+  return { error };
+}
+
+// Swap display order with the adjacent sibling (same parent) — a real, working
+// reorder control without needing a drag-and-drop library.
+async function sbAdminMoveCategory(id, direction) {
+  if (!_sb) return { error: null };
+  const { data: cat } = await _sb.from('categories').select('id, parent_id, position').eq('id', id).single();
+  if (!cat) return { error: { message: 'Category not found' } };
+  let sibQuery = _sb.from('categories').select('id, position').order('position', { ascending: direction === 'up' });
+  sibQuery = cat.parent_id ? sibQuery.eq('parent_id', cat.parent_id) : sibQuery.is('parent_id', null);
+  sibQuery = direction === 'up' ? sibQuery.lt('position', cat.position) : sibQuery.gt('position', cat.position);
+  const { data: sibs } = await sibQuery.limit(1);
+  const sib = sibs?.[0];
+  if (!sib) return { error: null }; // already first/last — no-op, not an error
+  await Promise.all([
+    _sb.from('categories').update({ position: sib.position }).eq('id', cat.id),
+    _sb.from('categories').update({ position: cat.position }).eq('id', sib.id),
+  ]);
+  return { error: null };
+}
+
+// Delete flow matching the spec: never silently drop products. `productAction` is
+// 'move' (reassign to targetCategoryId), 'keep' (clear category_id), or 'archive'
+// (don't touch products — archive this category instead of deleting it, the default
+// and safest path). `childAction` is 'move' (reparent subcategories to
+// targetCategoryId) or 'root' (make them top-level). The products/categories FK
+// constraints are ON DELETE NO ACTION, so a hard delete fails loudly if anything was
+// missed instead of silently cascading.
+async function sbAdminDeleteCategory(id, { productAction = 'archive', targetCategoryId = null, childAction = 'root' } = {}) {
+  if (!_sb) return { error: null };
+
+  if (productAction === 'archive') {
+    const { error } = await _sb.from('categories').update({ status: 'archived' }).eq('id', id);
+    return { error, archived: true };
+  }
+
+  if (productAction === 'move' && targetCategoryId) {
+    await _sb.from('products').update({ category_id: targetCategoryId }).eq('category_id', id);
+  } else if (productAction === 'keep') {
+    await _sb.from('products').update({ category_id: null }).eq('category_id', id);
+  }
+
+  if (childAction === 'move' && targetCategoryId) {
+    await _sb.from('categories').update({ parent_id: targetCategoryId }).eq('parent_id', id);
+  } else {
+    await _sb.from('categories').update({ parent_id: null }).eq('parent_id', id);
+  }
+
+  const { error } = await _sb.from('categories').delete().eq('id', id);
+  return { error, archived: false };
+}
+
+async function sbAdminSaveCategoryAttribute(attr) {
+  if (!_sb) return { data: null, error: null };
+  const payload = {
+    category_id: attr.category_id, name: attr.name, type: attr.type || 'text',
+    options: attr.options || [], is_required: !!attr.is_required, is_filterable: attr.is_filterable !== false,
+    is_searchable: !!attr.is_searchable, is_sortable: !!attr.is_sortable, display_order: attr.display_order ?? 0,
+  };
+  if (attr.id) {
+    const { data, error } = await _sb.from('category_attributes').update(payload).eq('id', attr.id).select().single();
+    return { data, error };
+  }
+  const { data, error } = await _sb.from('category_attributes').insert(payload).select().single();
+  return { data, error };
+}
+
+async function sbAdminDeleteCategoryAttribute(id) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('category_attributes').delete().eq('id', id);
+  return { error };
+}
+
+// Secondary categories (products.category_id stays the Primary Category).
+async function sbGetProductCategories(productId) {
+  if (!_sb || !productId) return [];
+  const { data } = await _sb.from('product_categories').select('category_id, categories(id, name, slug)').eq('product_id', productId);
+  return (data || []).map(r => r.categories).filter(Boolean);
+}
+
+async function sbSetProductCategories(productId, categoryIds) {
+  if (!_sb || !productId) return { error: null };
+  await _sb.from('product_categories').delete().eq('product_id', productId);
+  if (!categoryIds?.length) return { error: null };
+  const { error } = await _sb.from('product_categories').insert(categoryIds.map(category_id => ({ product_id: productId, category_id })));
+  return { error };
+}
+
+let _adminCategoriesChannelSeq = 0;
+function sbSubscribeAdminCategories(callback) {
+  if (!_sb) return () => {};
+  const channel = _sb.channel(`admin-categories-${++_adminCategoriesChannelSeq}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, callback)
+    .subscribe();
+  return () => _sb.removeChannel(channel);
+}
+
 // ─── SHOPS ───────────────────────────────────────────────────────
 async function sbGetShops({ limit = 10 } = {}) {
   if (!_sb) return { data: _DEMO_SHOPS, error: null };
@@ -634,7 +936,7 @@ function _productFormToSb(form) {
   if (form.price !== undefined) payload.price = form.price;
   if (form.oldPrice !== undefined) payload.compare_price = form.oldPrice || null;
   if (form.stock !== undefined) payload.stock = form.stock ?? 0;
-  if (form.category !== undefined) payload.category = form.category || null;
+  if (form.category_id !== undefined) payload.category_id = form.category_id || null;
   if (form.sku !== undefined) payload.sku = form.sku || null;
   if (form.image_url !== undefined) payload.images = form.image_url ? [form.image_url] : [];
   return payload;
@@ -659,8 +961,6 @@ async function sbAdminDeleteProduct(id) {
   return { error };
 }
 
-const PRODUCT_CATEGORY_CHOICES = ['home','fashion','tech','beauty','kids'];
-
 // Paginated, filterable, searchable product list for the admin Products table, plus the
 // live-on-site count shown in the page subtitle. Search matches title, SKU or shop name —
 // same two-step approach as sbAdminGetOrders, since PostgREST can't ilike through a join.
@@ -678,7 +978,7 @@ async function _sbAdminGetProductsImpl({ page = 1, limit = 12, status = 'ALL', s
     shopIdsFromSearch = (data || []).map(s => s.id);
   }
 
-  let query = _sb.from('products').select('*, shops(name)', { count: 'exact' });
+  let query = _sb.from('products').select('*, shops(name), categories(name)', { count: 'exact' });
   if (status === 'PENDING') query = query.eq('approval_status', 'pending');
   else if (status === 'REJECTED') query = query.eq('approval_status', 'rejected');
   else if (status === 'PUBLISHED') query = query.eq('status', 'active').eq('approval_status', 'approved');
@@ -813,7 +1113,13 @@ Object.assign(window, {
   sbAdminGetKycRequests, sbAdminUpdateKyc, sbAdminGetUsers, sbAdminUpdateUser,
   sbAdminCreateProduct, sbAdminUpdateProduct, sbAdminDeleteProduct,
   sbAdminGetProducts, sbAdminModerateProduct, sbAdminTogglePublish, sbSubscribeAdminProducts,
-  sbGetCategoriesList, PRODUCT_CATEGORY_CHOICES,
+  sbGetCategoriesList,
+  sbGetCategoryTree, sbGetCategoryBySlug, sbGetCategoryBreadcrumb, sbGetFeaturedCategories,
+  sbGetCategoryAttributes, sbGetProductsByCategory,
+  sbAdminGetCategories, sbAdminGetCategory, sbAdminCreateCategory, sbAdminUpdateCategory,
+  sbAdminSetCategoryStatus, sbAdminBulkCategoryStatus, sbAdminMoveCategory, sbAdminDeleteCategory,
+  sbAdminSaveCategoryAttribute, sbAdminDeleteCategoryAttribute,
+  sbGetProductCategories, sbSetProductCategories, sbSubscribeAdminCategories,
   sbUploadFile,
   _isConfigured,
 });

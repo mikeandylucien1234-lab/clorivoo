@@ -11,7 +11,6 @@ window._STAFF              = window._STAFF             || [
 window._REWARDS_CONFIG     = window._REWARDS_CONFIG    || { pointsPerDollar:1, referralBonus:10, minRedeem:500 };
 window._ANNOUNCEMENT       = window._ANNOUNCEMENT       || { enabled:false, text:'', link:'' };
 window._HOME_SECTIONS      = window._HOME_SECTIONS      || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
-window._HOME_CHIPS         = window._HOME_CHIPS         || ['All', 'Home', 'Tech', 'Beauty', 'Fashion', 'Kids'];
 window._SEO_CONFIG         = window._SEO_CONFIG         || { ga:'', metaPixel:'', tiktok:'', searchConsole:'' };
 window._LOGIN_HISTORY      = window._LOGIN_HISTORY      || [];
 window._NOTIF_SETTINGS     = window._NOTIF_SETTINGS     || { newOrders:true, newSellers:true, urgentReports:true, weeklyReports:false, marketingEmails:false };
@@ -201,13 +200,16 @@ function AdminProductDetail({ product, onBack, onSave, onDelete }) {
   const [form, setForm] = React.useState({
     id: product.id, title: product.title || '', price: String(product.price ?? ''),
     oldPrice: product.oldPrice != null ? String(product.oldPrice) : '',
-    category: product.category || 'home', sku: product.sku || '', image_url: product.image_url || null,
+    category_id: product.category_id || '', sku: product.sku || '', image_url: product.image_url || null,
     stock: product.stock != null ? String(product.stock) : '50',
   });
+  const [categories, setCategories] = React.useState([]);
   const [uploading, setUploading] = React.useState(false);
   const fileRef = React.useRef(null);
   const isNew = !product.id;
   const canSave = form.title.trim() && parseFloat(form.price) > 0;
+
+  React.useEffect(() => { sbGetCategoryTree().then(tree => setCategories(_flattenCategories(tree))); }, []);
 
   async function handleImageChange(e) {
     const file = e.target.files?.[0];
@@ -255,11 +257,11 @@ function AdminProductDetail({ product, onBack, onSave, onDelete }) {
       <AdminTextInput value={form.sku} onChange={v => setForm(f => ({ ...f, sku:v }))} placeholder="SKU (optional)" mono />
 
       <AdminField label="Category">
-        <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
-          {PRODUCT_CATEGORY_CHOICES.map(c => (
-            <button key={c} onClick={() => setForm(f => ({ ...f, category:c }))} style={{ height:32, padding:'0 12px', borderRadius:9999, border: form.category === c ? `1.5px solid ${C.primary}` : `1.5px solid ${C.hairline}`, background: form.category === c ? C.primarySoft : C.white, color: form.category === c ? C.primaryDeep : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, cursor:'pointer', textTransform:'capitalize' }}>{c}</button>
-          ))}
-        </div>
+        <select value={form.category_id} onChange={e => setForm(f => ({ ...f, category_id:e.target.value }))}
+          style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+          <option value="">— No category —</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{'— '.repeat(c.depth)}{c.name}</option>)}
+        </select>
       </AdminField>
 
       <div style={{ display:'flex', gap:8, marginTop:4 }}>
@@ -854,6 +856,555 @@ function AdminBannersSection({ onLog }) {
   );
 }
 
+// ─── ADMIN — Categories (hierarchy, media, SEO, attributes, delete-safe, reorder) ──
+const CATEGORY_STATUS_TONE = { draft:'mute', active:'success', inactive:'warning', archived:'danger' };
+const CATEGORY_PAGE_SIZE = 20;
+
+// Depth-first flatten of the nested tree sbGetCategoryTree()/building locally returns,
+// so <select> parent-pickers can show indented "Fashion > Men" style options.
+function _flattenCategories(list, depth = 0, out = []) {
+  for (const c of list) {
+    out.push({ ...c, depth });
+    if (c.children?.length) _flattenCategories(c.children, depth + 1, out);
+  }
+  return out;
+}
+function _categoryTreeFromFlat(flat) {
+  const byId = new Map(flat.map(c => [c.id, { ...c, children: [] }]));
+  const roots = [];
+  for (const c of byId.values()) {
+    if (c.parent_id && byId.has(c.parent_id)) byId.get(c.parent_id).children.push(c);
+    else roots.push(c);
+  }
+  return roots;
+}
+
+function AdminCategoriesSection() {
+  const [result, setResult] = React.useState({ categories:[], totalCategories:0, totalPages:0, currentPage:1 });
+  const [loading, setLoading] = React.useState(true);
+  const [page, setPage] = React.useState(1);
+  const [status, setStatus] = React.useState('ALL');
+  const [parentFilter, setParentFilter] = React.useState('');
+  const [searchInput, setSearchInput] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [editing, setEditing] = React.useState(null); // { id } or {} for new, or null
+  const [deleting, setDeleting] = React.useState(null); // category row
+  const [selected, setSelected] = React.useState(new Set());
+  const [allCategoriesFlat, setAllCategoriesFlat] = React.useState([]); // for parent pickers / move targets
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    sbAdminGetCategories({ page, limit:CATEGORY_PAGE_SIZE, status, search, parentId:parentFilter }).then(r => { setResult(r); setLoading(false); });
+  }, [page, status, search, parentFilter]);
+
+  const loadTree = React.useCallback(() => {
+    sbGetCategoryTree().then(tree => setAllCategoriesFlat(_flattenCategories(tree)));
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => { loadTree(); }, [loadTree]);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setSearch(searchInput); }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  React.useEffect(() => {
+    const unsubscribe = sbSubscribeAdminCategories(() => { load(); loadTree(); });
+    return unsubscribe;
+  }, [load, loadTree]);
+
+  async function handleMove(cat, direction) {
+    await sbAdminMoveCategory(cat.id, direction);
+    logAdminAction('Reordered category', cat.name);
+    load(); loadTree();
+  }
+  async function handleStatus(cat, newStatus) {
+    await sbAdminSetCategoryStatus(cat.id, newStatus);
+    logAdminAction('Changed category status', `${cat.name} → ${newStatus}`);
+    load(); loadTree();
+  }
+  async function handleDuplicate(cat) {
+    const { data } = await sbAdminCreateCategory({
+      name: `${cat.name} (copy)`, slug: `${cat.slug}-copy-${Date.now().toString(36)}`,
+      icon: cat.icon, parent_id: cat.parent_id, description: cat.description, status: 'draft',
+    });
+    if (data) logAdminAction('Duplicated category', cat.name);
+    load(); loadTree();
+  }
+  async function handleBulk(newStatus) {
+    await sbAdminBulkCategoryStatus([...selected], newStatus);
+    logAdminAction(`Bulk ${newStatus}`, `${selected.size} categories`);
+    setSelected(new Set());
+    load(); loadTree();
+  }
+
+  if (editing) {
+    return <AdminCategoryDetail category={editing} allCategoriesFlat={allCategoriesFlat}
+      onBack={() => { setEditing(null); load(); loadTree(); }} />;
+  }
+  if (deleting) {
+    return <AdminCategoryDeleteModal category={deleting} allCategoriesFlat={allCategoriesFlat}
+      onClose={() => setDeleting(null)}
+      onDone={() => { setDeleting(null); load(); loadTree(); }} />;
+  }
+
+  const { categories, totalCategories, totalPages } = result;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Categories" sub={`${totalCategories} categor${totalCategories === 1 ? 'y' : 'ies'}`}
+        action={<Btn variant="primary" size="sm" onClick={() => setEditing({})}>+ Create Category</Btn>} />
+
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ flex:'1 1 220px', position:'relative' }}>
+          <Icon name="search" size={15} color={C.mute} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)' }} />
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Category name or slug…"
+            style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px 9px 34px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        </div>
+        <select value={parentFilter} onChange={e => { setParentFilter(e.target.value); setPage(1); }}
+          style={{ border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }}>
+          <option value="">All levels</option>
+          <option value="ROOT">Top-level only</option>
+        </select>
+      </div>
+
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+        {['ALL','draft','active','inactive','archived'].map(s => (
+          <button key={s} onClick={() => { setStatus(s); setPage(1); }} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: status === s ? C.ink : C.paper, color: status === s ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, textTransform:'capitalize' }}>{s === 'ALL' ? 'All' : s}</button>
+        ))}
+      </div>
+
+      {selected.size > 0 && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, background:C.primarySoft, borderRadius:12, padding:'10px 14px', flexWrap:'wrap' }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.primaryDeep }}>{selected.size} selected</span>
+          <Btn size="sm" onClick={() => handleBulk('active')}>Activate</Btn>
+          <Btn size="sm" onClick={() => handleBulk('inactive')}>Deactivate</Btn>
+          <Btn size="sm" style={{ color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} onClick={() => handleBulk('archived')}>Archive</Btn>
+          <button onClick={() => setSelected(new Set())} style={{ border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginLeft:'auto' }}>Clear</button>
+        </div>
+      )}
+
+      <AdminCard padded={false} style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead><tr>
+            <Th></Th><Th>Category</Th><Th>Status</Th><Th align="right">Products</Th><Th align="right">Subcats</Th><Th>Updated</Th><Th align="right">Actions</Th>
+          </tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="Loading categories…" /></td></tr>
+            ) : result.timedOut ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="Couldn't reach the server — check your connection and try again." /></td></tr>
+            ) : categories.length === 0 ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="No categories yet — create your first one." /></td></tr>
+            ) : categories.map(c => (
+              <tr key={c.id}>
+                <Td>
+                  <input type="checkbox" checked={selected.has(c.id)} onChange={e => setSelected(prev => { const next = new Set(prev); e.target.checked ? next.add(c.id) : next.delete(c.id); return next; })} />
+                </Td>
+                <Td>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} onClick={() => setEditing({ id:c.id })}>
+                    <div style={{ width:32, height:32, borderRadius:8, overflow:'hidden', flexShrink:0, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      {c.image_url ? <img src={c.image_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <Icon name={c.icon || 'tag'} size={15} color={C.primary} />}
+                    </div>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontWeight:600 }}>{c.name}{c.is_featured && <span title="Featured" style={{ marginLeft:6 }}><Icon name="star" size={11} color={C.warning} filled sw={0} /></span>}</div>
+                      <div style={{ fontSize:11, color:C.mute, fontFamily:"'JetBrains Mono',monospace" }}>/{c.slug}</div>
+                    </div>
+                  </div>
+                </Td>
+                <Td>
+                  <select value={c.status} onChange={e => handleStatus(c, e.target.value)}
+                    style={{ border:'none', borderRadius:9999, padding:'4px 10px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, textTransform:'capitalize', ...(() => { const t = { success:{bg:'#EFF9F4',fg:C.success}, danger:{bg:'#FDEDED',fg:C.danger}, warning:{bg:'#FFF6E5',fg:C.warning}, mute:{bg:C.paper,fg:C.mute} }[CATEGORY_STATUS_TONE[c.status] || 'mute']; return { background:t.bg, color:t.fg }; })() }}>
+                    {['draft','active','inactive','archived'].map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </Td>
+                <Td align="right">{c.productCount}</Td>
+                <Td align="right">{c.subcategoryCount}</Td>
+                <Td>{c.updated_at ? new Date(c.updated_at).toLocaleDateString() : (c.created_at ? new Date(c.created_at).toLocaleDateString() : '—')}</Td>
+                <Td align="right">
+                  <div style={{ display:'flex', gap:4, justifyContent:'flex-end', flexWrap:'wrap' }}>
+                    <button onClick={() => handleMove(c, 'up')} title="Move up" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name="chevronRight" size={13} color={C.mute} style={{ transform:'rotate(-90deg)' }} />
+                    </button>
+                    <button onClick={() => handleMove(c, 'down')} title="Move down" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name="chevronRight" size={13} color={C.mute} style={{ transform:'rotate(90deg)' }} />
+                    </button>
+                    <button onClick={() => setEditing({ id:c.id })} title="Edit" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name="edit" size={13} color={C.mute} />
+                    </button>
+                    <button onClick={() => handleDuplicate(c)} title="Duplicate" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name="copy" size={13} color={C.mute} />
+                    </button>
+                    <button onClick={() => setDeleting(c)} title="Delete" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name="trash" size={13} color={C.danger} />
+                    </button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </AdminCard>
+
+      {totalPages > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:10 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Previous</button>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Next</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminCategoryTabs({ tab, setTab }) {
+  const tabs = [['basic','Basic'],['media','Media'],['display','Display'],['seo','SEO'],['attributes','Attributes']];
+  return (
+    <div style={{ display:'flex', gap:4, background:C.paper, borderRadius:9999, padding:3, width:'fit-content' }}>
+      {tabs.map(([k,label]) => (
+        <button key={k} onClick={() => setTab(k)} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: tab === k ? C.primary : 'transparent', color: tab === k ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600 }}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+function _slugify(s) { return (s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''); }
+
+function AdminCategoryDetail({ category, allCategoriesFlat, onBack }) {
+  const isNew = !category.id;
+  const [loading, setLoading] = React.useState(!isNew);
+  const [tab, setTab] = React.useState('basic');
+  const [error, setError] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [slugTouched, setSlugTouched] = React.useState(false);
+  const [form, setForm] = React.useState({
+    name:'', slug:'', icon:'tag', parent_id:'', description:'', short_description:'',
+    image_url:null, banner_desktop_url:null, banner_tablet_url:null, banner_mobile_url:null,
+    status:'draft', is_featured:false, show_on_homepage:false, show_in_navigation:true, show_in_menu:true, show_in_search:true,
+    seo_title:'', seo_description:'', seo_keywords:'', canonical_url:'', og_image_url:'',
+    default_view:'grid', product_sort_default:'popular', position:0,
+  });
+  const [attributes, setAttributes] = React.useState([]);
+  const [uploading, setUploading] = React.useState('');
+
+  React.useEffect(() => {
+    if (isNew) return;
+    sbAdminGetCategory(category.id).then(data => {
+      if (data) {
+        setForm({
+          name:data.name||'', slug:data.slug||'', icon:data.icon||'tag', parent_id:data.parent_id||'',
+          description:data.description||'', short_description:data.short_description||'',
+          image_url:data.image_url||null, banner_desktop_url:data.banner_desktop_url||null,
+          banner_tablet_url:data.banner_tablet_url||null, banner_mobile_url:data.banner_mobile_url||null,
+          status:data.status||'draft', is_featured:!!data.is_featured, show_on_homepage:!!data.show_on_homepage,
+          show_in_navigation:data.show_in_navigation!==false, show_in_menu:data.show_in_menu!==false, show_in_search:data.show_in_search!==false,
+          seo_title:data.seo_title||'', seo_description:data.seo_description||'', seo_keywords:data.seo_keywords||'',
+          canonical_url:data.canonical_url||'', og_image_url:data.og_image_url||'',
+          default_view:data.default_view||'grid', product_sort_default:data.product_sort_default||'popular', position:data.position??0,
+        });
+        setAttributes(data.attributes || []);
+        setSlugTouched(true);
+      }
+      setLoading(false);
+    });
+  }, [category.id]);
+
+  function set(field, value) { setForm(f => ({ ...f, [field]: value })); }
+  function setName(v) { setForm(f => ({ ...f, name:v, slug: slugTouched ? f.slug : _slugify(v) })); }
+
+  // Exclude self and self's descendants from the parent picker — a true cycle guard,
+  // not just UI decoration (the save call re-validates this server-side too).
+  const descendantIds = React.useMemo(() => {
+    if (!category.id) return new Set();
+    const ids = new Set([category.id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const c of allCategoriesFlat) {
+        if (c.parent_id && ids.has(c.parent_id) && !ids.has(c.id)) { ids.add(c.id); changed = true; }
+      }
+    }
+    return ids;
+  }, [allCategoriesFlat, category.id]);
+  const parentOptions = allCategoriesFlat.filter(c => !descendantIds.has(c.id));
+
+  async function handleUpload(field, file) {
+    if (!file) return;
+    setUploading(field);
+    const path = `categories/${field}-${Date.now()}-${file.name}`;
+    const { url, error: uploadError } = await sbUploadFile('categories', path, file);
+    setUploading('');
+    if (uploadError || !url) { setError('Image upload failed'); return; }
+    set(field, url);
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) { setError('Category name is required'); return; }
+    if (!form.slug.trim()) { setError('Slug is required'); return; }
+    setSaving(true); setError('');
+    const payload = { ...form, parent_id: form.parent_id || null };
+    const { data, error: saveError } = isNew ? await sbAdminCreateCategory(payload) : await sbAdminUpdateCategory(category.id, payload);
+    setSaving(false);
+    if (saveError) { setError(saveError.message || 'Could not save category'); return; }
+    logAdminAction(isNew ? 'Created category' : 'Updated category', form.name);
+    onBack();
+  }
+
+  async function handleSaveAttribute(attr) {
+    const { data } = await sbAdminSaveCategoryAttribute({ ...attr, category_id: category.id });
+    if (data) setAttributes(prev => prev.some(a => a.id === data.id) ? prev.map(a => a.id === data.id ? data : a) : [...prev, data]);
+  }
+  async function handleDeleteAttribute(id) {
+    await sbAdminDeleteCategoryAttribute(id);
+    setAttributes(prev => prev.filter(a => a.id !== id));
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:680 }}>
+        <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0, width:'fit-content' }}>
+          <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Categories</span>
+        </button>
+        <AdminCard><AdminEmptyRow text="Loading…" /></AdminCard>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:680 }}>
+      <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0, width:'fit-content' }}>
+        <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Categories</span>
+      </button>
+
+      <SectionTitle title={isNew ? 'Create Category' : `Edit "${form.name}"`} />
+      <AdminCategoryTabs tab={tab} setTab={setTab} />
+
+      {error && (
+        <div style={{ background:'#FDEDED', border:`1px solid ${C.danger}`, borderRadius:10, padding:'10px 14px', fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{error}</div>
+      )}
+
+      {tab === 'basic' && (
+        <AdminCard style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <AdminField label="Category Name"><AdminTextInput value={form.name} onChange={setName} placeholder="e.g. Fashion" /></AdminField>
+          <AdminField label="Parent Category">
+            <select value={form.parent_id} onChange={e => set('parent_id', e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+              <option value="">— Top level —</option>
+              {parentOptions.map(c => <option key={c.id} value={c.id}>{'— '.repeat(c.depth)}{c.name}</option>)}
+            </select>
+          </AdminField>
+          <AdminField label="Slug"><AdminTextInput value={form.slug} onChange={v => { setSlugTouched(true); set('slug', _slugify(v)); }} placeholder="fashion" mono /></AdminField>
+          <AdminField label="Description">
+            <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3} style={{ border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'10px 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink, resize:'vertical' }} />
+          </AdminField>
+          <AdminField label="Short Description"><AdminTextInput value={form.short_description} onChange={v => set('short_description', v)} placeholder="One line, used in cards/menus" /></AdminField>
+        </AdminCard>
+      )}
+
+      {tab === 'media' && (
+        <AdminCard style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          {[['image_url','Category Image'],['banner_desktop_url','Desktop Banner'],['banner_tablet_url','Tablet Banner'],['banner_mobile_url','Mobile Banner']].map(([field, label]) => (
+            <AdminField key={field} label={label}>
+              <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{ width:72, height:52, borderRadius:10, overflow:'hidden', background:C.paper, border:`1.5px dashed ${C.hairline}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  {form[field] ? <img src={form[field]} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <Icon name="camera" size={16} color={C.mute} />}
+                </div>
+                <label style={{ cursor:'pointer' }}>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display:'none' }} onChange={e => handleUpload(field, e.target.files?.[0])} />
+                  <span style={{ border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'8px 14px', fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.ink, display:'inline-block' }}>
+                    {uploading === field ? 'Uploading…' : form[field] ? 'Replace' : 'Upload'}
+                  </span>
+                </label>
+                {form[field] && <button onClick={() => set(field, null)} style={{ border:'none', background:'none', cursor:'pointer' }}><Icon name="x" size={14} color={C.danger} /></button>}
+              </div>
+            </AdminField>
+          ))}
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>JPG, PNG or WEBP. The storefront falls back to the category icon if no image is set, so removing an image never breaks a page.</div>
+        </AdminCard>
+      )}
+
+      {tab === 'display' && (
+        <AdminCard style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <AdminField label="Status">
+            <select value={form.status} onChange={e => set('status', e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5, textTransform:'capitalize' }}>
+              {['draft','active','inactive','archived'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </AdminField>
+          {[['is_featured','Featured'],['show_on_homepage','Show on Homepage'],['show_in_navigation','Show in Navigation'],['show_in_menu','Show in Category Menu'],['show_in_search','Show in Search']].map(([field,label]) => (
+            <div key={field} style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink }}>{label}</span>
+              <Switch checked={form[field]} onChange={v => set(field, v)} />
+            </div>
+          ))}
+          <AdminField label="Display Order"><AdminTextInput value={String(form.position)} onChange={v => set('position', parseInt(v)||0)} placeholder="0" mono /></AdminField>
+          <AdminField label="Default View">
+            <select value={form.default_view} onChange={e => set('default_view', e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+              <option value="grid">Grid</option><option value="list">List</option>
+            </select>
+          </AdminField>
+          <AdminField label="Product Sorting (default)">
+            <select value={form.product_sort_default} onChange={e => set('product_sort_default', e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+              <option value="popular">Popular</option><option value="newest">Newest</option>
+              <option value="price_asc">Price: low to high</option><option value="price_desc">Price: high to low</option>
+            </select>
+          </AdminField>
+        </AdminCard>
+      )}
+
+      {tab === 'seo' && (
+        <AdminCard style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <AdminField label="SEO Title"><AdminTextInput value={form.seo_title} onChange={v => set('seo_title', v)} placeholder={form.name || 'Category name'} /></AdminField>
+          <AdminField label="SEO Description">
+            <textarea value={form.seo_description} onChange={e => set('seo_description', e.target.value)} rows={2} style={{ border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'10px 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink, resize:'vertical' }} />
+          </AdminField>
+          <AdminField label="SEO Keywords"><AdminTextInput value={form.seo_keywords} onChange={v => set('seo_keywords', v)} placeholder="comma, separated, keywords" /></AdminField>
+          <AdminField label="Canonical URL"><AdminTextInput value={form.canonical_url} onChange={v => set('canonical_url', v)} placeholder={`/category/${form.slug || ''}`} mono /></AdminField>
+          <AdminField label="OG Image URL"><AdminTextInput value={form.og_image_url} onChange={v => set('og_image_url', v)} placeholder="Falls back to Category Image" mono /></AdminField>
+          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11.5, color:C.mute, background:C.paper, borderRadius:8, padding:'8px 10px' }}>
+            /category/{form.slug || '…'}
+          </div>
+        </AdminCard>
+      )}
+
+      {tab === 'attributes' && (
+        isNew ? (
+          <AdminCard><AdminEmptyRow text="Save the category first, then add attributes." /></AdminCard>
+        ) : (
+          <AdminCategoryAttributesEditor attributes={attributes} onSave={handleSaveAttribute} onDelete={handleDeleteAttribute} />
+        )
+      )}
+
+      <div style={{ display:'flex', gap:8 }}>
+        <Btn size="sm" style={{ color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={onBack}>Cancel</Btn>
+        <Btn variant="primary" style={{ flex:1 }} onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : isNew ? 'Create category' : 'Save changes'}</Btn>
+      </div>
+    </div>
+  );
+}
+
+function AdminCategoryAttributesEditor({ attributes, onSave, onDelete }) {
+  const [draft, setDraft] = React.useState(null);
+  const ATTR_TYPES = ['text','number','boolean','select','multiselect','color','size','range'];
+
+  function openNew() { setDraft({ name:'', type:'text', options:'', is_required:false, is_filterable:true, is_searchable:false, is_sortable:false, display_order: attributes.length }); }
+  function openEdit(a) { setDraft({ ...a, options: (a.options||[]).join(', ') }); }
+  async function save() {
+    await onSave({ ...draft, options: draft.options.split(',').map(s => s.trim()).filter(Boolean) });
+    setDraft(null);
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+      <AdminCard padded={false}>
+        {attributes.length === 0 && <AdminEmptyRow text="No attributes yet — add Size, Color, Brand, etc." />}
+        {attributes.map((a, i) => (
+          <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{a.name}</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>
+                {a.type} · {[a.is_required && 'required', a.is_filterable && 'filterable', a.is_searchable && 'searchable', a.is_sortable && 'sortable'].filter(Boolean).join(', ') || 'display only'}
+              </div>
+            </div>
+            <button onClick={() => openEdit(a)} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}><Icon name="edit" size={13} color={C.mute} /></button>
+            <button onClick={() => onDelete(a.id)} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}><Icon name="trash" size={13} color={C.danger} /></button>
+          </div>
+        ))}
+      </AdminCard>
+
+      {draft ? (
+        <AdminCard style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <AdminField label="Attribute Name"><AdminTextInput value={draft.name} onChange={v => setDraft(d => ({ ...d, name:v }))} placeholder="e.g. Size" /></AdminField>
+          <AdminField label="Type">
+            <select value={draft.type} onChange={e => setDraft(d => ({ ...d, type:e.target.value }))} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+              {ATTR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </AdminField>
+          {['select','multiselect','color','size'].includes(draft.type) && (
+            <AdminField label="Options (comma-separated)"><AdminTextInput value={draft.options} onChange={v => setDraft(d => ({ ...d, options:v }))} placeholder="S, M, L, XL" /></AdminField>
+          )}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            {[['is_required','Required'],['is_filterable','Filterable'],['is_searchable','Searchable'],['is_sortable','Sortable']].map(([f,label]) => (
+              <div key={f} style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.ink }}>{label}</span>
+                <Switch checked={draft[f]} onChange={v => setDraft(d => ({ ...d, [f]:v }))} />
+              </div>
+            ))}
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <Btn size="sm" style={{ color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => setDraft(null)}>Cancel</Btn>
+            <Btn variant="primary" size="sm" style={{ flex:1 }} onClick={save} disabled={!draft.name.trim()}>Save attribute</Btn>
+          </div>
+        </AdminCard>
+      ) : (
+        <Btn size="sm" onClick={openNew}>+ Add attribute</Btn>
+      )}
+    </div>
+  );
+}
+
+function AdminCategoryDeleteModal({ category, allCategoriesFlat, onClose, onDone }) {
+  const [productAction, setProductAction] = React.useState('archive'); // archive | move | keep
+  const [childAction, setChildAction] = React.useState('root'); // move | root
+  const [targetId, setTargetId] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const productCount = category.productCount ?? 0;
+  const childCount = category.subcategoryCount ?? 0;
+  const needsTarget = productAction === 'move' || childAction === 'move';
+  const targetOptions = allCategoriesFlat.filter(c => c.id !== category.id);
+
+  async function confirm() {
+    setBusy(true);
+    await sbAdminDeleteCategory(category.id, { productAction, targetCategoryId: targetId || null, childAction });
+    logAdminAction(productAction === 'archive' ? 'Archived category' : 'Deleted category', category.name);
+    setBusy(false);
+    onDone();
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(14,11,31,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:100, padding:16 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.white, borderRadius:16, padding:20, maxWidth:440, width:'100%', display:'flex', flexDirection:'column', gap:14 }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>Delete "{category.name}"</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>
+          This category contains <strong>{productCount}</strong> product{productCount===1?'':'s'} and <strong>{childCount}</strong> subcategor{childCount===1?'y':'ies'}.
+        </div>
+
+        <AdminField label="Products in this category">
+          <select value={productAction} onChange={e => setProductAction(e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+            <option value="archive">Archive this category (keep everything as-is — recommended)</option>
+            <option value="move">Move products to another category</option>
+            <option value="keep">Keep products without a category</option>
+          </select>
+        </AdminField>
+
+        {productAction !== 'archive' && childCount > 0 && (
+          <AdminField label="Subcategories">
+            <select value={childAction} onChange={e => setChildAction(e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+              <option value="root">Make them top-level categories</option>
+              <option value="move">Move them to another parent</option>
+            </select>
+          </AdminField>
+        )}
+
+        {productAction !== 'archive' && needsTarget && (
+          <AdminField label="Target category">
+            <select value={targetId} onChange={e => setTargetId(e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+              <option value="">— Select a category —</option>
+              {targetOptions.map(c => <option key={c.id} value={c.id}>{'— '.repeat(c.depth)}{c.name}</option>)}
+            </select>
+          </AdminField>
+        )}
+
+        <div style={{ display:'flex', gap:8 }}>
+          <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={onClose}>Cancel</Btn>
+          <Btn size="sm" style={{ flex:1, color:'#fff', background:C.danger, border:'none' }} onClick={confirm} disabled={busy || (productAction !== 'archive' && needsTarget && !targetId)}>
+            {busy ? 'Working…' : productAction === 'archive' ? 'Archive category' : 'Delete category'}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ADMIN — Products (moderation, publish toggle, search/filter, pagination) ──
 const PRODUCT_PAGE_SIZE = 12;
 
@@ -917,7 +1468,7 @@ function AdminProductsSection() {
     const payload = {
       title: form.title, price: parseFloat(form.price) || 0,
       oldPrice: form.oldPrice ? parseFloat(form.oldPrice) : null,
-      stock: parseInt(form.stock) || 0, category: form.category, sku: form.sku || null,
+      stock: parseInt(form.stock) || 0, category_id: form.category_id || null, sku: form.sku || null,
       image_url: form.image_url,
     };
     if (form.id) {
@@ -985,7 +1536,7 @@ function AdminProductsSection() {
               return (
                 <tr key={p.id}>
                   <Td>
-                    <div style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} onClick={() => setEditing({ id:p.id, title:p.title, price:p.price, oldPrice:p.compare_price, category:p.category || 'home', sku:p.sku, image_url:img || null, stock:p.stock })}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} onClick={() => setEditing({ id:p.id, title:p.title, price:p.price, oldPrice:p.compare_price, category_id:p.category_id || '', sku:p.sku, image_url:img || null, stock:p.stock })}>
                       <div style={{ width:36, height:36, borderRadius:8, overflow:'hidden', flexShrink:0, background:C.paper, display:'flex', alignItems:'center', justifyContent:'center' }}>
                         {img ? <img src={img} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <Icon name="package" size={15} color={C.mute} />}
                       </div>
@@ -996,7 +1547,7 @@ function AdminProductsSection() {
                     </div>
                   </Td>
                   <Td>{p.shops?.name || 'Platform'}</Td>
-                  <Td style={{ textTransform:'capitalize' }}>{p.category || '—'}</Td>
+                  <Td style={{ textTransform:'capitalize' }}>{p.categories?.name || '—'}</Td>
                   <Td align="right">
                     <div style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>${(p.price ?? 0).toFixed(2)}</div>
                     <StatusPill tone={outOfStock ? 'danger' : lowStock ? 'warning' : 'mute'}>{outOfStock ? 'out of stock' : `${p.stock ?? 0} in stock`}</StatusPill>
@@ -1022,7 +1573,7 @@ function AdminProductsSection() {
                           </button>
                         </>
                       )}
-                      <button onClick={() => setEditing({ id:p.id, title:p.title, price:p.price, oldPrice:p.compare_price, category:p.category || 'home', sku:p.sku, image_url:img || null, stock:p.stock })} title="Edit" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <button onClick={() => setEditing({ id:p.id, title:p.title, price:p.price, oldPrice:p.compare_price, category_id:p.category_id || '', sku:p.sku, image_url:img || null, stock:p.stock })} title="Edit" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                         <Icon name="edit" size={14} color={C.mute} />
                       </button>
                       <button onClick={() => handleDelete(p)} title="Delete" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -1334,22 +1885,6 @@ function AdminShellScreen({ params = {} }) {
   }
 
 
-  // ── Categories ──
-  function addCategory() {
-    window.MAIN_CATEGORIES.push({ slug:'New Category', tab:'All', icon:'tag', desc:'Edit this category', count:0 });
-    logAdminAction('Added category', 'New Category');
-    forceTick(t => t + 1);
-  }
-  function updateCategory(i, field, value) {
-    window.MAIN_CATEGORIES[i] = { ...window.MAIN_CATEGORIES[i], [field]: value };
-    forceTick(t => t + 1);
-  }
-  function deleteCategory(i) {
-    const removed = window.MAIN_CATEGORIES.splice(i, 1);
-    logAdminAction('Deleted category', removed[0]?.slug || '');
-    forceTick(t => t + 1);
-  }
-
   // ── Sellers ──
   const [sellersList, setSellersList] = React.useState(() => []);
   function toggleSellerStatus(name) {
@@ -1433,9 +1968,6 @@ function AdminShellScreen({ params = {} }) {
   // ── Announcement / Homepage / Shop-by-category ──
   function saveAnnouncement(updates) { window._ANNOUNCEMENT = { ...window._ANNOUNCEMENT, ...updates }; logAdminAction('Updated announcement bar', updates.text ?? ''); forceTick(t => t + 1); }
   function toggleHomeSection(key, val) { window._HOME_SECTIONS = { ...window._HOME_SECTIONS, [key]: val }; forceTick(t => t + 1); }
-  function updateChip(i, value) { window._HOME_CHIPS = window._HOME_CHIPS.map((c,idx) => idx === i ? value : c); forceTick(t => t + 1); }
-  function addChip() { window._HOME_CHIPS = [...window._HOME_CHIPS, 'New']; forceTick(t => t + 1); }
-  function removeChip(i) { window._HOME_CHIPS = window._HOME_CHIPS.filter((_,idx) => idx !== i); forceTick(t => t + 1); }
 
   // ── SEO ──
   function saveSeo(field, value) { window._SEO_CONFIG = { ...window._SEO_CONFIG, [field]: value }; forceTick(t => t + 1); }
@@ -1459,23 +1991,7 @@ function AdminShellScreen({ params = {} }) {
 
       case 'products': return <AdminProductsSection />;
 
-      case 'categories': return (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Categories" sub={`${window.MAIN_CATEGORIES.length} categories`} action={<Btn variant="primary" size="sm" onClick={addCategory}>+ New category</Btn>} />
-          <AdminCard padded={false}>
-            {window.MAIN_CATEGORIES.map((c, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
-                <div style={{ width:34, height:34, borderRadius:9, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <Icon name={c.icon || 'tag'} size={16} color={C.primary} />
-                </div>
-                <input value={c.slug} onChange={e => updateCategory(i,'slug',e.target.value)} style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }} />
-                <input value={c.desc} onChange={e => updateCategory(i,'desc',e.target.value)} style={{ flex:1.4, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }} />
-                <button onClick={() => deleteCategory(i)} style={{ border:'none', background:'none', cursor:'pointer', padding:4, flexShrink:0 }}><Icon name="trash" size={15} color={C.danger} /></button>
-              </div>
-            ))}
-          </AdminCard>
-        </div>
-      );
+      case 'categories': return <AdminCategoriesSection />;
 
       case 'brands': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
@@ -1723,15 +2239,14 @@ function AdminShellScreen({ params = {} }) {
 
       case 'shopbycategory': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Shop by Category" sub="Category chips shown at the top of Home" action={<Btn variant="primary" size="sm" onClick={addChip}>+ Add</Btn>} />
-          <AdminCard padded={false}>
-            {window._HOME_CHIPS.map((chip, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
-                <Icon name="grid" size={15} color={C.mute} />
-                <input value={chip} onChange={e => updateChip(i, e.target.value)} style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink }} />
-                <button onClick={() => removeChip(i)} style={{ border:'none', background:'none', cursor:'pointer' }}><Icon name="trash" size={15} color={C.danger} /></button>
+          <SectionTitle title="Shop by Category" sub="Category chips shown at the top of Home" />
+          <AdminCard>
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, lineHeight:1.5 }}>
+                These chips are no longer edited here — they're generated from the real category list. Every top-level category with <strong>Show in Navigation</strong> turned on (Categories → Display tab) appears as a chip automatically, in the order set on the Categories page.
               </div>
-            ))}
+              <Btn variant="primary" size="sm" style={{ width:'fit-content' }} onClick={() => onNav('categories')}>Go to Categories →</Btn>
+            </div>
           </AdminCard>
         </div>
       );
@@ -1892,14 +2407,15 @@ function AdminShellScreen({ params = {} }) {
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
           <SectionTitle title="Backup" sub="Export the current session's catalog & content as JSON" />
           <AdminCard style={{ maxWidth:480, display:'flex', flexDirection:'column', gap:10 }}>
-            <Btn variant="primary" onClick={() => {
-              const payload = { products: window.PRODUCTS, categories: window.MAIN_CATEGORIES, exportedAt: new Date().toISOString() };
+            <Btn variant="primary" onClick={async () => {
+              const { categories } = await sbAdminGetCategories({ limit: 1000 });
+              const payload = { products: window.PRODUCTS, categories, exportedAt: new Date().toISOString() };
               const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url; a.download = `clorivo-backup-${Date.now()}.json`; a.click();
               URL.revokeObjectURL(url);
-              logAdminAction('Exported backup', `${window.PRODUCTS.length} products, ${window.MAIN_CATEGORIES.length} categories`);
+              logAdminAction('Exported backup', `${window.PRODUCTS.length} products, ${categories.length} categories`);
             }}>Download backup (.json)</Btn>
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>Includes products and categories currently in this session.</span>
           </AdminCard>

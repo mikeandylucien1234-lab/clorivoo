@@ -1,23 +1,19 @@
 // screen-category.jsx — Main Categories hub + Category product listing page
-
-const MAIN_CATEGORIES = [
-  { slug:'Electronics',        tab:'Tech',    icon:'zap',       desc:'Phones, laptops, accessories', count:0 },
-  { slug:'Fashion',            tab:'Fashion', icon:'tag',       desc:'Clothes, shoes, accessories',  count:0 },
-  { slug:'Home & Living',      tab:'Home',    icon:'home',      desc:'Decor, furniture, kitchenware', count:0 },
-  { slug:'Beauty & Health',    tab:'Beauty',  icon:'heart',     desc:'Perfume, skincare, makeup',    count:0 },
-  { slug:'Baby & Kids',        tab:'Kids',    icon:'star',      desc:'Baby gear, toys, equipment',   count:0 },
-  { slug:'Sports & Outdoors',  tab:'Sport',   icon:'barChart',  desc:'Fitness, camping, cycling',    count:0 },
-  { slug:'Automotive',         tab:'All',     icon:'truck',     desc:'Car & bike accessories',       count:0 },
-  { slug:'Office & Business',  tab:'All',     icon:'briefcase', desc:'Office supplies, stationery',  count:0 },
-  { slug:'Food & Grocery',     tab:'Kitchen', icon:'utensils',  desc:'Local products, drinks, snacks', count:0 },
-  { slug:'Pets',               tab:'All',     icon:'heartFill', desc:'Food, accessories, toys',      count:0 },
-];
+// Both screens read the real `categories` table (via sbGetCategoryTree / sbGetCategoryBySlug /
+// sbGetProductsByCategory in supabase-client.jsx) — there is no local category list here
+// anymore. Editing a category in the admin Categories page is what these screens show.
 
 // ─── MAIN CATEGORIES PAGE (hub) ─────────────────────────────────
 function CategoriesScreen() {
   const { navigate } = useNav();
   const isDesktop = useIsDesktop();
   const cartCount = (window.CART_ITEMS || []).length;
+  const [tree, setTree] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    sbGetCategoryTree().then(t => { setTree(t.filter(c => c.show_in_menu !== false)); setLoading(false); });
+  }, []);
 
   return (
     <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
@@ -34,7 +30,7 @@ function CategoriesScreen() {
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:800, color:C.primary, letterSpacing:'-0.02em' }}>CLORIVO</span>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:2 }}>
-            <button style={{ width:38, height:38, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <button onClick={() => navigate('search')} style={{ width:38, height:38, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Icon name="search" size={19} color={C.ink} />
             </button>
             <button onClick={() => navigate('wishlist')} style={{ width:38, height:38, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -54,7 +50,7 @@ function CategoriesScreen() {
 
         {/* Search bar */}
         <div style={{ padding: isDesktop ? '0 0 16px' : '14px 16px 0', display:'flex', gap:8 }}>
-          <div onClick={() => {}} style={{ flex:1, display:'flex', alignItems:'center', gap:10, background:C.white, border:`1.5px solid ${C.hairline}`, borderRadius:9999, padding:'11px 16px', cursor:'text' }}>
+          <div onClick={() => navigate('search')} style={{ flex:1, display:'flex', alignItems:'center', gap:10, background:C.white, border:`1.5px solid ${C.hairline}`, borderRadius:9999, padding:'11px 16px', cursor:'text' }}>
             <Icon name="search" size={17} color={C.mute} />
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute, flex:1 }}>Search products, brands, categories…</span>
           </div>
@@ -83,25 +79,33 @@ function CategoriesScreen() {
         {/* Category list */}
         <div style={{ padding: isDesktop ? '24px 0 0' : '20px 16px 0' }}>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:700, color:C.ink, marginBottom:12 }}>All Categories</div>
+          {loading ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {[0,1,2].map(i => <div key={i} style={{ height:78, borderRadius:16, background:'linear-gradient(90deg, #EFEDF5 25%, #F6F5FA 37%, #EFEDF5 63%)', backgroundSize:'400% 100%', animation:'shimmer 1.4s ease infinite' }} />)}
+            </div>
+          ) : tree.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'30px 0', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No categories yet.</div>
+          ) : (
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {MAIN_CATEGORIES.map((cat, i) => (
-              <button key={i} onClick={() => navigate('category', { category: cat.tab })} style={{
+            {tree.map((cat) => (
+              <button key={cat.id} onClick={() => navigate('category', { category: cat.slug })} style={{
                 display:'flex', alignItems:'center', gap:14, padding:'14px 16px', borderRadius:16, cursor:'pointer',
                 background:C.white, border:`1px solid ${C.hairline}`, boxShadow:'0 1px 6px rgba(14,11,31,0.04)',
                 textAlign:'left', transition:'transform 0.12s, box-shadow 0.12s',
               }}>
-                <div style={{ width:48, height:48, borderRadius:14, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <Icon name={cat.icon} size={22} color={C.primary} />
+                <div style={{ width:48, height:48, borderRadius:14, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
+                  {cat.image_url ? <img src={cat.image_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <Icon name={cat.icon || 'tag'} size={22} color={C.primary} />}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14.5, fontWeight:700, color:C.ink }}>{cat.slug}</div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{cat.desc}</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14.5, fontWeight:700, color:C.ink }}>{cat.name}</div>
+                  {cat.short_description && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{cat.short_description}</div>}
                 </div>
-                {cat.count > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:C.mute, flexShrink:0 }}>{cat.count}+</span>}
+                {cat.children?.length > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:C.mute, flexShrink:0 }}>{cat.children.length}</span>}
                 <Icon name="chevronRight" size={17} color={C.mute} style={{ flexShrink:0 }} />
               </button>
             ))}
           </div>
+          )}
         </div>
 
         {/* Service info bar */}
@@ -135,41 +139,62 @@ function CategoriesScreen() {
 function CategoryScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
   const isDesktop = useIsDesktop();
-  const initial = params.category || 'All';
+  const initialSlug = params.category || '';
 
-  const categories = ['All','Home','Tech','Beauty','Fashion','Kids','Sport','Kitchen'];
-  const [active, setActive]   = React.useState(categories.includes(initial) ? initial : 'All');
+  const [topLevel, setTopLevel] = React.useState([]);
+  const [activeSlug, setActiveSlug] = React.useState(initialSlug);
+  const [activeCategory, setActiveCategory] = React.useState(null); // full row for the active slug, or null = "All"
+  const [children, setChildren] = React.useState([]);
+  const [activeSub, setActiveSub] = React.useState(-1); // -1 = the category itself, not a subcategory
   const [sort, setSort]       = React.useState(0);
   const [view, setView]       = React.useState('grid');
+  const [products, setProducts] = React.useState([]);
   const [visibleCount, setVisibleCount] = React.useState(8);
   const [loadingMore, setLoadingMore]   = React.useState(false);
+  const [loadingProducts, setLoadingProducts] = React.useState(true);
 
-  const subCatsByCategory = {
-    'All':    [{ label:'Trending', icon:'zap' }, { label:'New', icon:'tag' }, { label:'Best sellers', icon:'star' }, { label:'Deals', icon:'tag' }],
-    'Home':   [{ label:'Decor', icon:'home' }, { label:'Kitchen', icon:'utensils' }, { label:'Lighting', icon:'zap' }, { label:'Textiles', icon:'tag' }, { label:'Storage', icon:'package' }],
-    'Tech':   [{ label:'Phones', icon:'camera' }, { label:'Laptops', icon:'settings' }, { label:'Accessories', icon:'package' }, { label:'Audio', icon:'messageSquare' }, { label:'Smartwatches', icon:'zap' }],
-    'Beauty': [{ label:'Skincare', icon:'heart' }, { label:'Makeup', icon:'star' }, { label:'Fragrance', icon:'zap' }, { label:'Hair', icon:'settings' }],
-    'Fashion':[{ label:'Women', icon:'tag' }, { label:'Men', icon:'tag' }, { label:'Bags', icon:'shoppingBag' }, { label:'Shoes', icon:'package' }, { label:'Jewelry', icon:'star' }],
-    'Kids':   [{ label:'Toys', icon:'star' }, { label:'Clothing', icon:'tag' }, { label:'Baby care', icon:'heart' }],
-    'Sport':  [{ label:'Fitness', icon:'barChart' }, { label:'Outdoor', icon:'truck' }, { label:'Cycling', icon:'zap' }],
-    'Kitchen':[{ label:'Utensils', icon:'utensils' }, { label:'Appliances', icon:'zap' }, { label:'Tableware', icon:'package' }],
-  };
-  const subCats = subCatsByCategory[active] || subCatsByCategory['All'];
   const sorts = ['Popular','Price ↑','Price ↓','Newest'];
+  const sortParam = ['popular','price_asc','price_desc','newest'][sort];
   const specsByTint = ['Premium quality','Best seller','Limited stock','Top rated','New arrival'];
 
-  // Build product list (dup PRODUCTS for a fuller grid)
-  let products = [...PRODUCTS, ...PRODUCTS.map(p => ({ ...p, id: p.id + 100 }))];
-  if (sort === 1) products = products.sort((a,b) => a.price - b.price);
-  else if (sort === 2) products = products.sort((a,b) => b.price - a.price);
+  React.useEffect(() => {
+    sbGetCategoryTree().then(tree => setTopLevel(tree.filter(c => c.show_in_menu !== false)));
+  }, []);
 
-  const [activeSub, setActiveSub] = React.useState(0);
+  // Resolve the active slug → category row + its children (for the subcategory pill row).
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!activeSlug) { setActiveCategory(null); setChildren([]); return; }
+    sbGetCategoryBySlug(activeSlug).then(async cat => {
+      if (cancelled || !cat) return;
+      setActiveCategory(cat);
+      const tree = await sbGetCategoryTree();
+      const findNode = (list) => { for (const c of list) { if (c.id === cat.id) return c; const f = findNode(c.children || []); if (f) return f; } return null; };
+      setChildren(findNode(tree)?.children || []);
+    });
+    return () => { cancelled = true; };
+  }, [activeSlug]);
+
+  // Fetch products for the active category (or all, when "All" is selected), re-run on sort change.
+  React.useEffect(() => {
+    setLoadingProducts(true);
+    setVisibleCount(8);
+    const subSlug = activeSub >= 0 ? children[activeSub]?.slug : null;
+    const target = subSlug || activeSlug;
+    const req = target
+      ? sbGetProductsByCategory(target, { limit: 48, sort: sortParam })
+      : sbGetProducts({ limit: 48 }).then(({ data }) => ({ data: data || [], category: null }));
+    req.then(({ data }) => { setProducts(data); setLoadingProducts(false); });
+  }, [activeSlug, activeSub, sortParam]);
+
   const visibleProducts = products.slice(0, visibleCount);
 
   function handleLoadMore() {
     setLoadingMore(true);
-    setTimeout(() => { setVisibleCount(v => Math.min(v + 8, products.length)); setLoadingMore(false); }, 500);
+    setTimeout(() => { setVisibleCount(v => Math.min(v + 8, products.length)); setLoadingMore(false); }, 400);
   }
+
+  const headerTitle = activeCategory ? activeCategory.name : 'All Products';
 
   return (
     <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
@@ -182,30 +207,31 @@ function CategoryScreen({ params = {} }) {
           <button onClick={goBack} style={{ width:40, height:40, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
             <Icon name="arrowLeft" size={22} color={C.ink} />
           </button>
-          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:800, color:C.ink, letterSpacing:'-0.02em', flex:1 }}>{active === 'All' ? 'All Products' : active}</span>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:800, color:C.ink, letterSpacing:'-0.02em', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{headerTitle}</span>
           <button onClick={() => navigate('wishlist')} style={{ width:40, height:40, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
             <Icon name="heart" size={20} color={C.ink} />
           </button>
           <button onClick={() => navigate('cart')} style={{ width:40, height:40, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', position:'relative', flexShrink:0 }}>
             <Icon name="cart" size={20} color={C.ink} />
-            <Badge count={window.CART_ITEMS.length} />
+            <Badge count={(window.CART_ITEMS || []).length} />
           </button>
         </div>
         )}
 
         {!isDesktop && (
         <div style={{ padding:'0 12px 10px' }}>
-          <div onClick={() => {}} style={{ display:'flex', alignItems:'center', gap:8, background:C.paper, border:`1.5px solid ${C.hairline}`, borderRadius:9999, padding:'9px 14px', cursor:'text' }}>
+          <div onClick={() => navigate('search')} style={{ display:'flex', alignItems:'center', gap:8, background:C.paper, border:`1.5px solid ${C.hairline}`, borderRadius:9999, padding:'9px 14px', cursor:'text' }}>
             <Icon name="search" size={16} color={C.mute} />
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, flex:1 }}>Search in {active}…</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, flex:1 }}>Search in {headerTitle}…</span>
           </div>
         </div>
         )}
 
-        {/* Category tabs */}
+        {/* Category tabs — top-level categories from the real tree, "All" first */}
         <div style={{ maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined, display:'flex', gap:8, padding: isDesktop ? '14px 32px' : '2px 12px 10px', overflowX:'auto' }}>
-          {categories.map((c, i) => (
-            <Chip key={i} active={active === c} onClick={() => { setActive(c); setActiveSub(0); setVisibleCount(8); }}>{c}</Chip>
+          <Chip active={!activeSlug} onClick={() => { setActiveSlug(''); setActiveSub(-1); }}>All</Chip>
+          {topLevel.map((c) => (
+            <Chip key={c.id} active={activeSlug === c.slug} onClick={() => { setActiveSlug(c.slug); setActiveSub(-1); }}>{c.name}</Chip>
           ))}
         </div>
       </div>
@@ -213,17 +239,25 @@ function CategoryScreen({ params = {} }) {
       <div style={{ flex:1, overflowY:'auto', paddingBottom: NAV_H + HOME_H }}>
         <div style={{ maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined }}>
 
-        {/* Subcategory scroll (icon pills) */}
+        {/* Subcategory scroll (icon pills) — real children of the active category */}
+        {children.length > 0 && (
         <div style={{ display:'flex', gap:18, padding:'14px 16px 4px', overflowX:'auto' }}>
-          {subCats.map((s, i) => (
-            <button key={i} onClick={() => setActiveSub(i)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0, border:'none', background:'none', cursor:'pointer', width:64 }}>
+          <button onClick={() => setActiveSub(-1)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0, border:'none', background:'none', cursor:'pointer', width:64 }}>
+            <div style={{ width:52, height:52, borderRadius:9999, background: activeSub === -1 ? C.primary : C.white, border: activeSub === -1 ? 'none' : `1.5px solid ${C.hairline}`, boxShadow: activeSub === -1 ? `0 6px 16px rgba(108,77,255,0.3)` : 'none', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }}>
+              <Icon name={activeCategory?.icon || 'grid'} size={21} color={activeSub === -1 ? '#fff' : C.mute} />
+            </div>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight: activeSub === -1 ? 700 : 500, color: activeSub === -1 ? C.primary : C.mute, textAlign:'center', lineHeight:1.2 }}>All</span>
+          </button>
+          {children.map((s, i) => (
+            <button key={s.id} onClick={() => setActiveSub(i)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0, border:'none', background:'none', cursor:'pointer', width:64 }}>
               <div style={{ width:52, height:52, borderRadius:9999, background: activeSub === i ? C.primary : C.white, border: activeSub === i ? 'none' : `1.5px solid ${C.hairline}`, boxShadow: activeSub === i ? `0 6px 16px rgba(108,77,255,0.3)` : 'none', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }}>
-                <Icon name={s.icon} size={21} color={activeSub === i ? '#fff' : C.mute} />
+                <Icon name={s.icon || 'tag'} size={21} color={activeSub === i ? '#fff' : C.mute} />
               </div>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight: activeSub === i ? 700 : 500, color: activeSub === i ? C.primary : C.mute, textAlign:'center', lineHeight:1.2 }}>{s.label}</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight: activeSub === i ? 700 : 500, color: activeSub === i ? C.primary : C.mute, textAlign:'center', lineHeight:1.2 }}>{s.name}</span>
             </button>
           ))}
         </div>
+        )}
 
         {/* Filter / sort bar */}
         <div style={{ display:'flex', alignItems:'center', gap:8, padding:'14px 16px 10px', overflowX:'auto' }}>
@@ -251,6 +285,13 @@ function CategoryScreen({ params = {} }) {
         </div>
 
         {/* Product grid */}
+        {loadingProducts ? (
+          <div style={{ padding:'0 16px', display:'grid', gridTemplateColumns: isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap:12 }}>
+            {[0,1,2,3].map(i => <div key={i} style={{ height:220, borderRadius:14, background:'linear-gradient(90deg, #EFEDF5 25%, #F6F5FA 37%, #EFEDF5 63%)', backgroundSize:'400% 100%', animation:'shimmer 1.4s ease infinite' }} />)}
+          </div>
+        ) : visibleProducts.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'40px 16px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No products in this category yet.</div>
+        ) : (
         <div style={{ padding:'0 16px', display:'grid', gridTemplateColumns: view !== 'grid' ? '1fr' : isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap:12 }}>
           {visibleProducts.map((p, i) => (
             <ProductCard
@@ -261,11 +302,13 @@ function CategoryScreen({ params = {} }) {
             />
           ))}
         </div>
+        )}
 
         {/* Results count + Load more */}
+        {!loadingProducts && visibleProducts.length > 0 && (
         <div style={{ padding:'16px 16px 4px', textAlign:'center' }}>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute, marginBottom:12 }}>
-            Showing 1–{Math.min(visibleCount, products.length)} of {products.length}+ products
+            Showing 1–{Math.min(visibleCount, products.length)} of {products.length} products
           </div>
           {visibleCount < products.length && (
             <button onClick={handleLoadMore} disabled={loadingMore} style={{ border:`1.5px solid ${C.primary}`, background:C.white, borderRadius:9999, height:42, padding:'0 24px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:13.5, fontWeight:700, color:C.primary }}>
@@ -273,6 +316,7 @@ function CategoryScreen({ params = {} }) {
             </button>
           )}
         </div>
+        )}
         <div style={{ height:20 }} />
         </div>
       </div>
@@ -287,4 +331,4 @@ function CategoryScreen({ params = {} }) {
   );
 }
 
-Object.assign(window, { CategoriesScreen, CategoryScreen, MAIN_CATEGORIES });
+Object.assign(window, { CategoriesScreen, CategoryScreen });

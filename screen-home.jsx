@@ -11,17 +11,21 @@ function HomeScreen() {
   const [banners, setBanners]               = React.useState(null);
   const [user, setUser]                     = React.useState(null);
   const [activeBanner, setActiveBanner]     = React.useState(0);
+  const [navCategories, setNavCategories]   = React.useState([]); // real top-level categories (show_in_navigation)
+  const [featuredCategories, setFeaturedCategories] = React.useState([]);
 
-  const categories = window._HOME_CHIPS || ['All', 'Home', 'Tech', 'Beauty', 'Fashion', 'Kids'];
   const homeSections = window._HOME_SECTIONS || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
   const announcement = window._ANNOUNCEMENT;
   const defaultAddress = (window._ADDRESSES || []).find(a => a.isDefault) || (window._ADDRESSES || [])[0] || null;
+  const categories = [{ id:'all', name:'All', slug:'' }, ...navCategories];
 
   React.useEffect(() => {
     sbGetUser().then(u => setUser(u));
     sbGetProducts({ limit: 12 }).then(({ data }) => { if (data?.length) setProducts(data.map((p,i) => ({...p, tint: i%5}))); });
     sbGetShops({ limit: 8 }).then(({ data }) => { if (data?.length) setShops(data); });
     sbGetBanners().then(({ data }) => { if (data?.length) setBanners(data); });
+    sbGetCategoryTree().then(tree => setNavCategories(tree.filter(c => c.show_in_navigation !== false)));
+    sbGetFeaturedCategories(4).then(setFeaturedCategories);
     if (window._supabase) {
       sbGetUser().then(async u => {
         if (u) {
@@ -125,7 +129,7 @@ function HomeScreen() {
         {/* Category chips */}
         <div style={{ display: 'flex', gap: 8, padding: '4px 20px 12px', overflowX: 'auto' }}>
           {categories.map((c, i) =>
-          <Chip key={i} active={activeCategory === i} onClick={() => navigate('category', { category: c })}>{c}</Chip>
+          <Chip key={c.id} active={activeCategory === i} onClick={() => { setActiveCategory(i); navigate('category', c.slug ? { category: c.slug } : {}); }}>{c.name}</Chip>
           )}
         </div>
       </div>
@@ -135,7 +139,7 @@ function HomeScreen() {
         <div style={{ background: C.white, borderBottom: `1px solid ${C.hairline}`, flexShrink: 0 }}>
           <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', gap: 8, padding: '14px 32px', overflowX: 'auto' }}>
             {categories.map((c, i) =>
-            <Chip key={i} active={activeCategory === i} onClick={() => navigate('category', { category: c })}>{c}</Chip>
+            <Chip key={c.id} active={activeCategory === i} onClick={() => { setActiveCategory(i); navigate('category', c.slug ? { category: c.slug } : {}); }}>{c.name}</Chip>
             )}
           </div>
         </div>
@@ -317,29 +321,28 @@ function HomeScreen() {
         </div>
         )}
 
-        {/* Category Tiles */}
-        {homeSections.categories && (
-        <div style={{ padding: '20px 20px 0' }}>
-          <SectionHeader title="Popular Categories" style={{ marginBottom: 12 }} />
-          <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(4, 1fr)' : '1fr 1fr', gap: 10 }}>
-            {[
-            { label: 'Home & Decor', tint: 0, sub: '1,200+ items', cat:'Home' },
-            { label: 'Fashion & Style', tint: 1, sub: '3,400+ items', cat:'Fashion' },
-            { label: 'Tech & Gadgets', tint: 2, sub: '890 items', cat:'Tech' },
-            { label: 'Beauty & Care', tint: 3, sub: '560 items', cat:'Beauty' }].
-            map((cat, i) =>
-            <div key={i} onClick={() => navigate('category', { category: cat.cat })} style={{ borderRadius: 14, overflow: 'hidden', cursor: 'pointer', boxShadow: '0 2px 12px rgba(14,11,31,0.06)', position: 'relative', height: 110 }}>
-                <Img label="" tint={cat.tint} style={{ position: 'absolute', inset: 0, borderRadius: 0 }} />
-                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(14,11,31,0.55) 0%, rgba(14,11,31,0.1) 60%)' }} />
-                <div style={{ position: 'absolute', bottom: 10, left: 12, right: 12 }}>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 700, color: '#fff', letterSpacing: '-0.01em' }}>{cat.label}</div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 1 }}>{cat.sub}</div>
+        {/* Category Tiles — admin-chosen Featured Categories (Categories page → Display → Featured) */}
+        {homeSections.categories && (() => {
+          const tiles = featuredCategories.length > 0 ? featuredCategories : navCategories.slice(0, 4);
+          if (tiles.length === 0) return null;
+          return (
+          <div style={{ padding: '20px 20px 0' }}>
+            <SectionHeader title="Popular Categories" style={{ marginBottom: 12 }} />
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(4, 1fr)' : '1fr 1fr', gap: 10 }}>
+              {tiles.map((cat, i) =>
+              <div key={cat.id} onClick={() => navigate('category', { category: cat.slug })} style={{ borderRadius: 14, overflow: 'hidden', cursor: 'pointer', boxShadow: '0 2px 12px rgba(14,11,31,0.06)', position: 'relative', height: 110 }}>
+                  {cat.image_url ? <img src={cat.image_url} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} /> : <Img label="" tint={i % 5} style={{ position: 'absolute', inset: 0, borderRadius: 0 }} />}
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(14,11,31,0.55) 0%, rgba(14,11,31,0.1) 60%)' }} />
+                  <div style={{ position: 'absolute', bottom: 10, left: 12, right: 12 }}>
+                    <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 700, color: '#fff', letterSpacing: '-0.01em' }}>{cat.name}</div>
+                    {cat.short_description && <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{cat.short_description}</div>}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-        )}
+          );
+        })()}
 
         {/* Promo Banners */}
         {products.length > 0 && (

@@ -37,7 +37,8 @@ function ProductDetailsScreen({ params = {} }) {
   const sizes   = ['128GB','256GB','512GB','1TB'];
   const sku = `ID: ${100000 + p.id}`;
   const inStock = p.id % 3 !== 0;
-  const category = (p.category || 'home').charAt(0).toUpperCase() + (p.category || 'home').slice(1);
+  const categoryName = p.categories?.name || p.category || '';
+  const category = categoryName ? categoryName.charAt(0).toUpperCase() + categoryName.slice(1) : '';
 
   const ratingBreakdown = [
     { stars:5, pct:0 }, { stars:4, pct:0 }, { stars:3, pct:0 }, { stars:2, pct:0 }, { stars:1, pct:0 },
