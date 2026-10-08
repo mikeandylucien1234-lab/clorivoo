@@ -392,12 +392,26 @@ async function sbGetSellerOrders(shopId) {
 }
 
 // ─── ADMIN HELPERS ────────────────────────────────────────────────
+// A stalled connection (slow network, a blocked host) otherwise leaves an admin screen
+// spinning forever — Supabase's client has no built-in request timeout. Every admin
+// fetch below races against this and falls back to an empty/zeroed result so the UI
+// can always leave its loading state.
+function _withTimeout(promise, ms, fallback) {
+  return Promise.race([
+    promise,
+    new Promise(resolve => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 // Revenue is recognized on payment_status='paid' (covers 'delivered' orders too, since
 // those are paid by the time they ship). Refunds are tracked separately so they net out
 // of revenue without being hidden. Commission rate is admin-configurable (Settings →
 // Platform), not hardcoded, so Profit reflects whatever the admin has actually set.
 async function sbAdminGetStats() {
   if (!_sb) return _DEMO_ADMIN_STATS;
+  return _withTimeout(_sbAdminGetStatsImpl(), 10000, { ..._DEMO_ADMIN_STATS, timedOut: true });
+}
+async function _sbAdminGetStatsImpl() {
   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
   const commissionRate = window._PLATFORM_SETTINGS?.commissionRate ?? 0.10;
 
@@ -445,6 +459,9 @@ const _TIMESERIES_RANGES = {
 };
 async function sbAdminGetSalesTimeseries(range = 'week') {
   if (!_sb) return [];
+  return _withTimeout(_sbAdminGetSalesTimeseriesImpl(range), 10000, []);
+}
+async function _sbAdminGetSalesTimeseriesImpl(range) {
   const { unit, count } = _TIMESERIES_RANGES[range] || _TIMESERIES_RANGES.week;
   const commissionRate = window._PLATFORM_SETTINGS?.commissionRate ?? 0.10;
 
@@ -485,6 +502,92 @@ function sbSubscribeAdminOrders(callback) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, callback)
     .subscribe();
   return () => _sb.removeChannel(channel);
+}
+
+const ORDER_STATUSES = ['pending','confirmed','processing','shipped','delivered','cancelled','refunded'];
+
+// Paginated, filterable, searchable order list for the admin Orders table.
+// Search matches order id, buyer name/email, or shop name — PostgREST can't ilike across
+// three joined tables in one query, so it's done as two lookups: resolve matching
+// buyer/shop ids first, then filter orders by id/buyer_id/those shops' order_items.
+async function sbAdminGetOrders(opts = {}) {
+  const { page = 1 } = opts;
+  const emptyResult = { orders: [], totalOrders: 0, totalPages: 0, currentPage: page };
+  if (!_sb) return emptyResult;
+  return _withTimeout(_sbAdminGetOrdersImpl(opts), 10000, { ...emptyResult, timedOut: true });
+}
+async function _sbAdminGetOrdersImpl({ page = 1, limit = 10, status = 'ALL', search = '', dateFrom = null, dateTo = null } = {}) {
+  let orderIdsFromSearch = null;
+  const q = (search || '').trim();
+  if (q) {
+    const [byBuyer, byShop] = await Promise.all([
+      _sb.from('profiles').select('id').or(`full_name.ilike.%${q}%,email.ilike.%${q}%`),
+      _sb.from('shops').select('id').ilike('name', `%${q}%`),
+    ]);
+    const buyerIds = (byBuyer.data || []).map(p => p.id);
+    const shopIds = (byShop.data || []).map(s => s.id);
+    let orderIdsFromShops = [];
+    if (shopIds.length) {
+      const { data } = await _sb.from('order_items').select('order_id').in('shop_id', shopIds);
+      orderIdsFromShops = (data || []).map(r => r.order_id);
+    }
+    orderIdsFromSearch = { buyerIds, orderIdsFromShops, raw: q };
+  }
+
+  let query = _sb.from('orders').select('*, profiles(full_name, email)', { count: 'exact' });
+  if (status && status !== 'ALL') query = query.eq('status', status.toLowerCase());
+  if (dateFrom) query = query.gte('created_at', new Date(dateFrom).toISOString());
+  if (dateTo) { const end = new Date(dateTo); end.setHours(23, 59, 59, 999); query = query.lte('created_at', end.toISOString()); }
+  if (orderIdsFromSearch) {
+    const { buyerIds, orderIdsFromShops, raw } = orderIdsFromSearch;
+    const idFilter = `id.eq.${raw}`; // exact UUID match, harmless no-op if `raw` isn't a UUID
+    const orClauses = [idFilter];
+    if (buyerIds.length) orClauses.push(`buyer_id.in.(${buyerIds.join(',')})`);
+    if (orderIdsFromShops.length) orClauses.push(`id.in.(${orderIdsFromShops.join(',')})`);
+    query = query.or(orClauses.join(','));
+  }
+
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
+  if (error) return { orders: [], totalOrders: 0, totalPages: 0, currentPage: page };
+
+  // Attach each order's shop name(s) — a second batched query, since PostgREST can't
+  // embed order_items→shops alongside the orders.profiles embed cleanly in one call
+  // while also paginating the outer orders list.
+  const orderIds = (data || []).map(o => o.id);
+  let shopsByOrder = {};
+  if (orderIds.length) {
+    const { data: items } = await _sb.from('order_items').select('order_id, shops(name)').in('order_id', orderIds);
+    (items || []).forEach(it => {
+      const name = it.shops?.name;
+      if (!name) return;
+      shopsByOrder[it.order_id] = shopsByOrder[it.order_id] || new Set();
+      shopsByOrder[it.order_id].add(name);
+    });
+  }
+  const orders = (data || []).map(o => ({ ...o, shopNames: [...(shopsByOrder[o.id] || [])] }));
+
+  return { orders, totalOrders: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
+async function sbAdminGetOrderDetail(orderId) {
+  if (!_sb || !orderId) return null;
+  return _withTimeout((async () => {
+    const { data } = await _sb.from('orders')
+      .select('*, profiles(full_name, email, phone), order_items(*, shops(name))')
+      .eq('id', orderId)
+      .single();
+    return data ?? null;
+  })(), 10000, null);
+}
+
+async function sbAdminUpdateOrderStatus(orderId, status) {
+  if (!_sb) return { error: null };
+  const patch = { status, updated_at: new Date().toISOString() };
+  if (status === 'refunded') patch.payment_status = 'refunded';
+  if (status === 'delivered' || status === 'confirmed' || status === 'processing' || status === 'shipped') patch.payment_status = 'paid';
+  const { error } = await _sb.from('orders').update(patch).eq('id', orderId);
+  return { error };
 }
 
 async function sbAdminGetKycRequests() {
@@ -600,6 +703,7 @@ Object.assign(window, {
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
   sbAdminGetStats, sbAdminGetSalesTimeseries, sbSubscribeAdminOrders,
+  sbAdminGetOrders, sbAdminGetOrderDetail, sbAdminUpdateOrderStatus, ORDER_STATUSES,
   sbAdminGetKycRequests, sbAdminUpdateKyc, sbAdminGetUsers, sbAdminUpdateUser,
   sbAdminCreateProduct, sbAdminUpdateProduct, sbAdminDeleteProduct,
   sbUploadFile,

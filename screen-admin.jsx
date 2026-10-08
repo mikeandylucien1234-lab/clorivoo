@@ -104,6 +104,7 @@ function StatusPill({ tone, children }) {
     warning: { bg:'#FFF6E5', fg:C.warning },
     mute:    { bg:C.paper,   fg:C.mute },
     primary: { bg:C.primarySoft, fg:C.primaryDeep },
+    info:    { bg:'#EBF2FF', fg:'#2563EB' },
   };
   const t = tones[tone] || tones.mute;
   return <span style={{ background:t.bg, color:t.fg, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:9999, textTransform:'capitalize', whiteSpace:'nowrap' }}>{children}</span>;
@@ -852,6 +853,220 @@ function AdminBannersSection({ onLog }) {
   );
 }
 
+// ─── ADMIN — Orders (search, filter, date range, pagination, status + refund) ──
+const ORDER_STATUS_TONE = { pending:'warning', confirmed:'info', processing:'info', shipped:'primary', delivered:'success', cancelled:'danger', refunded:'mute' };
+const PAGE_SIZE = 10;
+
+function AdminOrdersSection() {
+  const [result, setResult] = React.useState({ orders:[], totalOrders:0, totalPages:0, currentPage:1 });
+  const [loading, setLoading] = React.useState(true);
+  const [page, setPage] = React.useState(1);
+  const [status, setStatus] = React.useState('ALL');
+  const [searchInput, setSearchInput] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [dateFrom, setDateFrom] = React.useState('');
+  const [dateTo, setDateTo] = React.useState('');
+  const [detailId, setDetailId] = React.useState(null);
+  const [newOrderFlash, setNewOrderFlash] = React.useState(false);
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    sbAdminGetOrders({ page, limit:PAGE_SIZE, status, search, dateFrom, dateTo }).then(r => { setResult(r); setLoading(false); });
+  }, [page, status, search, dateFrom, dateTo]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  // Debounce the free-text search so every keystroke doesn't fire a query.
+  React.useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setSearch(searchInput); }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  React.useEffect(() => {
+    // Live list: a new order or a status change elsewhere refreshes this page.
+    // Flash a brief banner so the admin notices without needing a sound/popup permission.
+    const unsubscribe = sbSubscribeAdminOrders(payload => {
+      load();
+      if (payload.eventType === 'INSERT') { setNewOrderFlash(true); setTimeout(() => setNewOrderFlash(false), 4000); }
+    });
+    return unsubscribe;
+  }, [load]);
+
+  async function handleStatusChange(orderId, newStatus) {
+    await sbAdminUpdateOrderStatus(orderId, newStatus);
+    logAdminAction('Updated order status', `#${orderId.slice(0,8)} → ${newStatus}`);
+    load();
+  }
+
+  async function handleRefund(order) {
+    await sbAdminUpdateOrderStatus(order.id, 'refunded');
+    logAdminAction('Refunded order', `#${order.id.slice(0,8)} — $${(order.total_amount ?? 0).toFixed(2)}`);
+    load();
+  }
+
+  if (detailId) return <AdminOrderDetail orderId={detailId} onBack={() => { setDetailId(null); load(); }} onStatusChange={handleStatusChange} onRefund={handleRefund} />;
+
+  const { orders, totalOrders, totalPages } = result;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Orders" sub={`${totalOrders} order${totalOrders === 1 ? '' : 's'}`} />
+
+      {newOrderFlash && (
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:C.primarySoft, border:`1px solid ${C.primary}`, borderRadius:12, padding:'10px 14px' }}>
+          <Icon name="bell" size={15} color={C.primaryDeep} />
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.primaryDeep }}>New order received — list refreshed.</span>
+        </div>
+      )}
+
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ flex:'1 1 220px', position:'relative' }}>
+          <Icon name="search" size={15} color={C.mute} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)' }} />
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Order ID, customer name, email or seller…"
+            style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px 9px 34px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        </div>
+        <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+          style={{ border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'8px 10px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>to</span>
+        <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }}
+          style={{ border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'8px 10px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+      </div>
+
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+        {['ALL','pending','processing','shipped','delivered','cancelled','refunded'].map(s => (
+          <button key={s} onClick={() => { setStatus(s); setPage(1); }} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: status === s ? C.ink : C.paper, color: status === s ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, textTransform:'capitalize' }}>{s === 'ALL' ? 'All' : s}</button>
+        ))}
+      </div>
+
+      <AdminCard padded={false} style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead><tr><Th>Order</Th><Th>Placed</Th><Th>Customer</Th><Th>Seller</Th><Th align="right">Total</Th><Th>Status</Th><Th align="right">Actions</Th></tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="Loading orders…" /></td></tr>
+            ) : result.timedOut ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="Couldn't reach the server — check your connection and try again." /></td></tr>
+            ) : orders.length === 0 ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="No orders yet" /></td></tr>
+            ) : orders.map(o => (
+              <tr key={o.id}>
+                <Td style={{ fontWeight:700, cursor:'pointer' }} onClick={() => setDetailId(o.id)}>#{o.id.slice(0,8)}</Td>
+                <Td>{new Date(o.created_at).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' })}</Td>
+                <Td>
+                  <div style={{ fontWeight:600 }}>{o.profiles?.full_name || 'Buyer'}</div>
+                  <div style={{ fontSize:11, color:C.mute }}>{o.profiles?.email || ''}</div>
+                </Td>
+                <Td>{o.shopNames?.length ? o.shopNames.join(', ') : '—'}</Td>
+                <Td align="right" style={{ fontFamily:"'JetBrains Mono',monospace" }}>${(o.total_amount ?? 0).toFixed(2)}</Td>
+                <Td>
+                  <select value={o.status} onChange={e => handleStatusChange(o.id, e.target.value)}
+                    style={{ border:'none', borderRadius:9999, padding:'4px 10px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, textTransform:'capitalize', ...(() => { const t = { success:{bg:'#EFF9F4',fg:C.success}, danger:{bg:'#FDEDED',fg:C.danger}, warning:{bg:'#FFF6E5',fg:C.warning}, mute:{bg:C.paper,fg:C.mute}, primary:{bg:C.primarySoft,fg:C.primaryDeep}, info:{bg:'#EBF2FF',fg:'#2563EB'} }[ORDER_STATUS_TONE[o.status] || 'mute']; return { background:t.bg, color:t.fg }; })() }}>
+                    {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </Td>
+                <Td align="right">
+                  <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
+                    <button onClick={() => setDetailId(o.id)} title="View details" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name="eye" size={14} color={C.mute} />
+                    </button>
+                    {o.status !== 'refunded' && o.status !== 'cancelled' && (
+                      <button onClick={() => handleRefund(o)} title="Refund" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        <Icon name="refreshCw" size={14} color={C.danger} />
+                      </button>
+                    )}
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </AdminCard>
+
+      {totalPages > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:10 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Previous</button>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Next</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminOrderDetail({ orderId, onBack, onStatusChange, onRefund }) {
+  const [order, setOrder] = React.useState(null);
+  const [fetching, setFetching] = React.useState(true);
+  React.useEffect(() => { setFetching(true); sbAdminGetOrderDetail(orderId).then(o => { setOrder(o); setFetching(false); }); }, [orderId]);
+
+  if (!order) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:620 }}>
+        <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0, width:'fit-content' }}>
+          <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Orders</span>
+        </button>
+        <AdminCard><AdminEmptyRow text={fetching ? 'Loading…' : "Couldn't load this order — check your connection and try again."} /></AdminCard>
+      </div>
+    );
+  }
+
+  const items = order.order_items || [];
+  const tone = ORDER_STATUS_TONE[order.status] || 'mute';
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:620 }}>
+      <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0, width:'fit-content' }}>
+        <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Orders</span>
+      </button>
+
+      <AdminCard>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+          <div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:800, color:C.ink }}>Order #{order.id.slice(0,8)}</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute, marginTop:2 }}>{new Date(order.created_at).toLocaleString('en-US', { month:'long', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' })}</div>
+          </div>
+          <StatusPill tone={tone}>{order.status}</StatusPill>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:6, paddingTop:12, borderTop:`1px solid ${C.hairline}` }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Customer</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13.5, fontWeight:600, color:C.ink }}>{order.profiles?.full_name || 'Buyer'}</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>{order.profiles?.email} {order.profiles?.phone ? `· ${order.profiles.phone}` : ''}</div>
+        </div>
+      </AdminCard>
+
+      <AdminCard padded={false}>
+        <div style={{ padding:'12px 16px', borderBottom:`1px solid ${C.hairline}`, fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Items</div>
+        {items.length === 0 && <AdminEmptyRow text="No items on this order." />}
+        {items.map((it, i) => (
+          <div key={it.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{it.title}</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{it.shops?.name || '—'} · Qty {it.quantity}</div>
+            </div>
+            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:700, color:C.ink }}>${(it.unit_price ?? 0).toFixed(2)}</span>
+          </div>
+        ))}
+        <div style={{ display:'flex', justifyContent:'space-between', padding:'12px 16px', borderTop:`1px solid ${C.hairline}` }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Total</span>
+          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:800, color:C.ink }}>${(order.total_amount ?? 0).toFixed(2)}</span>
+        </div>
+      </AdminCard>
+
+      <AdminCard>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:10 }}>Update status</div>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          <select value={order.status} onChange={e => { onStatusChange(order.id, e.target.value); setOrder(o => ({ ...o, status:e.target.value })); }}
+            style={{ flex:1, minWidth:160, border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }}>
+            {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {order.status !== 'refunded' && order.status !== 'cancelled' && (
+            <Btn variant="secondary" onClick={() => { onRefund(order); setOrder(o => ({ ...o, status:'refunded' })); }} style={{ color:C.danger }}>Refund order</Btn>
+          )}
+        </div>
+      </AdminCard>
+    </div>
+  );
+}
+
 // ─── MAIN SHELL ──────────────────────────────────────────────────
 function AdminShellScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
@@ -967,13 +1182,6 @@ function AdminShellScreen({ params = {} }) {
     logAdminAction('Toggled seller status', name);
   }
 
-  // ── Orders ──
-  const [orderStatusOverrides, setOrderStatusOverrides] = React.useState({});
-  function setOrderStatus(id, status) {
-    setOrderStatusOverrides(prev => ({ ...prev, [id]: status }));
-    logAdminAction('Updated order status', `#${id} → ${status}`);
-  }
-
   // ── Reviews ──
   function setReviewStatus(id, status) {
     window._ADMIN_REVIEWS = window._ADMIN_REVIEWS.map(r => r.id === id ? { ...r, status } : r);
@@ -1072,36 +1280,7 @@ function AdminShellScreen({ params = {} }) {
     switch (section) {
       case 'overview': return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={window._ADMIN_REVIEWS} kycCount={adminStats?.pendingKyc ?? 0} />;
 
-      case 'orders': {
-        const orders = window.MOCK_ORDERS || [];
-        return (
-          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-            <SectionTitle title="Orders" sub={`${orders.length} orders`} />
-            <AdminCard padded={false} style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
-                <thead><tr><Th>Order</Th><Th>Placed</Th><Th align="right">Total</Th><Th>Status</Th></tr></thead>
-                <tbody>
-                  {orders.length === 0 ? <tr><td colSpan={4}><AdminEmptyRow text="No orders yet" /></td></tr> : orders.map(o => {
-                    const status = orderStatusOverrides[o.id] || o.status;
-                    return (
-                      <tr key={o.id}>
-                        <Td style={{ fontWeight:700 }}>#{o.id}</Td>
-                        <Td>{o.placedAt ? new Date(o.placedAt).toLocaleDateString() : '—'}</Td>
-                        <Td align="right" style={{ fontFamily:"'JetBrains Mono',monospace" }}>${o.total?.toFixed(2)}</Td>
-                        <Td>
-                          <select value={status} onChange={e => setOrderStatus(o.id, e.target.value)} style={{ border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'5px 8px', fontFamily:"'Inter',sans-serif", fontSize:12, color:C.ink, background:C.white }}>
-                            {['confirmed','preparing','shipped','in_transit','delivered','cancelled'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
-                          </select>
-                        </Td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </AdminCard>
-          </div>
-        );
-      }
+      case 'orders': return <AdminOrdersSection />;
 
       case 'products': return productDetail ? (
         <AdminProductDetail product={productDetail} onBack={() => setProductDetail(null)} onSave={handleSaveProduct} onDelete={handleDeleteProduct} />
