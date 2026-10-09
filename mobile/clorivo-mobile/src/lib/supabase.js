@@ -48,6 +48,17 @@ export async function getSession() {
   return data?.session ?? null;
 }
 
+// Uses Supabase Auth's built-in recovery email directly — no custom Edge
+// Function involved, so no secret key (Resend, service role) is ever
+// touched from the client. Mirrors the web app's sbResetPasswordForEmail.
+export async function resetPasswordForEmail(email) {
+  const redirectTo = Platform.OS === 'web'
+    ? `${window.location.origin}${window.location.pathname}`
+    : 'clorivo://reset-password';
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  return { data, error };
+}
+
 // ─── PROFILE ──────────────────────────────────────────────────────
 export async function getProfile(userId) {
   const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();

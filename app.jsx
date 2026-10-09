@@ -59,6 +59,7 @@ const SCREENS = {
   'otp-verify':      () => window.OtpVerifyScreen,
   'reset-password':  () => window.ResetPasswordScreen,
   'auth-success':    () => window.AuthSuccessScreen,
+  'account-suspended': () => window.AccountSuspendedScreen,
   home:         () => window.HomeScreen,
   pdp:          () => window.ProductDetailsScreen,
   cart:         () => window.CartScreen,

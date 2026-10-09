@@ -25,11 +25,22 @@ if (_isConfigured && window.supabase) {
 window._supabase = _sb;
 
 // ─── AUTH HELPERS ─────────────────────────────────────────────────
+// emailRedirectTo/redirectTo below use the browser's own origin rather than a
+// hardcoded domain — the confirmation/recovery link then always points back at
+// wherever the app is actually deployed (production domain, a preview deploy,
+// etc.) instead of whatever Dashboard "Site URL" happens to be set to. The
+// Supabase Dashboard's Redirect URLs allowlist must still include that origin
+// (see the Phase 1 report) — this is a defense-in-depth code fix, not a
+// substitute for that Dashboard setting.
+function _authReturnUrl() {
+  try { return window.location.origin + window.location.pathname; } catch (e) { return undefined; }
+}
+
 async function sbSignUp(email, password, fullName) {
   if (!_sb) return { error: { message: 'Supabase not configured' } };
   const { data, error } = await _sb.auth.signUp({
     email, password,
-    options: { data: { full_name: fullName } },
+    options: { data: { full_name: fullName }, emailRedirectTo: _authReturnUrl() },
   });
   return { data, error };
 }
@@ -47,7 +58,7 @@ async function sbSignOut() {
 
 async function sbResetPasswordForEmail(email) {
   if (!_sb) return { error: { message: 'Not configured' } };
-  const { data, error } = await _sb.auth.resetPasswordForEmail(email);
+  const { data, error } = await _sb.auth.resetPasswordForEmail(email, { redirectTo: _authReturnUrl() });
   return { data, error };
 }
 
@@ -85,6 +96,154 @@ async function sbUpdateProfile(userId, updates) {
   if (!_sb) return { error: { message: 'Not configured' } };
   const { data, error } = await _sb.from('profiles').update(updates).eq('id', userId).select().single();
   return { data, error };
+}
+
+// ─── RBAC — permissions / staff roles / staff members ─────────────────────
+// profiles.role stays a simple top-level discriminator (buyer/seller/admin/staff).
+// A 'staff' account's *actual* capabilities come entirely from staff_members →
+// staff_role_id → role_permissions → permissions, never from the role name
+// itself — new staff roles (Catalog Manager, Finance Manager, …) are just rows,
+// no code change needed. role='admin' bypasses all of this (Super Admin).
+const _DEMO_ACCESS_CONTEXT = { role: null, status: 'active', isAdmin: false, isStaff: false, staffRoleId: null, staffRoleName: null, permissions: [] };
+
+// What the CURRENT signed-in user can do — used to gate UI (never the real
+// barrier; RLS + has_permission() on the server are). Returns null if signed out.
+async function sbGetMyAccessContext() {
+  if (!_sb) return null;
+  const user = await sbGetUser();
+  if (!user) return null;
+  const profile = await sbGetProfile(user.id);
+  if (!profile) return null;
+  const ctx = { role: profile.role, status: profile.status, isAdmin: profile.role === 'admin', isStaff: false, staffRoleId: null, staffRoleName: null, permissions: [] };
+  if (ctx.isAdmin) return ctx;
+  const { data: staffRow } = await _sb.from('staff_members').select('id, status, staff_role_id, staff_roles(name)').eq('user_id', user.id).maybeSingle();
+  if (staffRow && staffRow.status === 'active') {
+    ctx.isStaff = true;
+    ctx.staffRoleId = staffRow.staff_role_id;
+    ctx.staffRoleName = staffRow.staff_roles?.name ?? null;
+    const { data: perms } = await _sb.from('role_permissions').select('permission_key').eq('role_id', staffRow.staff_role_id);
+    ctx.permissions = (perms || []).map(p => p.permission_key);
+  }
+  return ctx;
+}
+
+// Real, server-side check for one permission — use this (not the cached
+// context above) before anything consequential, since has_permission() is
+// SECURITY DEFINER and always reflects the live grant, not a stale client copy.
+async function sbHasPermission(permissionKey) {
+  if (!_sb) return false;
+  const user = await sbGetUser();
+  if (!user) return false;
+  const { data, error } = await _sb.rpc('has_permission', { p_user_id: user.id, p_permission: permissionKey });
+  return !error && data === true;
+}
+
+async function sbGetPermissionsCatalog() {
+  if (!_sb) return [];
+  const { data } = await _sb.from('permissions').select('*').order('module', { ascending: true });
+  return data ?? [];
+}
+
+async function sbAdminGetStaffRoles() {
+  if (!_sb) return [];
+  const { data } = await _sb.from('staff_roles').select('*, role_permissions(permission_key)').order('created_at', { ascending: true });
+  return (data || []).map(r => ({ ...r, permissions: (r.role_permissions || []).map(p => p.permission_key) }));
+}
+
+async function sbAdminCreateStaffRole(name, description) {
+  if (!_sb) return { data: null, error: null };
+  const { data, error } = await _sb.from('staff_roles').insert({ name, description: description || null }).select().single();
+  return { data, error };
+}
+
+async function sbAdminUpdateStaffRole(id, updates) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('staff_roles').update(updates).eq('id', id);
+  return { error };
+}
+
+async function sbAdminDeleteStaffRole(id) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('staff_roles').delete().eq('id', id);
+  return { error };
+}
+
+// Replace-all pattern for a role's permission set (delete then insert), same
+// approach as sbSetProductCategories — simplest correct option without a
+// multi-statement transaction primitive available from the client.
+async function sbAdminSetRolePermissions(roleId, permissionKeys) {
+  if (!_sb) return { error: null };
+  await _sb.from('role_permissions').delete().eq('role_id', roleId);
+  if (!permissionKeys?.length) return { error: null };
+  const { error } = await _sb.from('role_permissions').insert(permissionKeys.map(permission_key => ({ role_id: roleId, permission_key })));
+  return { error };
+}
+
+async function sbAdminGetStaffMembers() {
+  if (!_sb) return [];
+  const { data } = await _sb.from('staff_members').select('*, profiles(full_name, email), staff_roles(name)').order('created_at', { ascending: false });
+  return data ?? [];
+}
+
+// No user-search UI exists yet, so staff are added by the email of an
+// existing account — looks it up via profiles (RLS-readable: profiles has no
+// blanket public-read policy, so this only resolves accounts the admin's own
+// session is already allowed to see, which is fine since the caller is admin).
+async function sbAdminFindUserByEmail(email) {
+  if (!_sb || !email) return null;
+  const { data } = await _sb.from('profiles').select('id, email, full_name, role').ilike('email', email.trim()).maybeSingle();
+  return data ?? null;
+}
+
+async function sbAdminAddStaffMember(userId, staffRoleId) {
+  if (!_sb) return { data: null, error: null };
+  const user = await sbGetUser();
+  const { data, error } = await _sb.from('staff_members').insert({ user_id: userId, staff_role_id: staffRoleId, invited_by: user?.id ?? null }).select().single();
+  if (!error) await _sb.from('profiles').update({ role: 'staff' }).eq('id', userId).neq('role', 'admin');
+  return { data, error };
+}
+
+async function sbAdminUpdateStaffMember(id, updates) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('staff_members').update(updates).eq('id', id);
+  return { error };
+}
+
+async function sbAdminRemoveStaffMember(id, userId) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('staff_members').delete().eq('id', id);
+  if (!error && userId) await _sb.from('profiles').update({ role: 'buyer' }).eq('id', userId).eq('role', 'staff');
+  return { error };
+}
+
+// ─── ACCOUNT STATUS (suspend/ban — admins and sellers.suspend/customers.suspend) ──
+async function sbAdminSetAccountStatus(userId, status) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('profiles').update({ status }).eq('id', userId);
+  return { error };
+}
+
+// ─── AUDIT LOG ──────────────────────────────────────────────────────
+// actor_id is always derived server-side from auth.uid() inside log_audit() —
+// never a parameter here — so a client can log its own actions but can never
+// forge an entry attributed to someone else.
+async function sbLogAudit(action, resourceType, resourceId, before, after) {
+  if (!_sb) return;
+  try { await _sb.rpc('log_audit', { p_action: action, p_resource_type: resourceType ?? null, p_resource_id: resourceId != null ? String(resourceId) : null, p_before: before ?? null, p_after: after ?? null }); }
+  catch (e) { /* audit logging must never break the admin action it's logging */ }
+}
+
+async function sbAdminGetAuditLogs({ page = 1, limit = 30, resourceType = '', search = '' } = {}) {
+  const empty = { logs: [], total: 0, totalPages: 0, currentPage: page };
+  if (!_sb) return empty;
+  let query = _sb.from('audit_logs').select('*, profiles(full_name, email)', { count: 'exact' });
+  if (resourceType) query = query.eq('resource_type', resourceType);
+  const q = (search || '').trim();
+  if (q) query = query.or(`action.ilike.%${q}%,resource_id.ilike.%${q}%`);
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
+  if (error) return empty;
+  return { logs: data ?? [], total: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
 }
 
 // ─── PRODUCTS ────────────────────────────────────────────────────
@@ -413,6 +572,104 @@ function sbSubscribeAdminCategories(callback) {
   if (!_sb) return () => {};
   const channel = _sb.channel(`admin-categories-${++_adminCategoriesChannelSeq}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, callback)
+    .subscribe();
+  return () => _sb.removeChannel(channel);
+}
+
+// ─── BRANDS (Phase 2) ───────────────────────────────────────────────
+// Writes are gated server-side by RLS (brands.create/edit/delete via
+// has_permission) — these helpers never decide who's allowed, they just
+// surface whatever the database already enforces.
+function _brandPayload(form) {
+  const payload = {};
+  const fields = ['name','slug','logo_url','description','website_url','status'];
+  fields.forEach(f => { if (form[f] !== undefined) payload[f] = form[f] === '' && f !== 'name' && f !== 'slug' ? null : form[f]; });
+  return payload;
+}
+
+// Public, active-only — the list a seller's product form and any public
+// catalog page should offer. Inactive brands stay reachable only via the
+// admin endpoints below, never through this one.
+async function sbGetActiveBrands() {
+  if (!_sb) return [];
+  return _withTimeout((async () => {
+    const { data } = await _sb.from('brands').select('id, name, slug, logo_url').eq('status', 'active').order('name', { ascending: true });
+    return data ?? [];
+  })(), 10000, []);
+}
+
+async function sbAdminGetBrands(opts = {}) {
+  const emptyResult = { brands: [], totalBrands: 0, totalPages: 0, currentPage: opts.page || 1 };
+  if (!_sb) return emptyResult;
+  return _withTimeout(_sbAdminGetBrandsImpl(opts), 10000, { ...emptyResult, timedOut: true });
+}
+async function _sbAdminGetBrandsImpl({ page = 1, limit = 20, status = 'ALL', search = '' } = {}) {
+  let query = _sb.from('brands').select('*', { count: 'exact' });
+  if (status !== 'ALL') query = query.eq('status', status.toLowerCase());
+  const q = (search || '').trim();
+  if (q) query = query.or(`name.ilike.%${q}%,slug.ilike.%${q}%`);
+
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
+  if (error) return { brands: [], totalBrands: 0, totalPages: 0, currentPage: page };
+
+  const ids = (data || []).map(b => b.id);
+  let productCounts = {};
+  if (ids.length) {
+    const { data: prodRows } = await _sb.from('products').select('brand_id').in('brand_id', ids);
+    (prodRows || []).forEach(r => { productCounts[r.brand_id] = (productCounts[r.brand_id] || 0) + 1; });
+  }
+  const brands = (data || []).map(b => ({ ...b, productCount: productCounts[b.id] || 0 }));
+
+  return { brands, totalBrands: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
+async function sbAdminGetBrand(id) {
+  if (!_sb || !id) return null;
+  const { data } = await _sb.from('brands').select('*').eq('id', id).single();
+  return data;
+}
+
+async function sbAdminCreateBrand(form) {
+  if (!_sb) return { data: null, error: null };
+  const user = await sbGetUser();
+  const payload = { ..._brandPayload(form), created_by: user?.id ?? null };
+  const { data, error } = await _sb.from('brands').insert(payload).select().single();
+  if (error?.code === '23505') return { data: null, error: { message: 'A brand with this name or slug already exists' } };
+  return { data, error };
+}
+
+async function sbAdminUpdateBrand(id, form) {
+  if (!_sb) return { data: null, error: null };
+  const payload = { ..._brandPayload(form), updated_at: new Date().toISOString() };
+  const { data, error } = await _sb.from('brands').update(payload).eq('id', id).select().single();
+  if (error?.code === '23505') return { data: null, error: { message: 'A brand with this name or slug already exists' } };
+  return { data, error };
+}
+
+async function sbAdminSetBrandStatus(id, status) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('brands').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+  return { error };
+}
+
+// The brands.brand_id FK on products has no ON DELETE clause (= RESTRICT),
+// so the database itself refuses to delete a brand with linked products —
+// this never silently orphans or cascades into product data. The UI is
+// expected to check productCount and offer deactivation instead before
+// ever calling this for a brand that still has products.
+async function sbAdminDeleteBrand(id) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('brands').delete().eq('id', id);
+  if (error?.code === '23503') return { error: { message: 'This brand still has products linked to it — deactivate it instead, or move those products to another brand first.' } };
+  return { error };
+}
+
+let _adminBrandsChannelSeq = 0;
+function sbSubscribeAdminBrands(callback) {
+  if (!_sb) return () => {};
+  const channel = _sb.channel(`admin-brands-${++_adminBrandsChannelSeq}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'brands' }, callback)
     .subscribe();
   return () => _sb.removeChannel(channel);
 }
@@ -937,6 +1194,7 @@ function _productFormToSb(form) {
   if (form.oldPrice !== undefined) payload.compare_price = form.oldPrice || null;
   if (form.stock !== undefined) payload.stock = form.stock ?? 0;
   if (form.category_id !== undefined) payload.category_id = form.category_id || null;
+  if (form.brand_id !== undefined) payload.brand_id = form.brand_id || null;
   if (form.sku !== undefined) payload.sku = form.sku || null;
   if (form.image_url !== undefined) payload.images = form.image_url ? [form.image_url] : [];
   return payload;
@@ -1114,12 +1372,18 @@ Object.assign(window, {
   sbAdminCreateProduct, sbAdminUpdateProduct, sbAdminDeleteProduct,
   sbAdminGetProducts, sbAdminModerateProduct, sbAdminTogglePublish, sbSubscribeAdminProducts,
   sbGetCategoriesList,
+  sbGetMyAccessContext, sbHasPermission, sbGetPermissionsCatalog,
+  sbAdminGetStaffRoles, sbAdminCreateStaffRole, sbAdminUpdateStaffRole, sbAdminDeleteStaffRole, sbAdminSetRolePermissions,
+  sbAdminGetStaffMembers, sbAdminFindUserByEmail, sbAdminAddStaffMember, sbAdminUpdateStaffMember, sbAdminRemoveStaffMember,
+  sbAdminSetAccountStatus, sbLogAudit, sbAdminGetAuditLogs,
   sbGetCategoryTree, sbGetCategoryBySlug, sbGetCategoryBreadcrumb, sbGetFeaturedCategories,
   sbGetCategoryAttributes, sbGetProductsByCategory,
   sbAdminGetCategories, sbAdminGetCategory, sbAdminCreateCategory, sbAdminUpdateCategory,
   sbAdminSetCategoryStatus, sbAdminBulkCategoryStatus, sbAdminMoveCategory, sbAdminDeleteCategory,
   sbAdminSaveCategoryAttribute, sbAdminDeleteCategoryAttribute,
   sbGetProductCategories, sbSetProductCategories, sbSubscribeAdminCategories,
+  sbGetActiveBrands, sbAdminGetBrands, sbAdminGetBrand, sbAdminCreateBrand, sbAdminUpdateBrand,
+  sbAdminSetBrandStatus, sbAdminDeleteBrand, sbSubscribeAdminBrands,
   sbUploadFile,
   _isConfigured,
 });
