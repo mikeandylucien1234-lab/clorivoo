@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { COLORS, RADIUS } from '../../lib/tokens';
 import { Btn, Input } from '../../components/UI';
-import { supabase } from '../../lib/supabase';
+import { resetPasswordForEmail } from '../../lib/supabase';
 
 export default function ForgotPasswordScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -19,15 +19,9 @@ export default function ForgotPasswordScreen({ navigation }) {
     if (!trimmed) { setError('Entrez votre adresse email.'); return; }
     if (!/\S+@\S+\.\S+/.test(trimmed)) { setError('Adresse email invalide.'); return; }
     setLoading(true);
-    const redirectTo = typeof window !== 'undefined'
-      ? `${window.location.origin}/reset-password`
-      : 'clorivo://reset-password';
     try {
-      const { data, error: fnErr } = await supabase.functions.invoke('send-reset-email', {
-        body: { email: trimmed, redirectTo },
-      });
-      if (fnErr) throw fnErr;
-      if (data?.error) throw new Error(data.error);
+      const { error: resetErr } = await resetPasswordForEmail(trimmed);
+      if (resetErr) throw resetErr;
       setSent(true);
     } catch (e) {
       setError(e.message?.includes('rate') ? 'Trop de tentatives. Attendez quelques minutes.' : (e.message ?? 'Une erreur est survenue.'));
