@@ -576,6 +576,104 @@ function sbSubscribeAdminCategories(callback) {
   return () => _sb.removeChannel(channel);
 }
 
+// ─── BRANDS (Phase 2) ───────────────────────────────────────────────
+// Writes are gated server-side by RLS (brands.create/edit/delete via
+// has_permission) — these helpers never decide who's allowed, they just
+// surface whatever the database already enforces.
+function _brandPayload(form) {
+  const payload = {};
+  const fields = ['name','slug','logo_url','description','website_url','status'];
+  fields.forEach(f => { if (form[f] !== undefined) payload[f] = form[f] === '' && f !== 'name' && f !== 'slug' ? null : form[f]; });
+  return payload;
+}
+
+// Public, active-only — the list a seller's product form and any public
+// catalog page should offer. Inactive brands stay reachable only via the
+// admin endpoints below, never through this one.
+async function sbGetActiveBrands() {
+  if (!_sb) return [];
+  return _withTimeout((async () => {
+    const { data } = await _sb.from('brands').select('id, name, slug, logo_url').eq('status', 'active').order('name', { ascending: true });
+    return data ?? [];
+  })(), 10000, []);
+}
+
+async function sbAdminGetBrands(opts = {}) {
+  const emptyResult = { brands: [], totalBrands: 0, totalPages: 0, currentPage: opts.page || 1 };
+  if (!_sb) return emptyResult;
+  return _withTimeout(_sbAdminGetBrandsImpl(opts), 10000, { ...emptyResult, timedOut: true });
+}
+async function _sbAdminGetBrandsImpl({ page = 1, limit = 20, status = 'ALL', search = '' } = {}) {
+  let query = _sb.from('brands').select('*', { count: 'exact' });
+  if (status !== 'ALL') query = query.eq('status', status.toLowerCase());
+  const q = (search || '').trim();
+  if (q) query = query.or(`name.ilike.%${q}%,slug.ilike.%${q}%`);
+
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
+  if (error) return { brands: [], totalBrands: 0, totalPages: 0, currentPage: page };
+
+  const ids = (data || []).map(b => b.id);
+  let productCounts = {};
+  if (ids.length) {
+    const { data: prodRows } = await _sb.from('products').select('brand_id').in('brand_id', ids);
+    (prodRows || []).forEach(r => { productCounts[r.brand_id] = (productCounts[r.brand_id] || 0) + 1; });
+  }
+  const brands = (data || []).map(b => ({ ...b, productCount: productCounts[b.id] || 0 }));
+
+  return { brands, totalBrands: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
+async function sbAdminGetBrand(id) {
+  if (!_sb || !id) return null;
+  const { data } = await _sb.from('brands').select('*').eq('id', id).single();
+  return data;
+}
+
+async function sbAdminCreateBrand(form) {
+  if (!_sb) return { data: null, error: null };
+  const user = await sbGetUser();
+  const payload = { ..._brandPayload(form), created_by: user?.id ?? null };
+  const { data, error } = await _sb.from('brands').insert(payload).select().single();
+  if (error?.code === '23505') return { data: null, error: { message: 'A brand with this name or slug already exists' } };
+  return { data, error };
+}
+
+async function sbAdminUpdateBrand(id, form) {
+  if (!_sb) return { data: null, error: null };
+  const payload = { ..._brandPayload(form), updated_at: new Date().toISOString() };
+  const { data, error } = await _sb.from('brands').update(payload).eq('id', id).select().single();
+  if (error?.code === '23505') return { data: null, error: { message: 'A brand with this name or slug already exists' } };
+  return { data, error };
+}
+
+async function sbAdminSetBrandStatus(id, status) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('brands').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+  return { error };
+}
+
+// The brands.brand_id FK on products has no ON DELETE clause (= RESTRICT),
+// so the database itself refuses to delete a brand with linked products —
+// this never silently orphans or cascades into product data. The UI is
+// expected to check productCount and offer deactivation instead before
+// ever calling this for a brand that still has products.
+async function sbAdminDeleteBrand(id) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('brands').delete().eq('id', id);
+  if (error?.code === '23503') return { error: { message: 'This brand still has products linked to it — deactivate it instead, or move those products to another brand first.' } };
+  return { error };
+}
+
+let _adminBrandsChannelSeq = 0;
+function sbSubscribeAdminBrands(callback) {
+  if (!_sb) return () => {};
+  const channel = _sb.channel(`admin-brands-${++_adminBrandsChannelSeq}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'brands' }, callback)
+    .subscribe();
+  return () => _sb.removeChannel(channel);
+}
+
 // ─── SHOPS ───────────────────────────────────────────────────────
 async function sbGetShops({ limit = 10 } = {}) {
   if (!_sb) return { data: _DEMO_SHOPS, error: null };
@@ -1096,6 +1194,7 @@ function _productFormToSb(form) {
   if (form.oldPrice !== undefined) payload.compare_price = form.oldPrice || null;
   if (form.stock !== undefined) payload.stock = form.stock ?? 0;
   if (form.category_id !== undefined) payload.category_id = form.category_id || null;
+  if (form.brand_id !== undefined) payload.brand_id = form.brand_id || null;
   if (form.sku !== undefined) payload.sku = form.sku || null;
   if (form.image_url !== undefined) payload.images = form.image_url ? [form.image_url] : [];
   return payload;
@@ -1283,6 +1382,8 @@ Object.assign(window, {
   sbAdminSetCategoryStatus, sbAdminBulkCategoryStatus, sbAdminMoveCategory, sbAdminDeleteCategory,
   sbAdminSaveCategoryAttribute, sbAdminDeleteCategoryAttribute,
   sbGetProductCategories, sbSetProductCategories, sbSubscribeAdminCategories,
+  sbGetActiveBrands, sbAdminGetBrands, sbAdminGetBrand, sbAdminCreateBrand, sbAdminUpdateBrand,
+  sbAdminSetBrandStatus, sbAdminDeleteBrand, sbSubscribeAdminBrands,
   sbUploadFile,
   _isConfigured,
 });

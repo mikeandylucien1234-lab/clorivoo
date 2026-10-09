@@ -2,7 +2,6 @@
 
 // ─── SHARED ADMIN STATE (session-scoped, mirrors window._PROFILE pattern) ──
 window._ADMIN_AUDIT_LOG   = window._ADMIN_AUDIT_LOG   || [];
-window._BRANDS             = window._BRANDS            || [];
 window._COUPONS            = window._COUPONS           || [];
 window._ADMIN_REVIEWS      = window._ADMIN_REVIEWS     || [];
 window._REWARDS_CONFIG     = window._REWARDS_CONFIG    || { pointsPerDollar:1, referralBonus:10, minRedeem:500 };
@@ -203,16 +202,30 @@ function AdminProductDetail({ product, onBack, onSave, onDelete }) {
   const [form, setForm] = React.useState({
     id: product.id, title: product.title || '', price: String(product.price ?? ''),
     oldPrice: product.oldPrice != null ? String(product.oldPrice) : '',
-    category_id: product.category_id || '', sku: product.sku || '', image_url: product.image_url || null,
+    category_id: product.category_id || '', brand_id: product.brand_id || '', sku: product.sku || '', image_url: product.image_url || null,
     stock: product.stock != null ? String(product.stock) : '50',
   });
   const [categories, setCategories] = React.useState([]);
+  const [brands, setBrands] = React.useState([]);
   const [uploading, setUploading] = React.useState(false);
   const fileRef = React.useRef(null);
   const isNew = !product.id;
   const canSave = form.title.trim() && parseFloat(form.price) > 0;
 
   React.useEffect(() => { sbGetCategoryTree().then(tree => setCategories(_flattenCategories(tree))); }, []);
+  // Only active brands are offered as new choices here. If this product is
+  // already linked to a brand that's since been deactivated, fetch that one
+  // brand too so its name still shows (and the value is never silently lost)
+  // instead of pretending the selector has nothing selected.
+  React.useEffect(() => {
+    sbGetActiveBrands().then(async active => {
+      if (product.brand_id && !active.some(b => b.id === product.brand_id)) {
+        const current = await sbAdminGetBrand(product.brand_id);
+        if (current) active = [...active, { ...current, inactive: true }];
+      }
+      setBrands(active);
+    });
+  }, []);
 
   async function handleImageChange(e) {
     const file = e.target.files?.[0];
@@ -264,6 +277,14 @@ function AdminProductDetail({ product, onBack, onSave, onDelete }) {
           style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
           <option value="">— No category —</option>
           {categories.map(c => <option key={c.id} value={c.id}>{'— '.repeat(c.depth)}{c.name}</option>)}
+        </select>
+      </AdminField>
+
+      <AdminField label="Brand (optional)">
+        <select value={form.brand_id} onChange={e => setForm(f => ({ ...f, brand_id:e.target.value }))} aria-label="Brand"
+          style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+          <option value="">— No brand —</option>
+          {brands.map(b => <option key={b.id} value={b.id}>{b.name}{b.inactive ? ' (inactive)' : ''}</option>)}
         </select>
       </AdminField>
 
@@ -1408,6 +1429,299 @@ function AdminCategoryDeleteModal({ category, allCategoriesFlat, onClose, onDone
   );
 }
 
+// ─── ADMIN — Brands (real backend: brands table, RLS-gated via brands.* permissions) ──
+const BRAND_PAGE_SIZE = 20;
+
+function AdminBrandsSection() {
+  const [result, setResult] = React.useState({ brands:[], totalBrands:0, totalPages:0, currentPage:1 });
+  const [loading, setLoading] = React.useState(true);
+  const [page, setPage] = React.useState(1);
+  const [status, setStatus] = React.useState('ALL');
+  const [searchInput, setSearchInput] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [editing, setEditing] = React.useState(null); // { id } or {} for new, or null
+  const [deleting, setDeleting] = React.useState(null); // brand row
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    sbAdminGetBrands({ page, limit:BRAND_PAGE_SIZE, status, search }).then(r => { setResult(r); setLoading(false); });
+  }, [page, status, search]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setSearch(searchInput); }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  React.useEffect(() => {
+    const unsubscribe = sbSubscribeAdminBrands(() => load());
+    return unsubscribe;
+  }, [load]);
+
+  async function handleStatus(brand, newStatus) {
+    await sbAdminSetBrandStatus(brand.id, newStatus);
+    logAdminAction('Changed brand status', `${brand.name} → ${newStatus}`);
+    load();
+  }
+
+  if (editing) {
+    return <AdminBrandDetail brand={editing} onBack={() => { setEditing(null); load(); }} />;
+  }
+  if (deleting) {
+    return <AdminBrandDeleteModal brand={deleting} onClose={() => setDeleting(null)} onDone={() => { setDeleting(null); load(); }} />;
+  }
+
+  const { brands, totalBrands, totalPages } = result;
+  const activeCount = brands.filter(b => b.status === 'active').length;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Brands" sub={`${totalBrands} brand${totalBrands === 1 ? '' : 's'} · ${activeCount} active on this page`}
+        action={<Btn variant="primary" size="sm" onClick={() => setEditing({})}>+ New brand</Btn>} />
+
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ flex:'1 1 220px', position:'relative' }}>
+          <Icon name="search" size={15} color={C.mute} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)' }} />
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Brand name or slug…" aria-label="Search brands"
+            style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px 9px 34px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        </div>
+      </div>
+
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }} role="tablist" aria-label="Filter brands by status">
+        {['ALL','active','inactive'].map(s => (
+          <button key={s} onClick={() => { setStatus(s); setPage(1); }} aria-pressed={status === s} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: status === s ? C.ink : C.paper, color: status === s ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, textTransform:'capitalize' }}>{s === 'ALL' ? 'All' : s}</button>
+        ))}
+      </div>
+
+      <AdminCard padded={false} style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead><tr>
+            <Th>Brand</Th><Th>Status</Th><Th align="right">Products</Th><Th>Created</Th><Th align="right">Actions</Th>
+          </tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={5}><AdminEmptyRow text="Loading brands…" /></td></tr>
+            ) : result.timedOut ? (
+              <tr><td colSpan={5}><AdminEmptyRow text="Couldn't reach the server — check your connection and try again." /></td></tr>
+            ) : brands.length === 0 ? (
+              <tr><td colSpan={5}><AdminEmptyRow text="No brands yet — add your first one." /></td></tr>
+            ) : brands.map(b => (
+              <tr key={b.id}>
+                <Td>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} onClick={() => setEditing({ id:b.id })}>
+                    <div style={{ width:32, height:32, borderRadius:8, overflow:'hidden', flexShrink:0, background:C.primarySoft, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      {b.logo_url ? <img src={b.logo_url} alt={`${b.name} logo`} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <Icon name="tag" size={15} color={C.primary} />}
+                    </div>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontWeight:600 }}>{b.name}</div>
+                      <div style={{ fontSize:11, color:C.mute, fontFamily:"'JetBrains Mono',monospace" }}>/{b.slug}</div>
+                    </div>
+                  </div>
+                </Td>
+                <Td>
+                  <select value={b.status} onChange={e => handleStatus(b, e.target.value)} aria-label={`Status for ${b.name}`}
+                    style={{ border:'none', borderRadius:9999, padding:'4px 10px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, textTransform:'capitalize', background: b.status === 'active' ? '#EFF9F4' : C.paper, color: b.status === 'active' ? C.success : C.mute }}>
+                    <option value="active">active</option>
+                    <option value="inactive">inactive</option>
+                  </select>
+                </Td>
+                <Td align="right">{b.productCount}</Td>
+                <Td>{b.created_at ? new Date(b.created_at).toLocaleDateString() : '—'}</Td>
+                <Td align="right">
+                  <div style={{ display:'flex', gap:4, justifyContent:'flex-end', flexWrap:'wrap' }}>
+                    <button onClick={() => setEditing({ id:b.id })} title="View / Edit" aria-label={`Edit ${b.name}`} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name="edit" size={13} color={C.mute} />
+                    </button>
+                    <button onClick={() => handleStatus(b, b.status === 'active' ? 'inactive' : 'active')} title={b.status === 'active' ? 'Deactivate' : 'Activate'} aria-label={`${b.status === 'active' ? 'Deactivate' : 'Activate'} ${b.name}`} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name={b.status === 'active' ? 'eyeOff' : 'eye'} size={13} color={C.mute} />
+                    </button>
+                    <button onClick={() => setDeleting(b)} title="Delete" aria-label={`Delete ${b.name}`} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name="trash" size={13} color={C.danger} />
+                    </button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </AdminCard>
+
+      {totalPages > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:10 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Previous</button>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Next</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminBrandDetail({ brand, onBack }) {
+  const isNew = !brand.id;
+  const [loading, setLoading] = React.useState(!isNew);
+  const [error, setError] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [slugTouched, setSlugTouched] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+  const fileRef = React.useRef(null);
+  const [form, setForm] = React.useState({ name:'', slug:'', logo_url:null, description:'', website_url:'', status:'active' });
+
+  React.useEffect(() => {
+    if (isNew) return;
+    sbAdminGetBrand(brand.id).then(data => {
+      if (data) {
+        setForm({
+          name: data.name || '', slug: data.slug || '', logo_url: data.logo_url || null,
+          description: data.description || '', website_url: data.website_url || '', status: data.status || 'active',
+        });
+        setSlugTouched(true);
+      }
+      setLoading(false);
+    });
+  }, [brand.id]);
+
+  function set(field, value) { setForm(f => ({ ...f, [field]: value })); }
+  function setName(v) { setForm(f => ({ ...f, name:v, slug: slugTouched ? f.slug : _slugify(v) })); }
+
+  async function handleUpload(file) {
+    if (!file) return;
+    setUploading(true);
+    const path = `${Date.now()}-${file.name}`;
+    const { url, error: uploadError } = await sbUploadFile('brands', path, file);
+    setUploading(false);
+    if (uploadError || !url) { setError('Logo upload failed'); return; }
+    set('logo_url', url);
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) { setError('Brand name is required'); return; }
+    if (!form.slug.trim()) { setError('Slug is required'); return; }
+    setSaving(true); setError('');
+    const { error: saveError } = isNew ? await sbAdminCreateBrand(form) : await sbAdminUpdateBrand(brand.id, form);
+    setSaving(false);
+    if (saveError) { setError(saveError.message || 'Could not save brand'); return; }
+    logAdminAction(isNew ? 'Created brand' : 'Updated brand', form.name);
+    onBack();
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:560 }}>
+        <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0, width:'fit-content' }}>
+          <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Brands</span>
+        </button>
+        <AdminCard><AdminEmptyRow text="Loading…" /></AdminCard>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:560 }}>
+      <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0, width:'fit-content' }}>
+        <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Brands</span>
+      </button>
+
+      <SectionTitle title={isNew ? 'Create Brand' : `Edit "${form.name}"`} />
+
+      {error && (
+        <div role="alert" style={{ background:'#FDEDED', border:`1px solid ${C.danger}`, borderRadius:10, padding:'10px 14px', fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{error}</div>
+      )}
+
+      <AdminCard style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        <AdminField label="Logo">
+          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+            <div onClick={() => fileRef.current?.click()} role="button" tabIndex={0} aria-label="Upload brand logo"
+              style={{ width:72, height:72, borderRadius:12, overflow:'hidden', cursor:'pointer', background: form.logo_url ? undefined : C.paper, border: form.logo_url ? 'none' : `1.5px dashed ${C.hairline}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              {form.logo_url ? <img src={form.logo_url} alt="Brand logo" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <Icon name="camera" size={20} color={C.mute} />}
+            </div>
+            <div>
+              <Btn size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? 'Uploading…' : form.logo_url ? 'Replace logo' : 'Upload logo'}</Btn>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, marginTop:6 }}>PNG or JPG, square works best. Or paste a logo URL below.</div>
+            </div>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" onChange={e => handleUpload(e.target.files?.[0])} style={{ display:'none' }} />
+          <div style={{ marginTop:8 }}><AdminTextInput value={form.logo_url || ''} onChange={v => set('logo_url', v)} placeholder="https://… (logo URL)" mono /></div>
+        </AdminField>
+
+        <AdminField label="Brand Name"><AdminTextInput value={form.name} onChange={setName} placeholder="e.g. Nike" /></AdminField>
+        <AdminField label="Slug"><AdminTextInput value={form.slug} onChange={v => { setSlugTouched(true); set('slug', _slugify(v)); }} placeholder="nike" mono /></AdminField>
+        <AdminField label="Description">
+          <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3} aria-label="Brand description"
+            style={{ border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'10px 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink, resize:'vertical' }} />
+        </AdminField>
+        <AdminField label="Website URL (optional)"><AdminTextInput value={form.website_url} onChange={v => set('website_url', v)} placeholder="https://nike.com" mono /></AdminField>
+        <AdminField label="Status">
+          <select value={form.status} onChange={e => set('status', e.target.value)} aria-label="Brand status"
+            style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </AdminField>
+      </AdminCard>
+
+      <div style={{ display:'flex', gap:8 }}>
+        <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={onBack}>Cancel</Btn>
+        <Btn variant="primary" style={{ flex:1 }} onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : isNew ? 'Create brand' : 'Save changes'}</Btn>
+      </div>
+    </div>
+  );
+}
+
+function AdminBrandDeleteModal({ brand, onClose, onDone }) {
+  const [busy, setBusy] = React.useState(false);
+  const [serverError, setServerError] = React.useState('');
+  const productCount = brand.productCount ?? 0;
+  const blocked = productCount > 0;
+
+  async function handleDeactivate() {
+    setBusy(true);
+    await sbAdminSetBrandStatus(brand.id, 'inactive');
+    logAdminAction('Deactivated brand', brand.name);
+    setBusy(false);
+    onDone();
+  }
+
+  async function confirmDelete() {
+    setBusy(true); setServerError('');
+    const { error } = await sbAdminDeleteBrand(brand.id);
+    setBusy(false);
+    if (error) { setServerError(error.message); return; }
+    logAdminAction('Deleted brand', brand.name);
+    onDone();
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(14,11,31,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:100, padding:16 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={`Delete ${brand.name}`} style={{ background:C.white, borderRadius:16, padding:20, maxWidth:440, width:'100%', display:'flex', flexDirection:'column', gap:14 }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>Delete "{brand.name}"?</div>
+
+        {blocked ? (
+          <>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>
+              This brand has <strong>{productCount}</strong> product{productCount===1?'':'s'} linked to it. Deleting it would break those products' catalog data, so deletion is blocked. Deactivate it instead — it stays assigned to existing products but disappears from the brand picker for new ones.
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={onClose}>Cancel</Btn>
+              <Btn size="sm" style={{ flex:1 }} onClick={handleDeactivate} disabled={busy}>{busy ? 'Working…' : 'Deactivate instead'}</Btn>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>This brand has no linked products. This cannot be undone.</div>
+            {serverError && <div role="alert" style={{ background:'#FDEDED', borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{serverError}</div>}
+            <div style={{ display:'flex', gap:8 }}>
+              <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={onClose}>Cancel</Btn>
+              <Btn size="sm" style={{ flex:1, color:'#fff', background:C.danger, border:'none' }} onClick={confirmDelete} disabled={busy}>{busy ? 'Working…' : 'Delete brand'}</Btn>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── ADMIN — Staff & RBAC (real backend: staff_roles, role_permissions, staff_members) ──
 function AdminStaffSection({ initialTab = 'team' }) {
   const [tab, setTab] = React.useState(initialTab);
@@ -1734,7 +2048,7 @@ function AdminProductsSection() {
     const payload = {
       title: form.title, price: parseFloat(form.price) || 0,
       oldPrice: form.oldPrice ? parseFloat(form.oldPrice) : null,
-      stock: parseInt(form.stock) || 0, category_id: form.category_id || null, sku: form.sku || null,
+      stock: parseInt(form.stock) || 0, category_id: form.category_id || null, brand_id: form.brand_id || null, sku: form.sku || null,
       image_url: form.image_url,
     };
     if (form.id) {
@@ -1802,7 +2116,7 @@ function AdminProductsSection() {
               return (
                 <tr key={p.id}>
                   <Td>
-                    <div style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} onClick={() => setEditing({ id:p.id, title:p.title, price:p.price, oldPrice:p.compare_price, category_id:p.category_id || '', sku:p.sku, image_url:img || null, stock:p.stock })}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} onClick={() => setEditing({ id:p.id, title:p.title, price:p.price, oldPrice:p.compare_price, category_id:p.category_id || '', brand_id:p.brand_id || '', sku:p.sku, image_url:img || null, stock:p.stock })}>
                       <div style={{ width:36, height:36, borderRadius:8, overflow:'hidden', flexShrink:0, background:C.paper, display:'flex', alignItems:'center', justifyContent:'center' }}>
                         {img ? <img src={img} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <Icon name="package" size={15} color={C.mute} />}
                       </div>
@@ -1839,7 +2153,7 @@ function AdminProductsSection() {
                           </button>
                         </>
                       )}
-                      <button onClick={() => setEditing({ id:p.id, title:p.title, price:p.price, oldPrice:p.compare_price, category_id:p.category_id || '', sku:p.sku, image_url:img || null, stock:p.stock })} title="Edit" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <button onClick={() => setEditing({ id:p.id, title:p.title, price:p.price, oldPrice:p.compare_price, category_id:p.category_id || '', brand_id:p.brand_id || '', sku:p.sku, image_url:img || null, stock:p.stock })} title="Edit" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                         <Icon name="edit" size={14} color={C.mute} />
                       </button>
                       <button onClick={() => handleDelete(p)} title="Delete" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -2200,20 +2514,6 @@ function AdminShellScreen({ params = {} }) {
     forceTick(t => t + 1);
   }
 
-  // ── Brands ──
-  function addBrand() {
-    window._BRANDS = [...window._BRANDS, { id:`br${Date.now()}`, name:'New Brand', logo_url:null }];
-    forceTick(t => t + 1);
-  }
-  function updateBrand(id, name) {
-    window._BRANDS = window._BRANDS.map(b => b.id === id ? { ...b, name } : b);
-    forceTick(t => t + 1);
-  }
-  function deleteBrand(id) {
-    window._BRANDS = window._BRANDS.filter(b => b.id !== id);
-    forceTick(t => t + 1);
-  }
-
   // ── Inventory / Flash deals ──
   function updateStock(id, value) {
     const p = window.PRODUCTS.find(p => p.id === id);
@@ -2254,20 +2554,7 @@ function AdminShellScreen({ params = {} }) {
 
       case 'categories': return <AdminCategoriesSection />;
 
-      case 'brands': return (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Brands" sub={`${window._BRANDS.length} brands`} action={<Btn variant="primary" size="sm" onClick={addBrand}>+ New brand</Btn>} />
-          <AdminCard padded={false}>
-            {window._BRANDS.length === 0 ? <AdminEmptyRow text="No brands yet — add your first one." /> : window._BRANDS.map((b, i) => (
-              <div key={b.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
-                <div style={{ width:34, height:34, borderRadius:9, background:C.paper, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><Icon name="tag" size={15} color={C.mute} /></div>
-                <input value={b.name} onChange={e => updateBrand(b.id, e.target.value)} style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }} />
-                <button onClick={() => deleteBrand(b.id)} style={{ border:'none', background:'none', cursor:'pointer', padding:4 }}><Icon name="trash" size={15} color={C.danger} /></button>
-              </div>
-            ))}
-          </AdminCard>
-        </div>
-      );
+      case 'brands': return <AdminBrandsSection />;
 
       case 'inventory': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
