@@ -761,7 +761,7 @@ async function sbUpsertCartItem(userId, productId, variant, quantity, price) {
     return { error: null };
   }
   const { error } = await _sb.from('cart_items').upsert({
-    cart_id: cart.id, product_id: productId, variant, quantity, price,
+    cart_id: cart.id, product_id: productId, variant, quantity, unit_price: price,
   }, { onConflict: 'cart_id,product_id,variant' });
   return { error };
 }
@@ -773,40 +773,124 @@ async function sbClearCart(userId) {
 }
 
 // ─── ORDERS ──────────────────────────────────────────────────────
-async function sbCreateOrder(userId, { items, shippingAddress, shippingMethod, paymentMethod, subtotal, discount, shippingFee, total, promoCode }) {
+// Creation goes exclusively through the create_order() RPC: it re-reads
+// real price/stock/availability from `products` under a row lock and
+// recomputes subtotal/discount/total server-side from the buyer's own
+// persisted cart — nothing here is trusted from the browser. The order
+// always starts status='pending' / payment_status='pending'; nothing in
+// this function (or anywhere else on the client) can mark it paid.
+async function sbCreateOrder(userId, { shippingAddress, shippingMethod = 'standard', paymentMethod = 'moncash', promoCode = null } = {}) {
   if (!_sb || !userId) {
     const fakeId = 'CLV' + Date.now();
-    window._LAST_ORDER = { id: fakeId, status: 'confirmed', tracking_number: 'TRK' + Math.random().toString(36).slice(2,10).toUpperCase() };
+    window._LAST_ORDER = { id: fakeId, status: 'pending', payment_status: 'pending', tracking_number: 'TRK' + Math.random().toString(36).slice(2,10).toUpperCase() };
     return { data: window._LAST_ORDER, error: null };
   }
-  const { data: order, error } = await _sb.from('orders').insert({
-    buyer_id: userId,
-    status: 'confirmed',
-    subtotal, discount, shipping_fee: shippingFee, total, promo_code: promoCode,
-    shipping_address: shippingAddress,
-    shipping_method: shippingMethod,
-    payment_method: paymentMethod,
-    payment_status: 'paid',
-    tracking_number: 'TRK' + Math.random().toString(36).slice(2,10).toUpperCase(),
-  }).select().single();
+  const { data, error } = await _sb.rpc('create_order', {
+    p_shipping_address: shippingAddress ?? {},
+    p_shipping_method: shippingMethod,
+    p_payment_method: paymentMethod,
+    p_promo_code: promoCode,
+  });
   if (error) return { data: null, error };
 
-  if (items?.length) {
-    await _sb.from('order_items').insert(items.map(item => ({
-      order_id: order.id,
-      product_id: item.product_id,
-      shop_id: item.shop_id,
-      title: item.title,
-      image_url: item.image_url,
-      variant: item.variant,
-      quantity: item.quantity,
-      price: item.price,
-    })));
-  }
-
+  const order = await sbGetOrder(data.order_id);
   window._LAST_ORDER = order;
-  await sbClearCart(userId);
   return { data: order, error: null };
+}
+
+// Logs a payment attempt against an order already created by
+// sbCreateOrder(); the amount is read server-side from the order itself,
+// never supplied by the client. This does NOT mark anything paid — only
+// admin_confirm_payment() (server-side, permission-gated) can do that.
+async function sbRecordPaymentAttempt(orderId, provider, providerReference = null) {
+  if (!_sb) return { data: { ok: true, intent_id: 'demo' }, error: null };
+  const { data, error } = await _sb.rpc('record_payment_attempt', {
+    p_order_id: orderId, p_provider: provider, p_provider_reference: providerReference,
+  });
+  return { data, error };
+}
+
+// ─── REFUNDS (buyer side) ──────────────────────────────────────────
+async function sbRequestRefund(orderId, reason, amount = null) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('request_refund', { p_order_id: orderId, p_reason: reason, p_amount: amount });
+  return { data, error };
+}
+
+async function sbGetMyRefundRequests(orderId = null) {
+  if (!_sb) return [];
+  let q = _sb.from('refund_requests').select('*, refunds(*)').order('created_at', { ascending: false });
+  if (orderId) q = q.eq('order_id', orderId);
+  const { data } = await q;
+  return data ?? [];
+}
+
+// ─── ADMIN: PAYMENTS, COMMISSIONS & REFUNDS ────────────────────────
+async function sbAdminGetPaymentIntents({ orderId = null, limit = 50 } = {}) {
+  if (!_sb) return [];
+  let q = _sb.from('payment_intents').select('*, orders(id, buyer_id, total_amount, profiles(full_name, email))').order('created_at', { ascending: false }).limit(limit);
+  if (orderId) q = q.eq('order_id', orderId);
+  const { data } = await q;
+  return data ?? [];
+}
+
+// The ONLY client call that can ever move payment_status to 'paid' — and
+// it only succeeds server-side for a caller holding payments.confirm.
+async function sbAdminConfirmPayment(intentId, result, providerReference = null, notes = null) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('admin_confirm_payment', {
+    p_intent_id: intentId, p_result: result, p_provider_reference: providerReference, p_notes: notes,
+  });
+  return { data, error };
+}
+
+async function sbAdminGetRefundRequests({ page = 1, limit = 20, status = 'ALL', search = '', orderId = null } = {}) {
+  const empty = { requests: [], totalRequests: 0, totalPages: 0, currentPage: page };
+  if (!_sb) return empty;
+  let query = _sb.from('refund_requests').select('*, orders(id, total_amount, payment_status, profiles(full_name, email)), refunds(*)', { count: 'exact' });
+  if (status !== 'ALL') query = query.eq('status', status);
+  if (orderId) query = query.eq('order_id', orderId);
+  const q = (search || '').trim();
+  if (q) query = query.ilike('reason', `%${q}%`);
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
+  if (error) return empty;
+  return { requests: data ?? [], totalRequests: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
+// Admin/staff-initiated goodwill refund (not started by the buyer) — still
+// capped at the refundable amount, still a distinct step from actually
+// recording a provider result below.
+async function sbAdminInitiateRefund(orderId, reason, amount = null) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('admin_initiate_refund', { p_order_id: orderId, p_reason: reason, p_amount: amount });
+  return { data, error };
+}
+
+// The business decision (approve/reject a refund request) — requires orders.refund.
+async function sbAdminDecideRefund(requestId, decision, notes = null) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('admin_decide_refund', { p_request_id: requestId, p_decision: decision, p_notes: notes });
+  return { data, error };
+}
+
+// Recording what actually happened at the provider — requires
+// payments.confirm. Never call this to simulate a success; only to
+// record a real, verified provider-side outcome.
+async function sbAdminRecordRefundResult(requestId, result, amount, providerReference = null, notes = null) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('admin_record_refund_result', {
+    p_request_id: requestId, p_result: result, p_amount: amount, p_provider_reference: providerReference, p_notes: notes,
+  });
+  return { data, error };
+}
+
+async function sbAdminGetCommissionLedger({ orderId = null, limit = 50 } = {}) {
+  if (!_sb) return [];
+  let q = _sb.from('commission_ledger').select('*, shops(name)').order('created_at', { ascending: false }).limit(limit);
+  if (orderId) q = q.eq('order_id', orderId);
+  const { data } = await q;
+  return data ?? [];
 }
 
 async function sbGetOrder(orderId) {
@@ -1464,6 +1548,10 @@ Object.assign(window, {
   sbGetBanners, sbUpsertBanner, sbDeleteBanner, sbGetSignupBanner,
   sbGetCart, sbUpsertCartItem, sbClearCart,
   sbCreateOrder, sbGetOrder, sbGetOrders, sbCancelOrder,
+  sbRecordPaymentAttempt, sbRequestRefund, sbGetMyRefundRequests,
+  sbAdminGetPaymentIntents, sbAdminConfirmPayment,
+  sbAdminGetRefundRequests, sbAdminInitiateRefund, sbAdminDecideRefund, sbAdminRecordRefundResult,
+  sbAdminGetCommissionLedger,
   sbGetConversations, sbGetMessages, sbSendMessage,
   sbSubscribeToMessages, sbMarkConversationRead, sbGetOrCreateConversation,
   sbGetNotifications, sbMarkNotificationRead,

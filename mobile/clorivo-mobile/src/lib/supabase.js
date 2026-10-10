@@ -191,29 +191,33 @@ export async function clearCart(userId) {
 }
 
 // ─── ORDERS ───────────────────────────────────────────────────────
-export async function createOrder(userId, items, total, shippingAddress, shippingMethod = 'standard') {
-  const subtotal = items.reduce((s, i) => s + (i.unit_price ?? i.price ?? 0) * (i.quantity ?? 1), 0);
-  const shippingFee = total - subtotal;
-  const { data: order, error } = await supabase.from('orders').insert({
-    buyer_id: userId, status: 'confirmed',
-    subtotal, discount: 0, shipping_fee: shippingFee, total_amount: total,
-    shipping_address: shippingAddress,
-    shipping_method: shippingMethod,
-    payment_method: 'card',
-    payment_status: 'paid',
-    tracking_number: 'TRK' + Math.random().toString(36).slice(2, 10).toUpperCase(),
-  }).select().single();
+// Creation goes exclusively through the create_order() RPC (Phase 4):
+// it re-reads real price/stock from `products` server-side and
+// recomputes totals from the buyer's own persisted cart — nothing here
+// is trusted from the client. The order always starts
+// status='pending' / payment_status='pending'; nothing on this client
+// can mark it paid.
+export async function createOrder(userId, shippingAddress, shippingMethod = 'standard', paymentMethod = 'card') {
+  const { data, error } = await supabase.rpc('create_order', {
+    p_shipping_address: shippingAddress ?? {},
+    p_shipping_method: shippingMethod,
+    p_payment_method: paymentMethod,
+  });
   if (error) throw error;
-  if (items?.length) {
-    await supabase.from('order_items').insert(items.map(i => ({
-      order_id: order.id, product_id: i.product_id, shop_id: i.shop_id,
-      title: i.title, variant: i.variant ?? {},
-      quantity: i.quantity ?? 1, unit_price: i.unit_price ?? i.price,
-      seller_id: i.seller_id,
-    })));
-  }
-  await clearCart(userId);
+  const order = await getOrder(data.order_id);
+  await recordPaymentAttempt(order.id, paymentMethod);
   return order;
+}
+
+// Logs a payment attempt — the amount is read server-side from the
+// order itself. This never marks anything paid; only an admin with
+// payments.confirm can do that, after a real provider confirmation.
+export async function recordPaymentAttempt(orderId, provider, providerReference = null) {
+  const { data, error } = await supabase.rpc('record_payment_attempt', {
+    p_order_id: orderId, p_provider: provider, p_provider_reference: providerReference,
+  });
+  if (error) throw error;
+  return data;
 }
 
 export async function getOrders(userId) {
