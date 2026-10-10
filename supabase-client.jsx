@@ -1150,21 +1150,123 @@ async function sbAdminUpdateOrderStatus(orderId, status) {
   return { error };
 }
 
-async function sbAdminGetKycRequests() {
-  if (!_sb) return _DEMO_KYC_REQUESTS;
-  const { data } = await _sb.from('kyc_requests')
-    .select('*, profiles(full_name, email)')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false });
-  return data ?? _DEMO_KYC_REQUESTS;
+// ─── SELLER KYC (Phase 3) ───────────────────────────────────────────
+// Every status change below goes through admin_review_kyc() — the single
+// place that checks the matching kyc.*/sellers.suspend permission, blocks
+// an incomplete approval, requires a reason for a refusal/correction
+// request, flips shops.is_verified/is_active, promotes the profile to
+// 'seller' on approval, and writes one audit_logs row. These helpers never
+// decide who's allowed — the RPC and the RLS/triggers behind it do.
+async function sbAdminGetKycRequests({ page = 1, limit = 20, status = 'ALL', search = '' } = {}) {
+  const empty = { requests: [], totalRequests: 0, totalPages: 0, currentPage: page };
+  if (!_sb) return empty;
+  let query = _sb.from('kyc_requests').select('*, profiles(full_name, email)', { count: 'exact' });
+  if (status !== 'ALL') query = query.eq('status', status);
+  const q = (search || '').trim();
+  if (q) query = query.or(`shop_name.ilike.%${q}%,shop_name_requested.ilike.%${q}%,legal_first_name.ilike.%${q}%,legal_last_name.ilike.%${q}%`);
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
+  if (error) return empty;
+  return { requests: data ?? [], totalRequests: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
 }
 
-async function sbAdminUpdateKyc(id, status, notes) {
+async function sbAdminGetKycRequest(id) {
+  if (!_sb || !id) return null;
+  const { data } = await _sb.from('kyc_requests').select('*, profiles(full_name, email)').eq('id', id).single();
+  return data ?? null;
+}
+
+// Short-lived (60s) signed URL — never a permanent/public one. Requires the
+// caller to already pass the storage SELECT policy (own folder, or a
+// kyc.view/review/approve/reject/request_changes permission); this call
+// fails outright for anyone else.
+async function sbAdminGetKycDocUrl(path) {
+  if (!_sb || !path) return null;
+  const { data, error } = await _sb.storage.from('kyc-documents').createSignedUrl(path, 60);
+  if (error) return null;
+  return data?.signedUrl ?? null;
+}
+
+async function sbAdminReviewKyc(kycId, decision, notes) {
   if (!_sb) return { error: null };
-  const { error } = await _sb.from('kyc_requests')
-    .update({ status, review_notes: notes, reviewed_at: new Date().toISOString() })
-    .eq('id', id);
-  return { error };
+  const { data, error } = await _sb.rpc('admin_review_kyc', { p_kyc_id: kycId, p_decision: decision, p_notes: notes || null });
+  return { data, error };
+}
+
+// ─── SELLER-SIDE KYC SUBMISSION ─────────────────────────────────────
+async function sbGetMyKyc() {
+  if (!_sb) return null;
+  const user = await sbGetUser();
+  if (!user) return null;
+  const { data } = await _sb.from('kyc_requests').select('*').eq('seller_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  return data ?? null;
+}
+
+// Random, unpredictable path under the seller's own folder — storage RLS
+// keys off (storage.foldername(name))[1], so this is also what keeps one
+// seller from ever reaching another's documents, not just the UI.
+async function _sbUploadKycDoc(userId, file, label) {
+  if (!file) return null;
+  const ext = (file.name || '').split('.').pop() || 'jpg';
+  const rand = (window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const path = `${userId}/${rand}-${label}.${ext}`;
+  const { error } = await _sb.storage.from('kyc-documents').upload(path, file, { upsert: false });
+  if (error) return null;
+  return path;
+}
+
+async function sbSubmitKyc(form, files = {}) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const user = await sbGetUser();
+  if (!user) return { error: { message: 'Not signed in' } };
+
+  const [doc_front_path, doc_back_path, selfie_path] = await Promise.all([
+    _sbUploadKycDoc(user.id, files.front, 'front'),
+    _sbUploadKycDoc(user.id, files.back, 'back'),
+    _sbUploadKycDoc(user.id, files.selfie, 'selfie'),
+  ]);
+  if (!doc_front_path || !selfie_path) {
+    return { error: { message: 'Front document photo and selfie are both required.' } };
+  }
+
+  const payload = {
+    seller_id: user.id,
+    legal_first_name: form.firstName || null, legal_last_name: form.lastName || null,
+    date_of_birth: form.dob || null, nationality: form.nationality || null,
+    origin_country: form.originCountry || null, destination_country: form.country || null,
+    city: form.city || null, contact_email: form.email || null,
+    contact_phone: form.phone ? `${form.countryCode || ''} ${form.phone}`.trim() : null,
+    shop_name: form.shopName || null, shop_name_requested: form.shopName || null,
+    shop_description: form.shopDescription || null, doc_type: form.docType || null,
+    doc_front_path, doc_back_path, selfie_path,
+  };
+  // status is never sent — protect_kyc_request_fields_trg forces 'pending'
+  // on insert for anyone without a review permission regardless.
+  const { data, error } = await _sb.from('kyc_requests').insert(payload).select().single();
+  return { data, error };
+}
+
+async function sbResubmitKyc(kycId, form, files = {}) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const user = await sbGetUser();
+  if (!user) return { error: { message: 'Not signed in' } };
+
+  const uploads = {};
+  if (files.front) uploads.doc_front_path = await _sbUploadKycDoc(user.id, files.front, 'front');
+  if (files.back) uploads.doc_back_path = await _sbUploadKycDoc(user.id, files.back, 'back');
+  if (files.selfie) uploads.selfie_path = await _sbUploadKycDoc(user.id, files.selfie, 'selfie');
+
+  const payload = {
+    legal_first_name: form.firstName || null, legal_last_name: form.lastName || null,
+    date_of_birth: form.dob || null, nationality: form.nationality || null,
+    origin_country: form.originCountry || null, destination_country: form.country || null,
+    city: form.city || null, contact_email: form.email || null,
+    contact_phone: form.phone ? `${form.countryCode || ''} ${form.phone}`.trim() : null,
+    shop_name_requested: form.shopName || null, shop_description: form.shopDescription || null,
+    doc_type: form.docType || null, status: 'pending', ...uploads,
+  };
+  const { data, error } = await _sb.from('kyc_requests').update(payload).eq('id', kycId).select().single();
+  return { data, error };
 }
 
 async function sbAdminGetUsers() {
@@ -1368,7 +1470,9 @@ Object.assign(window, {
   sbGetSellerStats, sbGetSellerOrders,
   sbAdminGetStats, sbAdminGetSalesTimeseries, sbSubscribeAdminOrders,
   sbAdminGetOrders, sbAdminGetOrderDetail, sbAdminUpdateOrderStatus, ORDER_STATUSES,
-  sbAdminGetKycRequests, sbAdminUpdateKyc, sbAdminGetUsers, sbAdminUpdateUser,
+  sbAdminGetKycRequests, sbAdminGetKycRequest, sbAdminGetKycDocUrl, sbAdminReviewKyc,
+  sbGetMyKyc, sbSubmitKyc, sbResubmitKyc,
+  sbAdminGetUsers, sbAdminUpdateUser,
   sbAdminCreateProduct, sbAdminUpdateProduct, sbAdminDeleteProduct,
   sbAdminGetProducts, sbAdminModerateProduct, sbAdminTogglePublish, sbSubscribeAdminProducts,
   sbGetCategoriesList,
