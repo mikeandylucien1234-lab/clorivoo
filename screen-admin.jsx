@@ -301,105 +301,320 @@ function AdminProductDetail({ product, onBack, onSave, onDelete }) {
 }
 
 // ─── ADMIN — KYC Review (reached from Sellers) ──────────────────
-function AdminKycPanel({ onBack }) {
-  const [decision, setDecision] = React.useState(null);
-  const [kycRequests, setKycRequests] = React.useState([]);
-  const [currentIdx, setCurrentIdx]  = React.useState(0);
+const KYC_STATUS_TONE = {
+  not_submitted: 'mute', pending: 'warning', under_review: 'info',
+  needs_changes: 'warning', approved: 'success', rejected: 'danger', suspended: 'danger',
+};
+const KYC_STATUS_LABEL = {
+  not_submitted: 'not submitted', pending: 'pending', under_review: 'under review',
+  needs_changes: 'needs changes', approved: 'approved', rejected: 'rejected', suspended: 'suspended',
+};
+const KYC_PAGE_SIZE = 20;
 
-  React.useEffect(() => { sbAdminGetKycRequests().then(data => setKycRequests(data ?? [])); }, []);
+// ─── ADMIN — Seller Management / KYC Verification (real backend) ──
+// List + search + status filter + pagination over kyc_requests, backed by
+// sbAdminGetKycRequests(). Row click opens AdminKycDetail for the actual
+// review workflow. Every decision button below is a hint only — the real
+// authorization boundary is server-side (has_permission() inside
+// admin_review_kyc()), so hiding a button here is defense-in-depth, not
+// the protection itself.
+function AdminSellersKycSection({ accessCtx }) {
+  const [result, setResult] = React.useState({ requests:[], totalRequests:0, totalPages:0, currentPage:1 });
+  const [loading, setLoading] = React.useState(true);
+  const [page, setPage] = React.useState(1);
+  const [status, setStatus] = React.useState('ALL');
+  const [search, setSearch] = React.useState('');
+  const [searchInput, setSearchInput] = React.useState('');
+  const [openId, setOpenId] = React.useState(null);
+  const [pendingCount, setPendingCount] = React.useState(null);
 
-  const current = kycRequests[currentIdx];
+  const load = React.useCallback(() => {
+    setLoading(true);
+    sbAdminGetKycRequests({ page, limit:KYC_PAGE_SIZE, status, search }).then(r => { setResult(r); setLoading(false); });
+  }, [page, status, search]);
+  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setSearch(searchInput); }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+  React.useEffect(() => {
+    sbAdminGetKycRequests({ page:1, limit:1, status:'pending' }).then(r => setPendingCount(r.totalRequests ?? 0));
+  }, []);
 
-  if (kycRequests.length === 0) {
+  if (openId) {
     return (
-      <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:560 }}>
-        <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0, width:'fit-content' }}>
-          <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Sellers</span>
-        </button>
-        <AdminCard><AdminEmptyRow text="No pending KYC requests." /></AdminCard>
-      </div>
+      <AdminKycDetail
+        kycId={openId}
+        accessCtx={accessCtx}
+        onBack={() => setOpenId(null)}
+        onChanged={() => { load(); sbAdminGetKycRequests({ page:1, limit:1, status:'pending' }).then(r => setPendingCount(r.totalRequests ?? 0)); }}
+      />
     );
   }
-  const checks = [
-    { label:'Document validity', status:'pass' },
-    { label:'Name match', status:'pass' },
-    { label:'Face match (98%)', status:'pass' },
-    { label:'Sanctions screening', status:'pass' },
-    { label:'Duplicate account', status:'review' },
-  ];
 
-  async function handleDecision(status) {
-    if (current) await sbAdminUpdateKyc(current.id, status, '');
-    logAdminAction(status === 'approved' ? 'Approved seller KYC' : 'Rejected seller KYC', current?.shop_name || current?.profiles?.full_name || '—');
-    setDecision(status);
-    setTimeout(() => {
-      setDecision(null);
-      if (currentIdx < kycRequests.length - 1) setCurrentIdx(i => i + 1);
-      else onBack();
-    }, 1000);
-  }
+  const { requests, totalRequests, totalPages } = result;
+  const STATUS_FILTERS = ['ALL','pending','under_review','needs_changes','approved','rejected','suspended'];
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:560 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-        <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0 }}>
-          <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Sellers</span>
-        </button>
-        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{kycRequests.length} pending · #{currentIdx+1}</span>
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Seller Management / KYC Verification" sub={`${totalRequests} application${totalRequests===1?'':'s'}${pendingCount ? ` · ${pendingCount} pending review` : ''}`} />
+
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+        <div style={{ position:'relative', flex:'1 1 220px', minWidth:220 }}>
+          <Icon name="search" size={15} color={C.mute} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)' }} />
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search by name, email or shop…"
+            style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px 9px 34px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white, boxSizing:'border-box' }} />
+        </div>
+        <select value={status} onChange={e => { setPage(1); setStatus(e.target.value); }}
+          style={{ border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'0 10px', height:38, fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }}>
+          {STATUS_FILTERS.map(s => <option key={s} value={s}>{s === 'ALL' ? 'All statuses' : KYC_STATUS_LABEL[s]}</option>)}
+        </select>
       </div>
 
-      <AdminCard style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-        <Avatar size={44} initials={(current?.profiles?.full_name ?? 'KYC').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()} />
-        <div style={{ flex:1 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>{current?.profiles?.full_name ?? ''}</span>
-            <StatusPill tone="danger">pending</StatusPill>
-          </div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{current?.profiles?.email ?? ''}</div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Shop: "{current?.shop_name ?? ''}"</div>
-        </div>
-      </AdminCard>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-        {['ID front','ID back','Selfie'].map((t, i) => (
-          <div key={i} style={{ borderRadius:10, overflow:'hidden', border:`1px solid ${C.hairline}` }}>
-            <Img label="" tint={i} style={{ height:70, borderRadius:0 }} />
-            <div style={{ padding:'5px 8px', display:'flex', justifyContent:'space-between', alignItems:'center', background:C.white }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600, color:C.ink }}>{t}</span>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.success }}>✓</span>
+      <AdminCard padded={false}>
+        {loading ? <AdminEmptyRow text="Loading…" /> : requests.length === 0 ? (
+          <AdminEmptyRow text="No KYC applications match these filters." />
+        ) : requests.map((r, i) => (
+          <div key={r.id} onClick={() => setOpenId(r.id)} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none', cursor:'pointer' }}>
+            <Avatar size={34} initials={(r.profiles?.full_name || r.legal_first_name || '?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{r.profiles?.full_name || `${r.legal_first_name||''} ${r.legal_last_name||''}`.trim() || 'Unnamed applicant'}</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {r.profiles?.email || r.contact_email || ''}{(r.shop_name_requested || r.shop_name) ? ` · "${r.shop_name_requested || r.shop_name}"` : ''}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-
-      <AdminCard>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, color:C.ink, marginBottom:8 }}>Automated checks</div>
-        {checks.map((c, i) => (
-          <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 0', borderTop: i > 0 ? `1px solid ${C.hairline}` : 'none' }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>{c.label}</span>
-            <StatusPill tone={c.status === 'pass' ? 'success' : 'warning'}>{c.status}</StatusPill>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, flexShrink:0 }}>{r.submitted_at ? new Date(r.submitted_at).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—'}</span>
+            <StatusPill tone={KYC_STATUS_TONE[r.status] || 'mute'}>{KYC_STATUS_LABEL[r.status] || r.status}</StatusPill>
+            <Icon name="chevronRight" size={14} color={C.mute} />
           </div>
         ))}
       </AdminCard>
 
-      {decision ? (
-        <div style={{ background: decision === 'approved' ? '#EFF9F4' : '#FDEDED', borderRadius:12, padding:'14px', textAlign:'center' }}>
-          <Icon name="checkCircle" size={28} color={decision === 'approved' ? C.success : C.danger} />
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, color: decision === 'approved' ? C.success : C.danger, marginTop:6 }}>
-            {decision === 'approved' ? 'Approved — seller account activated' : 'Rejected — email sent to applicant'}
-          </div>
-        </div>
-      ) : (
-        <div style={{ display:'flex', gap:8 }}>
-          <Btn size="sm" style={{ flex:1, color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} onClick={() => handleDecision('rejected')}>
-            <Icon name="x" size={14} color={C.danger} /> Reject
-          </Btn>
-          <Btn variant="primary" size="sm" style={{ flex:1.4 }} onClick={() => handleDecision('approved')}>
-            <Icon name="check" size={14} color="#fff" sw={2.5} /> Approve
-          </Btn>
+      {totalPages > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:10 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Previous</button>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Next</button>
         </div>
       )}
     </div>
+  );
+}
+
+// ─── ADMIN — KYC application detail: secure doc review + decision ──
+function AdminKycDocThumb({ label, path }) {
+  const [url, setUrl] = React.useState(undefined);
+  function reveal() {
+    setUrl(null);
+    sbAdminGetKycDocUrl(path).then(u => setUrl(u));
+  }
+  return (
+    <div style={{ borderRadius:10, overflow:'hidden', border:`1px solid ${C.hairline}` }}>
+      {url ? (
+        <a href={url} target="_blank" rel="noopener noreferrer"><Img src={url} style={{ height:90, borderRadius:0 }} /></a>
+      ) : (
+        <div style={{ height:90, background:C.paper, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          {!path ? (
+            <Icon name="x" size={18} color={C.mute} />
+          ) : url === null ? (
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Loading…</span>
+          ) : (
+            <button onClick={reveal} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+              <Icon name="eye" size={18} color={C.primary} />
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10.5, color:C.primary, fontWeight:600 }}>View (60s link)</span>
+            </button>
+          )}
+        </div>
+      )}
+      <div style={{ padding:'5px 8px', display:'flex', justifyContent:'space-between', alignItems:'center', background:C.white }}>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600, color:C.ink }}>{label}</span>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color: path ? C.success : C.mute }}>{path ? 'Provided' : 'Missing'}</span>
+      </div>
+    </div>
+  );
+}
+
+function AdminKycInfoRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', gap:12, padding:'5px 0' }}>
+      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{label}</span>
+      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.ink, fontWeight:600, textAlign:'right' }}>{value}</span>
+    </div>
+  );
+}
+
+function AdminKycDetail({ kycId, accessCtx, onBack, onChanged }) {
+  const [kyc, setKyc] = React.useState(undefined);
+  const [history, setHistory] = React.useState([]);
+  const [confirming, setConfirming] = React.useState(null); // 'rejected' | 'needs_changes' | 'suspended' | 'approved'
+  const [notes, setNotes] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+
+  const refresh = React.useCallback(() => {
+    sbAdminGetKycRequest(kycId).then(setKyc);
+    sbAdminGetAuditLogs({ page:1, limit:20, resourceType:'kyc_requests', search:kycId }).then(r => setHistory(r.logs || []));
+  }, [kycId]);
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+
+  async function submitDecision(decision) {
+    setBusy(true); setErr('');
+    const { error } = await sbAdminReviewKyc(kycId, decision, notes.trim() || null);
+    setBusy(false);
+    if (error) { setErr(error.message || 'This action was rejected by the server.'); return; }
+    logAdminAction(`KYC ${decision.replace('_',' ')}`, kyc?.shop_name_requested || kyc?.shop_name || kyc?.profiles?.full_name || kycId, 'kyc_requests', kycId);
+    setConfirming(null); setNotes('');
+    refresh();
+    onChanged && onChanged();
+  }
+
+  if (kyc === undefined) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:640 }}>
+        <BackLink onBack={onBack} />
+        <AdminCard><AdminEmptyRow text="Loading…" /></AdminCard>
+      </div>
+    );
+  }
+  if (kyc === null) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:640 }}>
+        <BackLink onBack={onBack} />
+        <AdminCard><AdminEmptyRow text="Couldn't load this application — it may have been removed." /></AdminCard>
+      </div>
+    );
+  }
+
+  const fullName = `${kyc.legal_first_name||''} ${kyc.legal_last_name||''}`.trim() || kyc.profiles?.full_name || 'Unnamed applicant';
+  const complete = !!kyc.doc_front_path && !!kyc.selfie_path;
+
+  const actions = [];
+  if (['pending','under_review'].includes(kyc.status)) {
+    if (can('kyc.review') && kyc.status === 'pending') actions.push({ key:'under_review', label:'Mark under review', tone:'secondary' });
+    if (can('kyc.request_changes')) actions.push({ key:'needs_changes', label:'Request changes', tone:'secondary', needsNote:true, confirm:true });
+    if (can('kyc.reject')) actions.push({ key:'rejected', label:'Reject', tone:'danger', needsNote:true, confirm:true });
+    if (can('kyc.approve')) actions.push({ key:'approved', label:'Approve', tone:'primary', requireComplete:true, confirm:true });
+  } else if (kyc.status === 'approved') {
+    if (can('sellers.suspend')) actions.push({ key:'suspended', label:'Suspend seller', tone:'danger', needsNote:true, confirm:true });
+  } else if (kyc.status === 'suspended') {
+    if (can('kyc.approve')) actions.push({ key:'approved', label:'Reinstate', tone:'primary', confirm:true });
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:640 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <BackLink onBack={onBack} />
+        <StatusPill tone={KYC_STATUS_TONE[kyc.status] || 'mute'}>{KYC_STATUS_LABEL[kyc.status] || kyc.status}</StatusPill>
+      </div>
+
+      <AdminCard style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+        <Avatar size={44} initials={fullName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()} />
+        <div style={{ flex:1 }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink, marginBottom:3 }}>{fullName}</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{kyc.profiles?.email || kyc.contact_email || ''}{kyc.contact_phone ? ` · ${kyc.contact_phone}` : ''}</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Shop: "{kyc.shop_name_requested || kyc.shop_name || '—'}"</div>
+        </div>
+      </AdminCard>
+
+      <AdminCard>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, color:C.ink, marginBottom:4 }}>Applicant details</div>
+        <AdminKycInfoRow label="Date of birth" value={kyc.date_of_birth} />
+        <AdminKycInfoRow label="Nationality" value={kyc.nationality} />
+        <AdminKycInfoRow label="Origin country" value={kyc.origin_country} />
+        <AdminKycInfoRow label="Destination country" value={kyc.destination_country} />
+        <AdminKycInfoRow label="City" value={kyc.city} />
+        <AdminKycInfoRow label="Document type" value={kyc.doc_type} />
+        <AdminKycInfoRow label="Shop description" value={kyc.shop_description} />
+        <AdminKycInfoRow label="Submitted" value={kyc.submitted_at ? new Date(kyc.submitted_at).toLocaleString() : null} />
+      </AdminCard>
+
+      {kyc.requested_changes && (
+        <div style={{ background:'#FFF6E5', borderRadius:12, padding:'12px 14px' }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:C.warning, marginBottom:3 }}>Corrections requested</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.ink }}>{kyc.requested_changes}</div>
+        </div>
+      )}
+      {kyc.review_notes && ['rejected','suspended'].includes(kyc.status) && (
+        <div style={{ background:'#FDEDED', borderRadius:12, padding:'12px 14px' }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:C.danger, marginBottom:3 }}>Reason on file</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.ink }}>{kyc.review_notes}</div>
+        </div>
+      )}
+
+      <div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, color:C.ink, marginBottom:8 }}>
+          Documents {!complete && <span style={{ color:C.warning, fontWeight:600 }}>· incomplete, cannot be approved</span>}
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
+          <AdminKycDocThumb label="ID front" path={kyc.doc_front_path} />
+          <AdminKycDocThumb label="ID back" path={kyc.doc_back_path} />
+          <AdminKycDocThumb label="Selfie" path={kyc.selfie_path} />
+        </div>
+      </div>
+
+      {err && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{err}</div>}
+
+      {confirming ? (
+        <AdminCard style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>
+            {confirming === 'approved' ? 'Confirm approval' : confirming === 'suspended' ? 'Confirm suspension' : confirming === 'rejected' ? 'Reason for rejection' : 'What needs to change?'}
+          </div>
+          {confirming !== 'approved' && (
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Explain the decision — this is shown to the seller." rows={3}
+              style={{ border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'9px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, resize:'vertical' }} />
+          )}
+          <div style={{ display:'flex', gap:8 }}>
+            <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => { setConfirming(null); setNotes(''); setErr(''); }} disabled={busy}>Cancel</Btn>
+            <Btn size="sm" variant={confirming === 'approved' ? 'primary' : 'danger'} style={{ flex:1 }}
+              disabled={busy || (confirming !== 'approved' && !notes.trim())}
+              onClick={() => submitDecision(confirming)}>
+              {busy ? 'Submitting…' : 'Confirm'}
+            </Btn>
+          </div>
+        </AdminCard>
+      ) : actions.length > 0 ? (
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          {actions.map(a => (
+            <Btn key={a.key} size="sm" variant={a.tone === 'primary' ? 'primary' : a.tone === 'danger' ? 'danger' : 'secondary'}
+              disabled={a.requireComplete && !complete}
+              onClick={() => a.confirm ? setConfirming(a.key) : submitDecision(a.key)}>
+              {a.label}
+            </Btn>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>
+          {kyc.status === 'rejected' || kyc.status === 'needs_changes' ? 'Waiting on the seller to resubmit.' : 'No action available for your role on this application.'}
+        </div>
+      )}
+
+      <div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, color:C.ink, marginBottom:8 }}>Decision history</div>
+        <AdminCard padded={false}>
+          {history.length === 0 ? <AdminEmptyRow text="No decisions recorded yet." /> : history.map((a, i) => (
+            <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+              <Icon name="fileText" size={13} color={C.primary} />
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.ink }}>{a.action}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>by {a.profiles?.full_name || a.profiles?.email || 'admin'}</div>
+              </div>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{new Date(a.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+            </div>
+          ))}
+        </AdminCard>
+      </div>
+    </div>
+  );
+}
+
+function BackLink({ onBack }) {
+  return (
+    <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0, width:'fit-content' }}>
+      <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Sellers</span>
+    </button>
   );
 }
 
@@ -2415,7 +2630,6 @@ function AdminShellScreen({ params = {} }) {
   const [adminStats, setAdminStats] = React.useState(null);
   const [remoteUsers, setRemoteUsers] = React.useState(null);
   const [userDetail, setUserDetail] = React.useState(null);
-  const [sellerPanel, setSellerPanel] = React.useState(null); // 'kyc' | null
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [, forceTick] = React.useState(0);
   // undefined = still checking, null = checked and denied, object = granted context.
@@ -2442,7 +2656,7 @@ function AdminShellScreen({ params = {} }) {
 
   function onNav(key) {
     setSection(key);
-    setUserDetail(null); setSellerPanel(null);
+    setUserDetail(null);
     setMobileNavOpen(false);
   }
 
@@ -2477,12 +2691,10 @@ function AdminShellScreen({ params = {} }) {
   }
 
 
-  // ── Sellers ──
-  const [sellersList, setSellersList] = React.useState(() => []);
-  function toggleSellerStatus(name) {
-    setSellersList(prev => prev.map(s => s.name === name ? { ...s, status: s.status === 'suspended' ? 'verified' : 'suspended' } : s));
-    logAdminAction('Toggled seller status', name);
-  }
+  // ── Sellers ── (real list/actions live in AdminSellersKycSection; this
+  // empty array only feeds AdminOverview's legacy "pending shops" line,
+  // superseded there by the real kycCount from sbAdminGetStats())
+  const sellersList = [];
 
   // ── Reviews ──
   function setReviewStatus(id, status) {
@@ -2626,40 +2838,7 @@ function AdminShellScreen({ params = {} }) {
         </div>
       );
 
-      case 'sellers': return sellerPanel === 'kyc' ? (
-        <AdminKycPanel onBack={() => setSellerPanel(null)} />
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Sellers" sub={`${sellersList.length} shops`} />
-          <div style={{ display:'flex', gap:10 }}>
-            {[['Active', sellersList.filter(s=>s.status==='verified').length],['Pending', sellersList.filter(s=>s.status==='pending').length],['Suspended', sellersList.filter(s=>s.status==='suspended').length]].map((s,i) => (
-              <AdminCard key={i} style={{ flex:1 }}>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{s[0]}</div>
-                <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:C.ink, marginTop:2 }}>{s[1]}</div>
-              </AdminCard>
-            ))}
-          </div>
-          <AdminCard padded={false}>
-            {sellersList.length === 0 && <AdminEmptyRow text="No sellers yet." />}
-            {sellersList.map((s, i) => (
-              <div key={i} onClick={() => s.status === 'pending' && setSellerPanel('kyc')} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none', cursor: s.status === 'pending' ? 'pointer' : 'default' }}>
-                <div style={{ width:32, height:32, borderRadius:8, overflow:'hidden', flexShrink:0 }}><Img label="" tint={s.tint} style={{ width:32, height:32 }} /></div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{s.name}</div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{s.cat}{s.rating > 0 ? ` · ⭐ ${s.rating}` : ''}</div>
-                </div>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12.5, fontWeight:600, color:C.ink }}>{s.sales}</span>
-                <StatusPill tone={s.status === 'verified' ? 'success' : s.status === 'suspended' ? 'danger' : 'warning'}>{s.status}</StatusPill>
-                {s.status !== 'pending' && (
-                  <button onClick={e => { e.stopPropagation(); toggleSellerStatus(s.name); }} style={{ border:'none', background:'none', cursor:'pointer', padding:4 }}>
-                    <Icon name={s.status === 'suspended' ? 'checkCircle' : 'x'} size={16} color={s.status === 'suspended' ? C.success : C.danger} />
-                  </button>
-                )}
-              </div>
-            ))}
-          </AdminCard>
-        </div>
-      );
+      case 'sellers': return <AdminSellersKycSection accessCtx={accessCtx} />;
 
       case 'reviews': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
