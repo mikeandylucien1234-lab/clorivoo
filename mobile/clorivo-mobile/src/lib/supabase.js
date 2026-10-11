@@ -235,25 +235,47 @@ export async function getOrder(orderId) {
   return data;
 }
 
+// Returns orders grouped with ONLY this seller's own order_items — a
+// multi-vendor order's other sellers' items never appear here, and this
+// seller's fulfillment_status is tracked per item, never as one
+// whole-order status (Phase 4: orders.status is no longer writable by a
+// plain seller at all; only order_items.fulfillment_status is, one at a
+// time, for the seller's own rows).
 export async function getSellerOrders(userId, limit = 50) {
-  const { data } = await supabase.from('orders')
-    .select('*, order_items(*)')
-    .contains('order_items', [])
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  // fallback: fetch orders where any order_item matches seller's products
-  const { data: sellerData } = await supabase.from('order_items')
-    .select('*, orders!inner(id,status,created_at,total_amount,shipping_address,shipping_method)')
+  const { data } = await supabase.from('order_items')
+    .select('id, order_id, fulfillment_status, quantity, unit_price, title, orders!inner(id, created_at, total_amount, shipping_address, shipping_method)')
     .eq('seller_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit);
-  // deduplicate by order id
-  const seen = new Set();
-  return (sellerData ?? []).reduce((acc, item) => {
+
+  const byOrder = new Map();
+  for (const item of data ?? []) {
     const o = item.orders;
-    if (o && !seen.has(o.id)) { seen.add(o.id); acc.push(o); }
-    return acc;
-  }, []);
+    if (!o) continue;
+    if (!byOrder.has(o.id)) {
+      byOrder.set(o.id, {
+        id: o.id, created_at: o.created_at, total_amount: o.total_amount,
+        shipping_address: o.shipping_address, shipping_method: o.shipping_method,
+        items: [],
+      });
+    }
+    byOrder.get(o.id).items.push({
+      id: item.id, fulfillment_status: item.fulfillment_status,
+      quantity: item.quantity, unit_price: item.unit_price, title: item.title,
+    });
+  }
+  return Array.from(byOrder.values());
+}
+
+// Advances ONE of this seller's own order_items one fulfillment step —
+// RLS + the protect_order_item_fields trigger both enforce seller_id
+// ownership and the one-step-forward rule server-side; this is just the
+// client call, with no local-state optimism on error.
+export async function advanceItemFulfillment(orderItemId, nextStatus) {
+  const { error } = await supabase.from('order_items')
+    .update({ fulfillment_status: nextStatus })
+    .eq('id', orderItemId);
+  if (error) throw error;
 }
 
 export async function getSellerStats(userId) {

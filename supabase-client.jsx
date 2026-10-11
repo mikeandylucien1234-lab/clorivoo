@@ -811,9 +811,12 @@ async function sbRecordPaymentAttempt(orderId, provider, providerReference = nul
 }
 
 // ─── REFUNDS (buyer side) ──────────────────────────────────────────
-async function sbRequestRefund(orderId, reason, amount = null) {
+// orderItemId (optional): scope the refund to one line item instead of
+// the whole order — the server then caps it to that item's own value
+// and, once recorded, reverses only that item's seller's commission.
+async function sbRequestRefund(orderId, reason, amount = null, orderItemId = null) {
   if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
-  const { data, error } = await _sb.rpc('request_refund', { p_order_id: orderId, p_reason: reason, p_amount: amount });
+  const { data, error } = await _sb.rpc('request_refund', { p_order_id: orderId, p_reason: reason, p_amount: amount, p_order_item_id: orderItemId });
   return { data, error };
 }
 
@@ -861,9 +864,9 @@ async function sbAdminGetRefundRequests({ page = 1, limit = 20, status = 'ALL', 
 // Admin/staff-initiated goodwill refund (not started by the buyer) — still
 // capped at the refundable amount, still a distinct step from actually
 // recording a provider result below.
-async function sbAdminInitiateRefund(orderId, reason, amount = null) {
+async function sbAdminInitiateRefund(orderId, reason, amount = null, orderItemId = null) {
   if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
-  const { data, error } = await _sb.rpc('admin_initiate_refund', { p_order_id: orderId, p_reason: reason, p_amount: amount });
+  const { data, error } = await _sb.rpc('admin_initiate_refund', { p_order_id: orderId, p_reason: reason, p_amount: amount, p_order_item_id: orderItemId });
   return { data, error };
 }
 

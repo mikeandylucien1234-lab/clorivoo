@@ -169,9 +169,15 @@ create policy "Permitted staff view commission ledger" on public.commission_ledg
 -- admin_confirm_payment() / admin_record_refund_result().
 
 -- ─── 6. REFUND REQUESTS — the business decision ────────────────────────
+-- order_item_id (nullable, additive): when set, this request concerns ONE
+-- specific line item (and therefore one specific seller) rather than the
+-- whole order — see admin_record_refund_result() for how this changes
+-- the commission reconciliation. Left null, a request behaves exactly as
+-- before (order-wide, proportional across every seller on the order).
 create table if not exists public.refund_requests (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders(id),
+  order_item_id uuid references public.order_items(id),
   requested_by uuid not null references public.profiles(id),
   reason text not null,
   amount_requested numeric not null check (amount_requested > 0),
@@ -199,6 +205,7 @@ create table if not exists public.refunds (
   id uuid primary key default gen_random_uuid(),
   refund_request_id uuid not null references public.refund_requests(id) on delete cascade,
   order_id uuid not null references public.orders(id),
+  order_item_id uuid references public.order_items(id),
   payment_intent_id uuid references public.payment_intents(id),
   provider text,
   amount numeric not null check (amount > 0),
@@ -589,17 +596,84 @@ $$;
 revoke all on function public.admin_confirm_payment(uuid, text, text, text) from public, anon;
 grant execute on function public.admin_confirm_payment(uuid, text, text, text) to authenticated;
 
+-- ─── 15b. refundable_amount() — the one place the refund cap is computed ──
+-- Shared by request_refund / admin_initiate_refund / admin_record_refund_result
+-- so the three can never disagree. Two independent caps, both enforced:
+--   - order-wide: never refund more than the order's own total_amount,
+--     across ALL requests/refunds on it, item-scoped or not;
+--   - item-level (only when p_order_item_id is given): never refund more
+--     than that single item's own unit_price*quantity, across its own
+--     requests/refunds. The final cap is whichever is smaller.
+-- Guards total_amount = 0 explicitly: such an order (100% discount) has
+-- nothing left to refund, by definition, not a division error.
+-- p_exclude_request_id (additive): when checking the cap for a request
+-- that ALREADY EXISTS (i.e. from admin_record_refund_result, recording
+-- the outcome of the very request being resolved), that request's own
+-- amount_requested must not count against itself as "already reserved" —
+-- otherwise an approved request's remaining cap would always compute to
+-- zero against its own reservation. request_refund/admin_initiate_refund
+-- (creating a NEW request) pass no exclusion, since there is no self to
+-- exclude yet.
+create or replace function public.refundable_amount(p_order_id uuid, p_order_item_id uuid default null, p_exclude_request_id uuid default null)
+returns numeric
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+declare
+  v_order_total numeric;
+  v_order_refunded numeric;
+  v_order_requested numeric;
+  v_order_remaining numeric;
+  v_item_total numeric;
+  v_item_refunded numeric;
+  v_item_requested numeric;
+  v_item_remaining numeric;
+begin
+  select total_amount into v_order_total from public.orders where id = p_order_id;
+  if v_order_total is null then raise exception 'Order not found'; end if;
+  if v_order_total <= 0 then return 0; end if;
+
+  select coalesce(sum(amount), 0) into v_order_refunded from public.refunds
+    where order_id = p_order_id and status = 'succeeded';
+  select coalesce(sum(amount_requested), 0) into v_order_requested from public.refund_requests
+    where order_id = p_order_id and status in ('requested','under_review','approved','processing')
+      and (p_exclude_request_id is null or id <> p_exclude_request_id);
+  v_order_remaining := greatest(v_order_total - v_order_refunded - v_order_requested, 0);
+
+  if p_order_item_id is null then
+    return v_order_remaining;
+  end if;
+
+  select unit_price * quantity into v_item_total from public.order_items
+    where id = p_order_item_id and order_id = p_order_id;
+  if v_item_total is null then raise exception 'Order item not found on this order'; end if;
+  if v_item_total <= 0 then return 0; end if;
+
+  select coalesce(sum(amount), 0) into v_item_refunded from public.refunds
+    where order_item_id = p_order_item_id and status = 'succeeded';
+  select coalesce(sum(amount_requested), 0) into v_item_requested from public.refund_requests
+    where order_item_id = p_order_item_id and status in ('requested','under_review','approved','processing')
+      and (p_exclude_request_id is null or id <> p_exclude_request_id);
+  v_item_remaining := greatest(v_item_total - v_item_refunded - v_item_requested, 0);
+
+  return least(v_order_remaining, v_item_remaining);
+end;
+$$;
+revoke all on function public.refundable_amount(uuid, uuid, uuid) from public, anon, authenticated;
+
 -- ─── 16. request_refund() — buyer requests, amount capped server-side ──
+-- p_order_item_id (optional, additive): when the buyer is complaining
+-- about one specific product, pass its order_items.id so the cap and the
+-- eventual commission reversal apply to that seller only, not the whole
+-- order. Omit it (as before) for a whole-order refund.
 create or replace function public.request_refund(
-  p_order_id uuid, p_reason text, p_amount numeric default null
+  p_order_id uuid, p_reason text, p_amount numeric default null, p_order_item_id uuid default null
 ) returns jsonb
 language plpgsql
 security definer set search_path = public, pg_temp
 as $$
 declare
   v_order record;
-  v_already_requested numeric;
-  v_already_refunded numeric;
   v_remaining numeric;
   v_amount numeric;
   v_request_id uuid;
@@ -610,12 +684,13 @@ begin
     raise exception 'This order has not been paid, so it cannot be refunded (status: %)', v_order.payment_status;
   end if;
   if p_reason is null or btrim(p_reason) = '' then raise exception 'A reason is required'; end if;
+  if p_order_item_id is not null and not exists (
+    select 1 from public.order_items where id = p_order_item_id and order_id = p_order_id
+  ) then
+    raise exception 'This item does not belong to this order';
+  end if;
 
-  select coalesce(sum(amount), 0) into v_already_refunded from public.refunds
-    where order_id = p_order_id and status = 'succeeded';
-  select coalesce(sum(amount_requested), 0) into v_already_requested from public.refund_requests
-    where order_id = p_order_id and status in ('requested','under_review','approved','processing');
-  v_remaining := v_order.total_amount - v_already_refunded - v_already_requested;
+  v_remaining := public.refundable_amount(p_order_id, p_order_item_id);
   if v_remaining <= 0 then raise exception 'No refundable amount remains on this order'; end if;
 
   v_amount := coalesce(p_amount, v_remaining);
@@ -623,18 +698,18 @@ begin
     raise exception 'Requested amount (%) exceeds the refundable amount (%)', v_amount, v_remaining;
   end if;
 
-  insert into public.refund_requests (order_id, requested_by, reason, amount_requested, status)
-  values (p_order_id, auth.uid(), p_reason, v_amount, 'requested')
+  insert into public.refund_requests (order_id, order_item_id, requested_by, reason, amount_requested, status)
+  values (p_order_id, p_order_item_id, auth.uid(), p_reason, v_amount, 'requested')
   returning id into v_request_id;
 
   perform public.log_audit('refund_requested', 'refund_requests', v_request_id::text, null,
-    jsonb_build_object('order_id', p_order_id, 'amount_requested', v_amount));
+    jsonb_build_object('order_id', p_order_id, 'order_item_id', p_order_item_id, 'amount_requested', v_amount));
 
   return jsonb_build_object('ok', true, 'request_id', v_request_id, 'amount_requested', v_amount);
 end;
 $$;
-revoke all on function public.request_refund(uuid, text, numeric) from public, anon;
-grant execute on function public.request_refund(uuid, text, numeric) to authenticated;
+revoke all on function public.request_refund(uuid, text, numeric, uuid) from public, anon;
+grant execute on function public.request_refund(uuid, text, numeric, uuid) to authenticated;
 
 -- ─── 16b. admin_initiate_refund() — admin/staff-initiated goodwill refund ──
 -- Same amount caps as request_refund(), but callable by orders.refund
@@ -643,15 +718,13 @@ grant execute on function public.request_refund(uuid, text, numeric) to authenti
 -- the actual provider-side execution still only happens through
 -- admin_record_refund_result(), never here.
 create or replace function public.admin_initiate_refund(
-  p_order_id uuid, p_reason text, p_amount numeric default null
+  p_order_id uuid, p_reason text, p_amount numeric default null, p_order_item_id uuid default null
 ) returns jsonb
 language plpgsql
 security definer set search_path = public, pg_temp
 as $$
 declare
   v_order record;
-  v_already_requested numeric;
-  v_already_refunded numeric;
   v_remaining numeric;
   v_amount numeric;
   v_request_id uuid;
@@ -666,12 +739,13 @@ begin
     raise exception 'This order has not been paid, so it cannot be refunded (status: %)', v_order.payment_status;
   end if;
   if p_reason is null or btrim(p_reason) = '' then raise exception 'A reason is required'; end if;
+  if p_order_item_id is not null and not exists (
+    select 1 from public.order_items where id = p_order_item_id and order_id = p_order_id
+  ) then
+    raise exception 'This item does not belong to this order';
+  end if;
 
-  select coalesce(sum(amount), 0) into v_already_refunded from public.refunds
-    where order_id = p_order_id and status = 'succeeded';
-  select coalesce(sum(amount_requested), 0) into v_already_requested from public.refund_requests
-    where order_id = p_order_id and status in ('requested','under_review','approved','processing');
-  v_remaining := v_order.total_amount - v_already_refunded - v_already_requested;
+  v_remaining := public.refundable_amount(p_order_id, p_order_item_id);
   if v_remaining <= 0 then raise exception 'No refundable amount remains on this order'; end if;
 
   v_amount := coalesce(p_amount, v_remaining);
@@ -679,18 +753,18 @@ begin
     raise exception 'Requested amount (%) exceeds the refundable amount (%)', v_amount, v_remaining;
   end if;
 
-  insert into public.refund_requests (order_id, requested_by, reason, amount_requested, amount_approved, status, decided_by, decided_at, decision_notes)
-  values (p_order_id, auth.uid(), p_reason, v_amount, v_amount, 'approved', auth.uid(), now(), 'Admin-initiated')
+  insert into public.refund_requests (order_id, order_item_id, requested_by, reason, amount_requested, amount_approved, status, decided_by, decided_at, decision_notes)
+  values (p_order_id, p_order_item_id, auth.uid(), p_reason, v_amount, v_amount, 'approved', auth.uid(), now(), 'Admin-initiated')
   returning id into v_request_id;
 
   perform public.log_audit('refund_initiated_by_admin', 'refund_requests', v_request_id::text, null,
-    jsonb_build_object('order_id', p_order_id, 'amount_requested', v_amount));
+    jsonb_build_object('order_id', p_order_id, 'order_item_id', p_order_item_id, 'amount_requested', v_amount));
 
   return jsonb_build_object('ok', true, 'request_id', v_request_id, 'amount_requested', v_amount);
 end;
 $$;
-revoke all on function public.admin_initiate_refund(uuid, text, numeric) from public, anon;
-grant execute on function public.admin_initiate_refund(uuid, text, numeric) to authenticated;
+revoke all on function public.admin_initiate_refund(uuid, text, numeric, uuid) from public, anon;
+grant execute on function public.admin_initiate_refund(uuid, text, numeric, uuid) to authenticated;
 
 -- ─── 17. admin_decide_refund() — the business decision (orders.refund) ──
 create or replace function public.admin_decide_refund(
@@ -736,9 +810,19 @@ grant execute on function public.admin_decide_refund(uuid, text, text) to authen
 -- ─── 18. admin_record_refund_result() — real provider-side outcome only ──
 -- No simulated success: this only records what a permitted human
 -- (payments.confirm) attests actually happened at the provider (or, once
--- a real gateway is connected, what its API/webhook confirmed). Amount is
--- capped by both the approved amount and what remains refundable on the
--- order; commission is reversed proportionally.
+-- a real gateway is connected, what its API/webhook confirmed).
+--
+-- Amount rules (apply to EVERY result, not just 'succeeded'):
+--   - required, must be > 0 (the `refunds.amount` column itself also has
+--     a CHECK(amount > 0) as a second, independent guard);
+--   - capped by refundable_amount(), which enforces both the order-wide
+--     cap and, when this request is scoped to one item
+--     (refund_requests.order_item_id), that item's own cap too;
+--   - also capped by amount_approved, the figure a human actually approved.
+-- A 'failed' result NEVER touches orders.payment_status or
+-- commission_ledger — only 'succeeded' does, and only once per request
+-- (idempotency: a request already in 'succeeded' or 'failed' is terminal
+-- and is rejected by the status check below).
 create or replace function public.admin_record_refund_result(
   p_request_id uuid, p_result text, p_amount numeric, p_provider_reference text default null, p_notes text default null
 ) returns jsonb
@@ -749,16 +833,20 @@ declare
   v_req record;
   v_order record;
   v_refund_id uuid;
-  v_already_refunded numeric;
   v_remaining numeric;
+  v_denominator numeric;
   v_intent record;
   v_seller record;
   v_ratio numeric;
+  v_total_succeeded numeric;
 begin
   if not public.has_permission(auth.uid(), 'payments.confirm') then
     raise exception 'Permission denied: payments.confirm required';
   end if;
   if p_result not in ('processing','succeeded','failed') then raise exception 'Invalid result: %', p_result; end if;
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'Amount must be a positive number (got %)', p_amount;
+  end if;
 
   select * into v_req from public.refund_requests where id = p_request_id for update;
   if v_req.id is null then raise exception 'Refund request not found'; end if;
@@ -768,47 +856,88 @@ begin
 
   select * into v_order from public.orders where id = v_req.order_id for update;
 
-  select coalesce(sum(amount), 0) into v_already_refunded from public.refunds
-    where order_id = v_req.order_id and status = 'succeeded';
-  v_remaining := v_order.total_amount - v_already_refunded;
-
-  if p_result = 'succeeded' and (p_amount is null or p_amount <= 0 or p_amount > v_remaining or p_amount > v_req.amount_approved) then
+  -- Cohérence du montant avec la demande concernée: capé à la fois par ce
+  -- qui reste réellement remboursable (ordre + article le cas échéant) ET
+  -- par le montant que l'admin a approuvé — quel que soit le résultat.
+  v_remaining := public.refundable_amount(v_req.order_id, v_req.order_item_id, p_request_id);
+  if p_amount > v_remaining or (v_req.amount_approved is not null and p_amount > v_req.amount_approved) then
     raise exception 'Refund amount (%) exceeds what remains refundable (%) or the approved amount (%)', p_amount, v_remaining, v_req.amount_approved;
   end if;
 
   select * into v_intent from public.payment_intents
     where order_id = v_req.order_id and status = 'succeeded' order by confirmed_at desc limit 1;
 
-  insert into public.refunds (refund_request_id, order_id, payment_intent_id, provider, amount, currency, status, provider_reference, recorded_by, notes, confirmed_at)
-  values (p_request_id, v_req.order_id, v_intent.id, coalesce(v_intent.provider, v_order.payment_method), coalesce(p_amount, 0), v_order.currency,
+  insert into public.refunds (refund_request_id, order_id, order_item_id, payment_intent_id, provider, amount, currency, status, provider_reference, recorded_by, notes, confirmed_at)
+  values (p_request_id, v_req.order_id, v_req.order_item_id, v_intent.id, coalesce(v_intent.provider, v_order.payment_method), p_amount, v_order.currency,
           p_result, p_provider_reference, auth.uid(), p_notes, case when p_result = 'succeeded' then now() else null end)
   returning id into v_refund_id;
 
   update public.refund_requests set status = p_result, updated_at = now() where id = p_request_id;
 
+  -- 'processing' and 'failed' stop here: no order/commission mutation at
+  -- all, so a failed or in-flight attempt can never move money or alter
+  -- what a seller is owed.
   if p_result = 'succeeded' then
+    select coalesce(sum(amount), 0) into v_total_succeeded from public.refunds
+      where order_id = v_req.order_id and status = 'succeeded';
     update public.orders set payment_status = case
-      when (v_already_refunded + p_amount) >= v_order.total_amount then 'refunded' else 'partially_refunded'
+      when v_total_succeeded >= v_order.total_amount then 'refunded' else 'partially_refunded'
     end where id = v_req.order_id;
 
-    v_ratio := p_amount / v_order.total_amount;
-    for v_seller in
-      select seller_id, shop_id, gross_amount, commission_rate, commission_amount, net_amount
-      from public.commission_ledger where order_id = v_req.order_id and entry_type = 'charge' and status = 'confirmed'
-    loop
-      insert into public.commission_ledger (
-        order_id, seller_id, shop_id, gross_amount, commission_rate, commission_amount, net_amount, entry_type, status, related_refund_id
-      ) values (
-        v_req.order_id, v_seller.seller_id, v_seller.shop_id,
-        round(-v_seller.gross_amount * v_ratio, 2), v_seller.commission_rate,
-        round(-v_seller.commission_amount * v_ratio, 2), round(-v_seller.net_amount * v_ratio, 2),
-        'refund_reversal', 'confirmed', v_refund_id
-      );
-    end loop;
+    if v_req.order_item_id is not null then
+      -- Item-scoped refund: reverse ONLY the seller who owns that item,
+      -- for exactly the refunded amount — never touches any other
+      -- seller's commission on a multi-vendor order, and never scales by
+      -- that seller's OTHER items in the same order (commission_rate is a
+      -- flat percentage, so the commission on any refunded sub-amount of
+      -- one item is simply amount * rate, independent of the rest of the
+      -- seller's order).
+      select cl.seller_id, cl.shop_id, cl.commission_rate into v_seller
+      from public.commission_ledger cl
+      join public.order_items oi on oi.id = v_req.order_item_id
+      where cl.order_id = v_req.order_id and cl.entry_type = 'charge' and cl.status = 'confirmed'
+        and cl.seller_id = oi.seller_id
+      limit 1;
+
+      if v_seller.seller_id is not null then
+        insert into public.commission_ledger (
+          order_id, seller_id, shop_id, gross_amount, commission_rate, commission_amount, net_amount, entry_type, status, related_refund_id
+        ) values (
+          v_req.order_id, v_seller.seller_id, v_seller.shop_id,
+          -p_amount, v_seller.commission_rate,
+          round(-p_amount * v_seller.commission_rate, 2),
+          round(-p_amount * (1 - v_seller.commission_rate), 2),
+          'refund_reversal', 'confirmed', v_refund_id
+        );
+      end if;
+    else
+      -- Order-wide refund: reverse every seller's charge proportionally
+      -- to this refund's share of the order's own total.
+      v_denominator := v_order.total_amount;
+      if v_denominator > 0 then
+        v_ratio := p_amount / v_denominator;
+        for v_seller in
+          select seller_id, shop_id, gross_amount, commission_rate, commission_amount, net_amount
+          from public.commission_ledger where order_id = v_req.order_id and entry_type = 'charge' and status = 'confirmed'
+        loop
+          insert into public.commission_ledger (
+            order_id, seller_id, shop_id, gross_amount, commission_rate, commission_amount, net_amount, entry_type, status, related_refund_id
+          ) values (
+            v_req.order_id, v_seller.seller_id, v_seller.shop_id,
+            round(-v_seller.gross_amount * v_ratio, 2), v_seller.commission_rate,
+            round(-v_seller.commission_amount * v_ratio, 2), round(-v_seller.net_amount * v_ratio, 2),
+            'refund_reversal', 'confirmed', v_refund_id
+          );
+        end loop;
+      end if;
+      -- v_denominator = 0 means the order itself had total_amount = 0 (a
+      -- 100%-discount order) — nothing was ever charged, so there is no
+      -- commission to reverse and no division is attempted.
+    end if;
   end if;
 
   perform public.log_audit('refund_' || p_result, 'refunds', v_refund_id::text, null,
-    jsonb_build_object('order_id', v_req.order_id, 'amount', p_amount));
+    jsonb_build_object('order_id', v_req.order_id, 'order_item_id', v_req.order_item_id, 'amount', p_amount));
 
   return jsonb_build_object('ok', true, 'refund_id', v_refund_id, 'status', p_result);
 end;
@@ -816,14 +945,27 @@ $$;
 revoke all on function public.admin_record_refund_result(uuid, text, numeric, text, text) from public, anon;
 grant execute on function public.admin_record_refund_result(uuid, text, numeric, text, text) to authenticated;
 
--- Verified in rolled-back transactions against the live project (see the
--- Phase 4 report for the full transcript): create_order() recomputes real
--- prices/stock and always starts pending/pending; a buyer cannot insert
--- into orders/order_items directly any more; a seller cannot move another
--- seller's item, skip a fulfillment step, or touch any other order_items
--- column; a seller cannot update `orders` directly at all; a non-permitted
--- staff member is denied by admin_confirm_payment/admin_decide_refund/
--- admin_record_refund_result; double-confirming the same payment intent or
--- double-recording the same refund is rejected; a refund cannot exceed
--- what remains refundable; commission is only realized on confirmed
--- payment and reversed proportionally on a succeeded refund.
+-- Verified in rolled-back transactions against the live project in the
+-- original Phase 4 pass (see that report for the full transcript):
+-- create_order() recomputes real prices/stock and always starts
+-- pending/pending; a buyer cannot insert into orders/order_items
+-- directly any more; a seller cannot move another seller's item, skip a
+-- fulfillment step, or touch any other order_items column; a seller
+-- cannot update `orders` directly at all; a non-permitted staff member
+-- is denied by admin_confirm_payment/admin_decide_refund/
+-- admin_record_refund_result; double-confirming the same payment intent
+-- is rejected; commission is only realized on confirmed payment.
+--
+-- Added in the post-audit correction pass (NOT yet live-tested — see
+-- that report's own test section for what's verified by inspection only
+-- vs. what's still pending a rolled-back-transaction pass):
+--   - refundable_amount() replacing the inline cap math in all three
+--     refund-amount functions, with an explicit total_amount<=0 guard;
+--   - order_item_id on refund_requests/refunds, so a refund can be
+--     precisely scoped to one seller's item instead of always
+--     splitting proportionally across every seller on the order;
+--   - admin_record_refund_result() validating p_amount (positive,
+--     capped) for 'processing' and 'failed' too, not only 'succeeded';
+--   - the order-wide commission-reversal division is skipped entirely
+--     (not guarded with a try/catch — avoided outright) when
+--     total_amount = 0, instead of ever dividing by it.
