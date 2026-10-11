@@ -325,13 +325,32 @@ create policy "Permitted staff can view all shipment history" on public.shipment
 -- migrations in this project), so it never re-enters RLS at all,
 -- breaking the cycle — the same pattern this codebase already uses for
 -- has_permission().
+--
+-- SECURITY (fixes the Second Integration Readiness Audit's blocker): this
+-- function must stay GRANT EXECUTE TO authenticated for the policy below
+-- to evaluate it at all (a policy runs as the querying role) — but that
+-- same grant makes it directly callable as an ordinary PostgREST RPC
+-- (`/rest/v1/rpc/seller_has_items_on_order`) with ANY caller-chosen
+-- p_seller_id, not just the caller's own. Confirmed live: an unrelated
+-- authenticated user calling it with someone else's seller id got back
+-- a true answer, disclosing that seller's order relationship to them.
+-- Fix: the function now only ever answers about the CALLING user —
+-- p_seller_id must equal auth.uid(), or it returns false without
+-- revealing anything about the id actually requested. This is a no-op
+-- for the policy's own call site below (it always passes auth.uid() as
+-- p_seller_id already), so legitimate seller access is unaffected; it
+-- only closes the direct-RPC oracle for every other caller/argument
+-- combination.
 create or replace function public.seller_has_items_on_order(p_order_id uuid, p_seller_id uuid)
 returns boolean
 language sql
 security definer set search_path = public, pg_temp
 stable
 as $$
-  select exists (select 1 from public.order_items where order_id = p_order_id and seller_id = p_seller_id);
+  select case
+    when p_seller_id is distinct from auth.uid() then false
+    else exists (select 1 from public.order_items where order_id = p_order_id and seller_id = p_seller_id)
+  end;
 $$;
 revoke all on function public.seller_has_items_on_order(uuid, uuid) from public, anon;
 grant execute on function public.seller_has_items_on_order(uuid, uuid) to authenticated;
