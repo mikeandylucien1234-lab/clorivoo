@@ -303,23 +303,122 @@ create policy "Permitted staff can view all shipment history" on public.shipment
 -- an immutable trail, matching the "every meaningful status change must
 -- create an immutable history record" requirement exactly.
 
--- ─── 6. ORDER FULFILLMENT ROLLUP — derived, read-only, never self-set ──
--- Never written to any column; computed on read. An order is "delivered"
--- only when it has at least one shipment and every one of them is
--- delivered. A single seller completing their own shipment can NEVER
--- flip this for the whole order while another seller's shipment is
--- still outstanding.
-create or replace view public.order_fulfillment_summary as
+-- ─── 6a. ORDERS — additive SELECT policy so sellers can see their own orders ──
+-- Before this, `orders` had no SELECT policy at all for a plain seller
+-- (only "Buyers see their orders" and admin/staff policies) — the
+-- existing seller-facing `order_items` embed of `orders(...)` in
+-- sbGetSellerOrders() was already silently relying on this gap (a
+-- denied embed just comes back null under PostgREST, not an error).
+-- This policy is scoped tightly: a seller sees an `orders` row ONLY
+-- when they have at least one of their own order_items on it — never
+-- another seller's order where they have nothing. Purely additive; the
+-- existing buyer/admin/staff policies on `orders` are untouched.
+--
+-- The membership check is wrapped in a SECURITY DEFINER function rather
+-- than an inline EXISTS subquery. Confirmed live: an inline
+-- `exists (select 1 from order_items where ...)` here causes
+-- "infinite recursion detected in policy for relation orders" —
+-- `order_items` already has its own policy ("Buyers see their order
+-- items") that queries back into `orders`, which would re-evaluate
+-- this very policy, forever. A SECURITY DEFINER function's internal
+-- query runs as its owner (bypassrls=true for the role that applies
+-- migrations in this project), so it never re-enters RLS at all,
+-- breaking the cycle — the same pattern this codebase already uses for
+-- has_permission().
+create or replace function public.seller_has_items_on_order(p_order_id uuid, p_seller_id uuid)
+returns boolean
+language sql
+security definer set search_path = public, pg_temp
+stable
+as $$
+  select exists (select 1 from public.order_items where order_id = p_order_id and seller_id = p_seller_id);
+$$;
+revoke all on function public.seller_has_items_on_order(uuid, uuid) from public, anon;
+grant execute on function public.seller_has_items_on_order(uuid, uuid) to authenticated;
+
+create policy "Sellers can view orders containing their own items" on public.orders for select
+  using (public.seller_has_items_on_order(orders.id, auth.uid()));
+
+-- ─── 6b. ORDER FULFILLMENT ROLLUP — derived, read-only, never self-set ──
+-- Never written to any column; computed on read.
+--
+-- SECURITY (fixes the Final Integration Readiness Audit's Blocker 1):
+-- a plain `create view` runs with the VIEW OWNER's privileges for row
+-- security purposes, not the querying user's — in this project the
+-- owner of anything applied via the SQL editor / apply_migration is a
+-- role with BYPASSRLS (confirmed live: postgres, supabase_admin and
+-- service_role all have rolbypassrls=true). Without `security_invoker`,
+-- ANY authenticated user querying this view directly via PostgREST
+-- (`/rest/v1/order_fulfillment_summary`) would see every order's id,
+-- shipment_count and fulfillment_status platform-wide, regardless of
+-- the RLS policies on `orders`/`shipments` — a cross-tenant leak, even
+-- though no application code happened to call this view yet.
+-- `with (security_invoker = true)` (PostgreSQL 15+; this project runs
+-- 17.6) makes the view evaluate row security as the ACTUAL calling
+-- role, so the orders/shipments RLS policies below are the only thing
+-- that decides what a buyer, seller, or staff member sees here:
+--   - a buyer sees every shipment on their own order (full, accurate
+--     rollup), via "Buyers see their orders" + "Buyers can view
+--     shipments on their own orders".
+--   - a seller sees the `orders` row via 6a above, but the `shipments`
+--     LEFT JOIN is itself RLS-filtered to "Sellers can view only their
+--     own shipments" — so a seller querying this view for a
+--     multi-vendor order sees an aggregate computed from ONLY their
+--     own shipment(s), never another seller's. This is intentional,
+--     not a partial bug: a seller is never entitled to another
+--     seller's shipment status, so this view's "whole order" semantics
+--     only hold for a buyer or staff; a seller reasoning about their
+--     own fulfillment should query `shipments` directly (as
+--     getSellerShipments/sbGetSellerShipments already do), not this
+--     view's fulfillment_status.
+--   - staff with shipping.view/shipping.manage/orders.view/etc. see
+--     every order and shipment, same as today.
+--   - anon has no GRANT on this view at all (see below) and is denied
+--     before RLS is even considered.
+--
+-- FULFILLMENT STATUS (fixes Blocker 2): every one of the 8 shipment
+-- statuses (pending, processing, shipped, in_transit, delivered,
+-- failed, cancelled, returned) is now explicitly accounted for.
+-- Documented business rule (not silently invented — see the Phase 5
+-- fix report for the full combination table):
+--   1. No shipments at all                         -> 'awaiting_shipment'
+--   2. Every shipment is 'cancelled'                -> 'cancelled'
+--      (nothing was ever going to ship; never falls through to 'pending')
+--   3. Any shipment is 'failed' or 'returned'       -> 'delivery_exception'
+--      (a return is treated as an exception needing attention, same as
+--      a failure — it means the buyer does not have the item either way)
+--   4. Every NON-cancelled shipment is 'delivered', -> 'delivered'
+--      and at least one shipment is delivered
+--      (a cancelled shipment is excluded from "required" — there is
+--      nothing left to deliver for it; this is the one place a
+--      cancelled shipment is allowed to coexist with an overall
+--      'delivered' result, and it is a deliberate, documented choice:
+--      the cancelled portion is assumed handled/refunded separately)
+--   5. Any shipment is 'shipped' or 'in_transit'    -> 'partially_shipped'
+--   6. Any shipment is 'processing'                 -> 'processing'
+--   7. Otherwise (only 'pending', or 'pending' mixed -> 'pending'
+--      with 'cancelled')
+-- (DROP + CREATE rather than CREATE OR REPLACE: this file has never
+-- been applied to production, and the column set changed from the
+-- original draft — CREATE OR REPLACE VIEW cannot drop/rename columns.)
+drop view if exists public.order_fulfillment_summary;
+create view public.order_fulfillment_summary
+with (security_invoker = true)
+as
 select
   o.id as order_id,
   count(s.id) as shipment_count,
   count(*) filter (where s.status = 'delivered') as delivered_count,
   count(*) filter (where s.status = 'failed') as failed_count,
-  count(*) filter (where s.status in ('cancelled','returned')) as cancelled_or_returned_count,
+  count(*) filter (where s.status = 'returned') as returned_count,
+  count(*) filter (where s.status = 'cancelled') as cancelled_count,
   case
     when count(s.id) = 0 then 'awaiting_shipment'
-    when count(*) filter (where s.status = 'delivered') = count(s.id) then 'delivered'
-    when count(*) filter (where s.status = 'failed') > 0 then 'delivery_exception'
+    when count(*) filter (where s.status = 'cancelled') = count(s.id) then 'cancelled'
+    when count(*) filter (where s.status in ('failed','returned')) > 0 then 'delivery_exception'
+    when count(*) filter (where s.status = 'delivered') > 0
+     and count(*) filter (where s.status = 'delivered') = count(*) filter (where s.status <> 'cancelled')
+      then 'delivered'
     when count(*) filter (where s.status in ('shipped','in_transit')) > 0 then 'partially_shipped'
     when count(*) filter (where s.status = 'processing') > 0 then 'processing'
     else 'pending'
@@ -328,9 +427,18 @@ select
 from public.orders o
 left join public.shipments s on s.order_id = o.id
 group by o.id;
--- Inherits RLS from its underlying tables (orders, shipments) via the
--- view's invoker-rights default — no separate grant needed beyond
--- select on the view itself.
+
+-- Confirmed live: this Supabase project's default privileges
+-- (ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES TO anon,
+-- authenticated, service_role, set up at project provisioning, not by
+-- any migration) mean every NEW table or view — this one included —
+-- is automatically granted to `anon` even with no explicit GRANT
+-- statement for it. Omitting a grant to anon is therefore NOT a denial
+-- here; it must be revoked explicitly, or anon's query simply returns
+-- rows filtered by RLS (empty, since auth.uid() is null for anon) —
+-- which happens to be harmless today but is not the same as the hard
+-- denial "anonymous users must not access the view" asks for.
+revoke all on public.order_fulfillment_summary from public, anon;
 grant select on public.order_fulfillment_summary to authenticated;
 
 -- ─── 7. PERMISSIONS (existing catalog mechanism — no parallel system) ──

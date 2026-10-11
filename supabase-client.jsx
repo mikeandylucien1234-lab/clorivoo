@@ -934,16 +934,31 @@ async function sbGetOrderShipments(orderId) {
   }));
 }
 
-// Mirrors the order_fulfillment_summary SQL view exactly: an order is
-// only "delivered" once EVERY shipment on it is delivered — one seller
-// finishing their own shipment never flips this for the whole order.
+// Mirrors the order_fulfillment_summary SQL view's CASE logic exactly
+// (see that view in phase5_shipping_migration.sql for the full
+// documented combination table). Every one of the 8 shipment statuses
+// is explicitly accounted for:
+//   1. no shipments                              -> 'awaiting_shipment'
+//   2. every shipment 'cancelled'                 -> 'cancelled' (never
+//      silently falls through to 'pending')
+//   3. any shipment 'failed' or 'returned'         -> 'delivery_exception'
+//      (a return is treated as an exception, same as a failure)
+//   4. every NON-cancelled shipment 'delivered',   -> 'delivered'
+//      and at least one is delivered (a cancelled shipment is excluded
+//      from "required" — documented business rule, not invented here)
+//   5. any shipment 'shipped'/'in_transit'         -> 'partially_shipped'
+//   6. any shipment 'processing'                   -> 'processing'
+//   7. otherwise (only 'pending', or 'pending'      -> 'pending'
+//      mixed with 'cancelled')
 function computeOrderFulfillmentStatus(shipments) {
   if (!shipments || shipments.length === 0) return 'awaiting_shipment';
   const all = shipments.length;
+  const cancelled = shipments.filter(s => s.status === 'cancelled').length;
   const delivered = shipments.filter(s => s.status === 'delivered').length;
-  const failed = shipments.filter(s => s.status === 'failed').length;
-  if (delivered === all) return 'delivered';
-  if (failed > 0) return 'delivery_exception';
+  const nonCancelled = all - cancelled;
+  if (cancelled === all) return 'cancelled';
+  if (shipments.some(s => s.status === 'failed' || s.status === 'returned')) return 'delivery_exception';
+  if (delivered > 0 && delivered === nonCancelled) return 'delivered';
   if (shipments.some(s => s.status === 'shipped' || s.status === 'in_transit')) return 'partially_shipped';
   if (shipments.some(s => s.status === 'processing')) return 'processing';
   return 'pending';
