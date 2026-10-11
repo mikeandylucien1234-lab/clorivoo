@@ -909,11 +909,44 @@ async function sbGetOrder(orderId) {
 async function sbGetOrders(userId) {
   if (!_sb || !userId) return [];
   const { data } = await _sb.from('orders')
-    .select('*, order_items(title, quantity, price)')
+    .select('*, order_items(title, quantity, price), shipments(status)')
     .eq('buyer_id', userId)
     .order('created_at', { ascending: false })
     .limit(20);
   return data ?? [];
+}
+
+// Phase 5: a single order may carry one shipment per seller (or more, if
+// a seller splits their own items into several). Each shipment's own
+// items and immutable status history are nested so the tracking page can
+// render independent per-seller cards and timelines — never a single
+// fabricated whole-order carrier/timeline.
+async function sbGetOrderShipments(orderId) {
+  if (!_sb || !orderId) return [];
+  const { data, error } = await _sb.from('shipments')
+    .select('*, order_items(id, title, quantity, unit_price), shipment_status_history(status, source, note, created_at)')
+    .eq('order_id', orderId)
+    .order('created_at', { ascending: true });
+  if (error) return [];
+  return (data ?? []).map(s => ({
+    ...s,
+    shipment_status_history: (s.shipment_status_history ?? []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)),
+  }));
+}
+
+// Mirrors the order_fulfillment_summary SQL view exactly: an order is
+// only "delivered" once EVERY shipment on it is delivered — one seller
+// finishing their own shipment never flips this for the whole order.
+function computeOrderFulfillmentStatus(shipments) {
+  if (!shipments || shipments.length === 0) return 'awaiting_shipment';
+  const all = shipments.length;
+  const delivered = shipments.filter(s => s.status === 'delivered').length;
+  const failed = shipments.filter(s => s.status === 'failed').length;
+  if (delivered === all) return 'delivered';
+  if (failed > 0) return 'delivery_exception';
+  if (shipments.some(s => s.status === 'shipped' || s.status === 'in_transit')) return 'partially_shipped';
+  if (shipments.some(s => s.status === 'processing')) return 'processing';
+  return 'pending';
 }
 
 async function sbCancelOrder(orderId) {
@@ -1594,6 +1627,7 @@ Object.assign(window, {
   sbGetBanners, sbUpsertBanner, sbDeleteBanner, sbGetSignupBanner,
   sbGetCart, sbUpsertCartItem, sbClearCart,
   sbCreateOrder, sbGetOrder, sbGetOrders, sbCancelOrder,
+  sbGetOrderShipments, computeOrderFulfillmentStatus,
   sbRecordPaymentAttempt, sbRequestRefund, sbGetMyRefundRequests,
   sbAdminGetPaymentIntents, sbAdminConfirmPayment,
   sbAdminGetRefundRequests, sbAdminInitiateRefund, sbAdminDecideRefund, sbAdminRecordRefundResult,

@@ -1,33 +1,52 @@
 // screen-tracking.jsx — My Orders (list) + Order Tracking (detail)
 
 // ─── STATUS METADATA ─────────────────────────────────────────
+// This is the ORDER-LEVEL rollup only (mirrors computeOrderFulfillmentStatus /
+// the order_fulfillment_summary SQL view) — it is a summary of potentially
+// several independent, per-seller shipments, never a fabricated single
+// status. "delivered" here only ever means every shipment on the order is
+// delivered; a single seller's own progress can never produce it alone.
 const ORDER_STATUS_META = {
-  confirmed:  { label:'Confirmed',  color:C.primary, bg:C.primarySoft, step:0 },
-  preparing:  { label:'Preparing',  color:C.primary, bg:C.primarySoft, step:1 },
-  shipped:    { label:'Shipped',    color:C.primary, bg:C.primarySoft, step:2 },
-  in_transit: { label:'In Transit', color:C.primary, bg:C.primarySoft, step:3 },
-  delivered:  { label:'Delivered',  color:C.success, bg:'#ECFDF5',     step:4 },
-  cancelled:  { label:'Cancelled',  color:C.danger,  bg:'#FEF2F2',     step:-1 },
+  awaiting_shipment:  { label:'Awaiting Shipment', color:C.mute,    bg:C.paper,       step:0 },
+  pending:            { label:'Preparing',         color:C.primary, bg:C.primarySoft, step:0 },
+  processing:         { label:'Preparing',         color:C.primary, bg:C.primarySoft, step:0 },
+  partially_shipped:  { label:'On The Way',        color:C.primary, bg:C.primarySoft, step:1 },
+  delivered:          { label:'Delivered',         color:C.success, bg:'#ECFDF5',     step:2 },
+  delivery_exception: { label:'Delivery Issue',    color:C.danger,  bg:'#FEF2F2',     step:1 },
+  cancelled:          { label:'Cancelled',          color:C.danger,  bg:'#FEF2F2',     step:-1 },
 };
 const TRACKER_STEPS = [
-  { key:'confirmed',  label:'Confirmed',  icon:'check' },
-  { key:'preparing',  label:'Preparing',  icon:'calendar' },
-  { key:'shipped',    label:'Shipped',    icon:'package' },
-  { key:'in_transit', label:'In Transit', icon:'truck' },
-  { key:'delivered',  label:'Delivered',  icon:'checkCircle' },
+  { key:'placed',    label:'Placed',    icon:'check' },
+  { key:'shipping',  label:'Shipping',  icon:'truck' },
+  { key:'delivered', label:'Delivered', icon:'checkCircle' },
 ];
 const TABS = [
   { key:'all',        label:'All' },
-  { key:'processing',label:'Processing' },
+  { key:'processing', label:'Processing' },
   { key:'shipped',    label:'Shipped' },
   { key:'delivered',  label:'Delivered' },
   { key:'cancelled',  label:'Cancelled' },
 ];
 function tabForStatus(status) {
-  if (status === 'confirmed' || status === 'preparing') return 'processing';
-  if (status === 'shipped' || status === 'in_transit') return 'shipped';
+  if (status === 'awaiting_shipment' || status === 'pending' || status === 'processing') return 'processing';
+  if (status === 'partially_shipped' || status === 'delivery_exception') return 'shipped';
   return status; // delivered | cancelled
 }
+
+// Per-shipment status metadata — these drive each shipment's own card on
+// the detail page, independent of every other seller's shipment on the
+// same order.
+const SHIPMENT_STATUS_META = {
+  pending:    { label:'Preparing',        color:C.primary, bg:C.primarySoft },
+  processing: { label:'Preparing',        color:C.primary, bg:C.primarySoft },
+  shipped:    { label:'Shipped',          color:C.primary, bg:C.primarySoft },
+  in_transit: { label:'In Transit',       color:C.primary, bg:C.primarySoft },
+  delivered:  { label:'Delivered',        color:C.success, bg:'#ECFDF5' },
+  failed:     { label:'Delivery Issue',   color:C.danger,  bg:'#FEF2F2' },
+  returned:   { label:'Returned',         color:C.danger,  bg:'#FEF2F2' },
+  cancelled:  { label:'Cancelled',        color:C.mute,    bg:C.paper },
+};
+const HISTORY_SOURCE_LABEL = { seller: 'Reported by seller', admin_override: 'Updated by support', system: 'System', carrier_api: 'Verified by carrier' };
 
 // ─── MOCK ORDERS (used when there is no real backend session) ─
 const MOCK_ORDERS = [];
@@ -44,6 +63,10 @@ function daysUntil(iso) {
 }
 
 // ─── MINI PROGRESS TRACKER (used on order cards) ─────────────
+// Order-level only: 3 broad steps (Placed / Shipping / Delivered). A
+// delivery exception on any one shipment still shows as "done" through
+// the shipping step (something happened) but never advances to
+// Delivered — that only happens once every shipment is delivered.
 function MiniTracker({ status }) {
   const meta = ORDER_STATUS_META[status];
   const currentStep = meta.step;
@@ -91,14 +114,14 @@ function OrderCard({ order, onPress }) {
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10.5, fontWeight:700, color:meta.color, background:meta.bg, borderRadius:9999, padding:'3px 9px', flexShrink:0 }}>{meta.label}</span>
           </div>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, marginTop:2 }}>{fmtDate(order.placedAt, { month:'short', day:'numeric', year:'numeric' })}</div>
-          {order.status !== 'cancelled' && (
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.ink, marginTop:6 }}>
-              {order.status === 'delivered' ? 'Delivered ' : 'Estimated delivery '}
-              <span style={{ fontWeight:700, color:C.primary }}>{fmtDate(order.deliveredAt || order.estimatedDelivery, { weekday:'long', month:'long', day:'numeric' })}</span>
-            </div>
-          )}
-          {order.status === 'cancelled' && (
+          {order.status === 'cancelled' && order.cancelledAt && (
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.danger, marginTop:6 }}>Cancelled on <span style={{ fontWeight:700 }}>{fmtDate(order.cancelledAt, { month:'long', day:'numeric' })}</span></div>
+          )}
+          {order.status === 'delivery_exception' && (
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.danger, marginTop:6, fontWeight:600 }}>One or more shipments need attention</div>
+          )}
+          {order.shipmentCount > 1 && order.status !== 'cancelled' && (
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, marginTop:4 }}>{order.shipmentCount} shipments</div>
           )}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:8 }}>
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{itemCount} item{itemCount > 1 ? 's' : ''} · <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:C.ink }}>${order.total.toFixed(2)}</span></span>
@@ -272,13 +295,18 @@ function OrdersListScreen({ params = {} }) {
   );
 }
 
+// Builds the order-level summary shown in the list and the detail hero.
+// Deliberately carries NO fabricated carrier/origin/destination/timeline —
+// those are real, per-shipment facts fetched separately via
+// sbGetOrderShipments() and rendered as independent shipment cards.
 function normalizeRemoteOrder(row) {
+  const shipments = row.shipments || [];
+  const status = row.status === 'cancelled' ? 'cancelled' : computeOrderFulfillmentStatus(shipments);
   return {
-    id: row.id, status: row.status || 'confirmed', placedAt: row.created_at, total: row.total || 0,
-    estimatedDelivery: row.estimated_delivery, deliveredAt: row.delivered_at, cancelledAt: row.cancelled_at,
-    carrier: 'Flash Express', trackingNumber: row.tracking_number, origin: 'Miami, USA', destination: 'Port-au-Prince, Haiti',
+    id: row.id, status, placedAt: row.created_at, total: row.total_amount ?? row.total ?? 0,
+    cancelledAt: row.status === 'cancelled' ? row.updated_at : null,
+    shipmentCount: shipments.length,
     items: (row.order_items || []).map((it, i) => ({ title: it.title, variant: '', qty: it.quantity || 1, tint: i % 5 })),
-    timeline: [{ at: row.created_at, title:'Order confirmed', desc:"Thank you! We've received your order." }],
   };
 }
 
@@ -320,6 +348,7 @@ function OrderDetailScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
   const isDesktop = useIsDesktop();
   const [order, setOrder] = React.useState(params.order || null);
+  const [shipments, setShipments] = React.useState([]);
   const [toast, setToast] = React.useState(null);
   const [cancelling, setCancelling] = React.useState(false);
   const [confirmCancel, setConfirmCancel] = React.useState(false);
@@ -327,8 +356,13 @@ function OrderDetailScreen({ params = {} }) {
   React.useEffect(() => {
     let alive = true;
     if (params.order?.id) {
-      sbGetOrder(params.order.id).then(data => {
-        if (alive && data) setOrder(prev => ({ ...prev, ...normalizeRemoteOrder(data) }));
+      Promise.all([
+        sbGetOrder(params.order.id),
+        sbGetOrderShipments(params.order.id),
+      ]).then(([data, ships]) => {
+        if (!alive) return;
+        if (ships) setShipments(ships);
+        if (data) setOrder(prev => ({ ...prev, ...normalizeRemoteOrder({ ...data, shipments: ships }) }));
       }).catch(() => {});
     }
     return () => { alive = false; };
@@ -343,12 +377,13 @@ function OrderDetailScreen({ params = {} }) {
   }
 
   const meta = ORDER_STATUS_META[order.status];
-  const cancellable = ['confirmed', 'preparing'].includes(order.status);
+  const cancellable = ['awaiting_shipment', 'pending'].includes(order.status);
   const canReorder = ['delivered', 'cancelled'].includes(order.status);
 
-  async function copyTracking() {
-    try { await navigator.clipboard.writeText(order.trackingNumber); setToast({ type:'success', message:'Tracking number copied' }); }
-    catch { setToast({ type:'error', message:'Could not copy tracking number' }); }
+  function copyTracking(trackingNumber) {
+    navigator.clipboard.writeText(trackingNumber)
+      .then(() => setToast({ type:'success', message:'Tracking number copied' }))
+      .catch(() => setToast({ type:'error', message:'Could not copy tracking number' }));
   }
 
   async function handleCancel() {
@@ -403,30 +438,17 @@ function OrderDetailScreen({ params = {} }) {
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, color:'#fff', background:'rgba(255,255,255,0.22)', borderRadius:9999, padding:'5px 12px', flexShrink:0 }}>{meta.label}</span>
           </div>
 
-          {order.status !== 'cancelled' ? (
-            <div style={{ marginTop:16, position:'relative' }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.75)' }}>{order.status === 'delivered' ? 'Delivered on' : 'Estimated Delivery'}</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.02em' }}>
-                {fmtDate(order.deliveredAt || order.estimatedDelivery, { weekday:'long', month:'long', day:'numeric' })}
-              </div>
-              {order.status !== 'delivered' && daysUntil(order.estimatedDelivery) >= 0 && (
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:'rgba(255,255,255,0.85)' }}>(In {daysUntil(order.estimatedDelivery)} day{daysUntil(order.estimatedDelivery) !== 1 ? 's' : ''})</div>
-              )}
+          {order.status === 'cancelled' ? (
+            <div style={{ marginTop:16, fontFamily:"'Inter',sans-serif", fontSize:13.5, color:'rgba(255,255,255,0.9)' }}>
+              {order.cancelledAt ? <>This order was cancelled on {fmtDate(order.cancelledAt, { month:'long', day:'numeric', year:'numeric' })}.</> : 'This order was cancelled.'}
             </div>
           ) : (
-            <div style={{ marginTop:16, fontFamily:"'Inter',sans-serif", fontSize:13.5, color:'rgba(255,255,255,0.9)' }}>This order was cancelled on {fmtDate(order.cancelledAt, { month:'long', day:'numeric', year:'numeric' })}.</div>
-          )}
-
-          {/* Truck banner */}
-          {order.status !== 'cancelled' && (
-            <div style={{ borderRadius:12, background:'rgba(255,255,255,0.12)', padding:'10px 12px', overflow:'hidden', height:56, position:'relative', marginTop:16, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <Icon name="mapPin" size={16} color="rgba(255,255,255,0.7)" />
-              <div style={{ flex:1, height:2, background:'repeating-linear-gradient(90deg, rgba(255,255,255,0.6) 0 6px, transparent 6px 12px)', margin:'0 8px', position:'relative' }}>
-                <div style={{ position:'absolute', top:-11, left: `${Math.min(90, Math.max(5, (meta.step / 4) * 90))}%`, transform:'translateX(-50%)' }}>
-                  <Icon name="truck" size={20} color="#fff" />
-                </div>
+            <div style={{ marginTop:16, position:'relative' }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.75)' }}>
+                {shipments.length > 1
+                  ? `${shipments.length} shipments from ${new Set(shipments.map(s=>s.seller_id)).size} seller${new Set(shipments.map(s=>s.seller_id)).size>1?'s':''}`
+                  : shipments.length === 1 ? '1 shipment' : 'Awaiting shipment'}
               </div>
-              <Icon name="checkCircle" size={16} color="rgba(255,255,255,0.7)" />
             </div>
           )}
         </div>
@@ -438,68 +460,94 @@ function OrderDetailScreen({ params = {} }) {
           </div>
         )}
 
-        {/* Info banner */}
-        {order.timeline?.[0] && order.status !== 'cancelled' && (
-          <div style={{ background:C.primarySoft, borderRadius:16, padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
+        {order.status === 'delivery_exception' && (
+          <div style={{ background:'#FEF2F2', borderRadius:16, padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
             <div style={{ width:36, height:36, borderRadius:9999, background:C.white, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <Icon name="package" size={17} color={C.primary} />
+              <Icon name="alertTriangle" size={17} color={C.danger} />
             </div>
-            <div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.primaryDeep }}>{order.timeline[0].title}</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.primaryDeep }}>Last update: {fmtDateTime(order.timeline[0].at)}</div>
-            </div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.danger }}>One or more shipments ran into a delivery issue — see details below.</div>
           </div>
         )}
 
-        {/* Shipping information */}
-        <div style={{ background:C.white, borderRadius:16, padding:'16px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink, marginBottom:12 }}>Shipping Information</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Carrier</span>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>{order.carrier}</span>
-            </div>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Tracking Number</span>
-              <button onClick={copyTracking} style={{ display:'flex', alignItems:'center', gap:5, border:'none', background:'none', cursor:'pointer' }}>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:700, color:C.ink }}>{order.trackingNumber}</span>
-                <Icon name="copy" size={13} color={C.primary} />
-              </button>
-            </div>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Origin</span>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{order.origin}</span>
-            </div>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Destination</span>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{order.destination}</span>
-            </div>
+        {/* Independent shipment cards — one per seller's shipment on this
+            order. Never a single fabricated whole-order carrier/timeline;
+            each shipment shows only its own, real, seller-reported data. */}
+        {shipments.length === 0 && order.status !== 'cancelled' && (
+          <div style={{ background:C.white, borderRadius:16, padding:'16px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)', textAlign:'center' }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>The seller(s) haven't created a shipment yet.</span>
           </div>
-          <Btn variant="secondary" size="sm" wide onClick={() => setToast({ type:'success', message:'Opening carrier tracking site…' })} style={{ marginTop:14 }}>
-            <Icon name="externalLink" size={14} color={C.ink} />
-            Track on Carrier Site
-          </Btn>
-        </div>
-
-        {/* Live tracking timeline */}
-        {order.timeline?.length > 0 && (
-          <div style={{ background:C.white, borderRadius:16, padding:'16px 18px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink, marginBottom:14 }}>Live Tracking</div>
-            {order.timeline.map((ev, i) => (
-              <div key={i} style={{ display:'flex', gap:14, position:'relative' }}>
-                {i < order.timeline.length - 1 && (
-                  <div style={{ position:'absolute', left:6, top:18, width:2, height:'calc(100% - 6px)', background:C.hairline }} />
-                )}
-                <div style={{ width:14, height:14, borderRadius:9999, background: i === 0 ? (order.status==='cancelled'?C.danger:C.primary) : C.hairline, flexShrink:0, marginTop:4, zIndex:1 }} />
-                <div style={{ flex:1, paddingBottom: i < order.timeline.length - 1 ? 18 : 0 }}>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13.5, fontWeight: i === 0 ? 700 : 500, color:C.ink }}>{ev.title}</div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute, marginTop:1 }}>{ev.desc}</div>
-                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:C.mute, marginTop:3 }}>{fmtDateTime(ev.at)}</div>
-                </div>
+        )}
+        {shipments.map((s, idx) => {
+          const sMeta = SHIPMENT_STATUS_META[s.status] ?? { label:s.status, color:C.mute, bg:C.paper };
+          const history = s.shipment_status_history ?? [];
+          return (
+            <div key={s.id} style={{ background:C.white, borderRadius:16, padding:'16px 18px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>
+                  {shipments.length > 1 ? `Shipment ${idx + 1}` : 'Shipment'}
+                </span>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, color:sMeta.color, background:sMeta.bg, borderRadius:9999, padding:'4px 10px' }}>{sMeta.label}</span>
               </div>
-            ))}
-          </div>
-        )}
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:12 }}>
+                {(s.order_items ?? []).map(it => it.title).join(', ')}
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:12 }}>
+                {s.carrier && (
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Carrier <span style={{ fontSize:10.5 }}>(seller-reported)</span></span>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>{s.carrier}</span>
+                  </div>
+                )}
+                {s.tracking_number && (
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Tracking Number</span>
+                    <button onClick={() => copyTracking(s.tracking_number)} style={{ display:'flex', alignItems:'center', gap:5, border:'none', background:'none', cursor:'pointer' }}>
+                      <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:700, color:C.ink }}>{s.tracking_number}</span>
+                      <Icon name="copy" size={13} color={C.primary} />
+                    </button>
+                  </div>
+                )}
+                {s.estimated_delivery && s.status !== 'delivered' && (
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Estimated Delivery</span>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{fmtDate(s.estimated_delivery, { month:'long', day:'numeric' })}</span>
+                  </div>
+                )}
+                {s.delivered_at && (
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Delivered On</span>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.success }}>{fmtDate(s.delivered_at, { month:'long', day:'numeric' })}</span>
+                  </div>
+                )}
+                {s.failure_reason && (
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>Issue: {s.failure_reason}</div>
+                )}
+                {!s.carrier && !s.tracking_number && (s.status === 'pending' || s.status === 'processing') && (
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>The seller hasn't shared tracking info yet.</div>
+                )}
+              </div>
+
+              {history.length > 0 && (
+                <div style={{ borderTop:`1px solid ${C.hairline}`, paddingTop:12 }}>
+                  {history.slice().reverse().map((ev, i) => (
+                    <div key={i} style={{ display:'flex', gap:12, position:'relative' }}>
+                      {i < history.length - 1 && (
+                        <div style={{ position:'absolute', left:5, top:16, width:2, height:'calc(100% - 4px)', background:C.hairline }} />
+                      )}
+                      <div style={{ width:12, height:12, borderRadius:9999, background: i === 0 ? sMeta.color : C.hairline, flexShrink:0, marginTop:4, zIndex:1 }} />
+                      <div style={{ flex:1, paddingBottom: i < history.length - 1 ? 14 : 0 }}>
+                        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight: i === 0 ? 700 : 500, color:C.ink, textTransform:'capitalize' }}>{(SHIPMENT_STATUS_META[ev.status]?.label ?? ev.status)}</div>
+                        {ev.note && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:1 }}>{ev.note}</div>}
+                        <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10.5, color:C.mute, marginTop:3 }}>{fmtDateTime(ev.created_at)} · {HISTORY_SOURCE_LABEL[ev.source] ?? ev.source}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {/* Ordered products */}
         <div style={{ background:C.white, borderRadius:16, padding:'16px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
