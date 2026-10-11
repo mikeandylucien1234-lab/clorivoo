@@ -151,6 +151,81 @@ alter table public.order_items
   add column if not exists shipment_id uuid references public.shipments(id);
 create index if not exists order_items_shipment_id_idx on public.order_items (shipment_id);
 
+-- Phase 4's protect_order_item_fields() trigger reverts EVERY column a
+-- non-staff caller touches except an allowed fulfillment_status step —
+-- which silently wiped out shipment_id on every write, since neither
+-- create_order() (called as the BUYER) nor seller_create_shipment()
+-- (called as the seller, but not advancing fulfillment_status) ever
+-- passed its one allowed-column check. Confirmed live in a rolled-back
+-- transaction before this fix: a buyer-driven create_order() update of
+-- shipment_id came back NULL every time.
+--
+-- Fix: a transaction-local flag, set ONLY inside create_order() and
+-- seller_create_shipment() immediately before their own already-
+-- validated UPDATE of shipment_id, lets this one column through
+-- unchanged while this trigger continues to protect every other column
+-- exactly as Phase 4 defined it. The flag is a GUC a client can never
+-- set itself (no RPC parameter or table write reaches it), so it adds
+-- no new way for a buyer or seller to escalate anything else.
+create or replace function public.protect_order_item_fields()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+declare
+  v_requested_status text;
+  allowed_next text[];
+  v_result public.order_items;
+  v_bypass boolean;
+begin
+  v_bypass := current_setting('app.bypass_shipment_protection', true) = 'true';
+
+  if public.has_permission(auth.uid(), 'orders.edit') then
+    if new.fulfillment_status is distinct from old.fulfillment_status then
+      perform public.log_audit('order_item_status_changed', 'order_items', new.id::text,
+        jsonb_build_object('status', old.fulfillment_status),
+        jsonb_build_object('status', new.fulfillment_status, 'order_id', new.order_id));
+    end if;
+    return new;
+  end if;
+
+  if old.seller_id is distinct from auth.uid() then
+    v_result := old; -- not this seller's item: block entirely
+    if v_bypass then
+      v_result.shipment_id := new.shipment_id;
+    end if;
+    return v_result;
+  end if;
+
+  v_requested_status := new.fulfillment_status;
+  allowed_next := case old.fulfillment_status
+    when 'pending' then array['processing']
+    when 'processing' then array['shipped']
+    when 'shipped' then array['delivered']
+    else array[]::text[]
+  end;
+
+  v_result := old; -- revert every column a seller might have tried to change
+
+  if v_requested_status is not null and v_requested_status = any(allowed_next) then
+    v_result.fulfillment_status := v_requested_status;
+    perform public.log_audit('order_item_status_changed', 'order_items', v_result.id::text,
+      jsonb_build_object('status', old.fulfillment_status),
+      jsonb_build_object('status', v_requested_status, 'order_id', v_result.order_id));
+  end if;
+
+  if v_bypass then
+    v_result.shipment_id := new.shipment_id;
+  end if;
+
+  return v_result;
+end;
+$$;
+revoke execute on function public.protect_order_item_fields() from public, anon, authenticated;
+-- The trigger itself (protect_order_item_fields_trg) already exists from
+-- Phase 4 and does not need to be recreated — CREATE OR REPLACE FUNCTION
+-- above takes effect for it immediately.
+
 -- Guarantees, independent of whatever RPC or RLS let a write through,
 -- that an order_item's shipment always belongs to the SAME order and
 -- the SAME seller as the item itself — a seller (or a bug) can never
@@ -536,8 +611,13 @@ begin
     insert into public.shipment_status_history (shipment_id, status, source, changed_by)
     values (v_shipment_id, 'pending', 'system', v_buyer);
 
+    -- See protect_order_item_fields(): this transaction-local flag is the
+    -- only way this buyer-driven UPDATE's shipment_id survives that
+    -- trigger; no other column is affected by it.
+    perform set_config('app.bypass_shipment_protection', 'true', true);
     update public.order_items set shipment_id = v_shipment_id
     where order_id = v_order_id and seller_id = v_seller_group.seller_id and shop_id = v_seller_group.shop_id;
+    perform set_config('app.bypass_shipment_protection', 'false', true);
   end loop;
 
   v_total := v_subtotal - v_discount + v_shipping_fee;
@@ -601,8 +681,13 @@ begin
   insert into public.shipment_status_history (shipment_id, status, source, changed_by, note)
   values (v_new_shipment_id, 'pending', 'system', v_seller, 'Split from a prior shipment on the same order');
 
+  -- See protect_order_item_fields(): the seller isn't advancing
+  -- fulfillment_status here, so without this flag the trigger would
+  -- revert shipment_id right back to its old value.
+  perform set_config('app.bypass_shipment_protection', 'true', true);
   update public.order_items set shipment_id = v_new_shipment_id
   where id = any(p_order_item_ids) and order_id = p_order_id and seller_id = v_seller;
+  perform set_config('app.bypass_shipment_protection', 'false', true);
 
   perform public.log_audit('shipment_created', 'shipments', v_new_shipment_id::text, null,
     jsonb_build_object('order_id', p_order_id, 'item_count', v_count));
