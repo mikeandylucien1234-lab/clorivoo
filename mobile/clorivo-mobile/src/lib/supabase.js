@@ -278,6 +278,53 @@ export async function advanceItemFulfillment(orderItemId, nextStatus) {
   if (error) throw error;
 }
 
+// Phase 5: shipments are the actual unit of fulfillment, one row per
+// seller-created shipment on an order (a seller may have more than one
+// shipment per order — partial shipping). Returns ONLY this seller's own
+// shipments; order_items are nested under the shipment they belong to,
+// never under another seller's shipment on the same order.
+export async function getSellerShipments(userId, limit = 50) {
+  const { data, error } = await supabase.from('shipments')
+    .select('id, order_id, status, carrier, tracking_number, tracking_url, shipping_fee, estimated_delivery, shipped_at, delivered_at, failed_at, failure_reason, created_at, orders!inner(id, created_at, shipping_address), order_items(id, title, quantity, unit_price)')
+    .eq('seller_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+// Splits a subset of this seller's own, not-yet-shipped items on an order
+// into a brand-new shipment (partial/staged shipping). Server-side RPC
+// re-checks ownership and eligibility independently of this call.
+export async function createSellerShipment(orderId, orderItemIds) {
+  const { data, error } = await supabase.rpc('seller_create_shipment', {
+    p_order_id: orderId, p_order_item_ids: orderItemIds,
+  });
+  if (error) throw error;
+  return data;
+}
+
+// Advances one of THIS seller's own shipments. carrier/tracking fields are
+// always seller-provided — there is no carrier API integration yet, so
+// nothing here is presented as carrier-verified.
+export async function updateSellerShipment(shipmentId, status, { carrier, trackingNumber, trackingUrl, estimatedDelivery } = {}) {
+  const { data, error } = await supabase.rpc('seller_update_shipment', {
+    p_shipment_id: shipmentId, p_status: status,
+    p_carrier: carrier ?? null, p_tracking_number: trackingNumber ?? null,
+    p_tracking_url: trackingUrl ?? null, p_estimated_delivery: estimatedDelivery ?? null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function reportShipmentDeliveryFailure(shipmentId, reason) {
+  const { data, error } = await supabase.rpc('seller_report_delivery_failure', {
+    p_shipment_id: shipmentId, p_reason: reason,
+  });
+  if (error) throw error;
+  return data;
+}
+
 export async function getSellerStats(userId) {
   const [{ count: ordersCount }, { data: products }] = await Promise.all([
     supabase.from('order_items').select('id', { count: 'exact', head: true }).eq('seller_id', userId),
