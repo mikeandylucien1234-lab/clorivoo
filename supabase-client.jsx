@@ -1038,6 +1038,49 @@ async function sbGetSellerOrders(shopId) {
   return data ?? _DEMO_SELLER_ORDERS;
 }
 
+// Phase 5: shipments are the real unit of fulfillment, one row per
+// seller-created shipment on an order (a seller may have more than one
+// shipment per order — partial shipping). This returns ONLY this
+// seller's own shipments, each with its own order_items nested under
+// it — never another seller's shipment on the same multi-vendor order.
+async function sbGetSellerShipments(sellerId, limit = 50) {
+  if (!_sb || !sellerId) return [];
+  const { data, error } = await _sb.from('shipments')
+    .select('id, order_id, status, carrier, tracking_number, tracking_url, shipping_fee, estimated_delivery, shipped_at, delivered_at, failed_at, failure_reason, created_at, order_items(id, title, quantity, unit_price)')
+    .eq('seller_id', sellerId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return data ?? [];
+}
+
+// Splits a subset of this seller's own, not-yet-shipped items on an
+// order into a brand-new shipment (partial/staged shipping). The server
+// RPC independently re-checks ownership and eligibility.
+async function sbSellerCreateShipment(orderId, orderItemIds) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('seller_create_shipment', { p_order_id: orderId, p_order_item_ids: orderItemIds });
+  return { data, error };
+}
+
+// Advances one of this seller's own shipments. carrier/tracking fields
+// are always seller-provided — no carrier API integration exists yet,
+// so nothing here is presented as carrier-verified.
+async function sbSellerUpdateShipment(shipmentId, status, { carrier = null, trackingNumber = null, trackingUrl = null, estimatedDelivery = null } = {}) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('seller_update_shipment', {
+    p_shipment_id: shipmentId, p_status: status, p_carrier: carrier,
+    p_tracking_number: trackingNumber, p_tracking_url: trackingUrl, p_estimated_delivery: estimatedDelivery,
+  });
+  return { data, error };
+}
+
+async function sbSellerReportDeliveryFailure(shipmentId, reason) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('seller_report_delivery_failure', { p_shipment_id: shipmentId, p_reason: reason });
+  return { data, error };
+}
+
 // ─── ADMIN HELPERS ────────────────────────────────────────────────
 // A stalled connection (slow network, a blocked host) otherwise leaves an admin screen
 // spinning forever — Supabase's client has no built-in request timeout. Every admin
@@ -1559,6 +1602,7 @@ Object.assign(window, {
   sbSubscribeToMessages, sbMarkConversationRead, sbGetOrCreateConversation,
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
+  sbGetSellerShipments, sbSellerCreateShipment, sbSellerUpdateShipment, sbSellerReportDeliveryFailure,
   sbAdminGetStats, sbAdminGetSalesTimeseries, sbSubscribeAdminOrders,
   sbAdminGetOrders, sbAdminGetOrderDetail, sbAdminUpdateOrderStatus, ORDER_STATUSES,
   sbAdminGetKycRequests, sbAdminGetKycRequest, sbAdminGetKycDocUrl, sbAdminReviewKyc,
