@@ -763,3 +763,14 @@ end;
 $$;
 revoke all on function public.admin_override_shipment(uuid, text, text, text, text, date, text) from public, anon;
 grant execute on function public.admin_override_shipment(uuid, text, text, text, text, date, text) to authenticated;
+
+-- ─── 16. NOTIFICATION TEMPLATES — new per-shipment keys ────────────────
+-- Additive to the existing reusable notification infrastructure
+-- (notifications / notification_preferences / notification_templates).
+-- These are scoped to ONE shipment, not the whole order — a multi-vendor
+-- order fires one of these per seller's shipment event, independently.
+insert into public.notification_templates (key, title, body) values
+  ('shipment_shipped',          '📦 Une partie de votre commande est en route !', 'Un vendeur a expédié votre colis.'),
+  ('shipment_delivered',        '🎉 Colis livré !',                               'Un colis de votre commande est arrivé.'),
+  ('shipment_delivery_failed',  '⚠️ Problème de livraison',                       'Un problème est survenu avec un colis de votre commande.')
+on conflict (key) do nothing;
