@@ -2724,7 +2724,7 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
                     <div style={{ display:'flex', gap:8 }}>
                       <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => setRecordingRefundId(null)} disabled={busy}>Cancel</Btn>
                       <Btn size="sm" style={{ flex:1, color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} disabled={busy}
-                        onClick={() => runAction(() => sbAdminRecordRefundResult(r.id, 'failed', 0, recordRef || null, 'Recorded as failed'))}>Mark failed</Btn>
+                        onClick={() => runAction(() => sbAdminRecordRefundResult(r.id, 'failed', r.amount_requested, recordRef || null, 'Recorded as failed'))}>Mark failed</Btn>
                       <Btn size="sm" variant="primary" style={{ flex:1 }} disabled={busy || !recordAmount}
                         onClick={async () => { const ok = await runAction(() => sbAdminRecordRefundResult(r.id, 'succeeded', parseFloat(recordAmount), recordRef || null)); if (ok) { setRecordingRefundId(null); setRecordAmount(''); setRecordRef(''); } }}>
                         Confirm refunded
