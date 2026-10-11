@@ -1293,6 +1293,59 @@ async function _sbAdminGetOrdersImpl({ page = 1, limit = 10, status = 'ALL', sea
   return { orders, totalOrders: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
 }
 
+// ─── ADMIN SHIPPING MANAGEMENT ──────────────────────────────────────
+// Cross-order shipment search for staff with shipping.view/shipping.manage:
+// by order id, tracking number, seller or carrier, plus a dedicated filter
+// for shipments currently in a delivery exception (status = 'failed').
+async function sbAdminGetShipments(opts = {}) {
+  const { page = 1 } = opts;
+  const emptyResult = { shipments: [], totalShipments: 0, totalPages: 0, currentPage: page };
+  if (!_sb) return emptyResult;
+  return _withTimeout(_sbAdminGetShipmentsImpl(opts), 10000, { ...emptyResult, timedOut: true });
+}
+async function _sbAdminGetShipmentsImpl({ page = 1, limit = 15, status = 'ALL', search = '', sellerId = '', carrier = '', exceptionsOnly = false } = {}) {
+  let query = _sb.from('shipments').select(
+    '*, orders(id, buyer_id, profiles(full_name, email)), profiles!shipments_seller_id_fkey(full_name, email), shops(name), order_items(id, title, quantity, unit_price)',
+    { count: 'exact' }
+  );
+
+  if (exceptionsOnly) query = query.eq('status', 'failed');
+  else if (status && status !== 'ALL') query = query.eq('status', status);
+  if (sellerId) query = query.eq('seller_id', sellerId);
+  if (carrier) query = query.ilike('carrier', `%${carrier}%`);
+
+  const q = (search || '').trim();
+  if (q) {
+    const orClauses = [`tracking_number.ilike.%${q}%`, `order_id.eq.${q}`, `id.eq.${q}`];
+    query = query.or(orClauses.join(','));
+  }
+
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
+  if (error) return { shipments: [], totalShipments: 0, totalPages: 0, currentPage: page };
+  return { shipments: data ?? [], totalShipments: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
+async function sbAdminGetCarriersList() {
+  if (!_sb) return [];
+  const { data } = await _sb.from('shipping_carriers').select('name').eq('is_active', true).order('name');
+  return (data ?? []).map(c => c.name);
+}
+
+// The only function that can touch a shipment it does not own — requires
+// shipping.manage, and the server rejects the call outright without a
+// note explaining the correction (enforced again here client-side only
+// to fail fast; the real guarantee is the RPC's own check).
+async function sbAdminOverrideShipment(shipmentId, { status = null, carrier = null, trackingNumber = null, trackingUrl = null, estimatedDelivery = null } = {}, note) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('admin_override_shipment', {
+    p_shipment_id: shipmentId, p_status: status, p_carrier: carrier,
+    p_tracking_number: trackingNumber, p_tracking_url: trackingUrl,
+    p_estimated_delivery: estimatedDelivery, p_note: note,
+  });
+  return { data, error };
+}
+
 async function sbAdminGetOrderDetail(orderId) {
   if (!_sb || !orderId) return null;
   return _withTimeout((async () => {
@@ -1637,6 +1690,7 @@ Object.assign(window, {
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
   sbGetSellerShipments, sbSellerCreateShipment, sbSellerUpdateShipment, sbSellerReportDeliveryFailure,
+  sbAdminGetShipments, sbAdminGetCarriersList, sbAdminOverrideShipment,
   sbAdminGetStats, sbAdminGetSalesTimeseries, sbSubscribeAdminOrders,
   sbAdminGetOrders, sbAdminGetOrderDetail, sbAdminUpdateOrderStatus, ORDER_STATUSES,
   sbAdminGetKycRequests, sbAdminGetKycRequest, sbAdminGetKycDocUrl, sbAdminReviewKyc,

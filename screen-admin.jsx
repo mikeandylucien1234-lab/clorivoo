@@ -29,6 +29,7 @@ const ADMIN_NAV = [
   { key:'overview', label:'Dashboard', icon:'barChart' },
   { group:'Catalog', items:[
     { key:'orders',     label:'Orders',      icon:'cart' },
+    { key:'shipping',   label:'Shipping',    icon:'truck' },
     { key:'products',   label:'Products',    icon:'package' },
     { key:'categories', label:'Categories',  icon:'grid' },
     { key:'brands',     label:'Brands',      icon:'tag' },
@@ -2743,6 +2744,177 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
   );
 }
 
+// ─── ADMIN SHIPPING MANAGEMENT ────────────────────────────────────
+// Cross-order shipment search (requires shipping.view). Each row is one
+// seller's shipment, never a whole-order summary, so a multi-vendor order
+// shows up as one row per seller here. Override requires shipping.manage
+// AND a mandatory note — enforced again server-side regardless of this
+// screen's own gating.
+const SHIPMENT_STATUS_TONE = { pending:'mute', processing:'primary', shipped:'info', in_transit:'info', delivered:'success', failed:'danger', returned:'danger', cancelled:'mute' };
+const SHIPMENT_STATUSES = ['pending','processing','shipped','in_transit','delivered','failed','returned','cancelled'];
+
+function AdminShippingSection({ accessCtx }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const [result, setResult] = React.useState({ shipments:[], totalShipments:0, totalPages:0, currentPage:1 });
+  const [loading, setLoading] = React.useState(true);
+  const [page, setPage] = React.useState(1);
+  const [status, setStatus] = React.useState('ALL');
+  const [searchInput, setSearchInput] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [carrierInput, setCarrierInput] = React.useState('');
+  const [carrier, setCarrier] = React.useState('');
+  const [exceptionsOnly, setExceptionsOnly] = React.useState(false);
+  const [overrideShipment, setOverrideShipment] = React.useState(null);
+  const [toast, setToast] = React.useState(null);
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    sbAdminGetShipments({ page, limit:PAGE_SIZE, status, search, carrier, exceptionsOnly }).then(r => { setResult(r); setLoading(false); });
+  }, [page, status, search, carrier, exceptionsOnly]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setSearch(searchInput); }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+  React.useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setCarrier(carrierInput); }, 350);
+    return () => clearTimeout(t);
+  }, [carrierInput]);
+
+  const { shipments, totalShipments, totalPages } = result;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Shipping" sub={`${totalShipments} shipment${totalShipments === 1 ? '' : 's'}`} />
+
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ flex:'1 1 220px', position:'relative' }}>
+          <Icon name="search" size={15} color={C.mute} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)' }} />
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Order ID, shipment ID or tracking number…"
+            style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px 9px 34px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        </div>
+        <input value={carrierInput} onChange={e => setCarrierInput(e.target.value)} placeholder="Carrier…"
+          style={{ flex:'0 1 160px', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        <button onClick={() => { setExceptionsOnly(v => !v); setPage(1); }} style={{
+          border: exceptionsOnly ? 'none' : `1.5px solid ${C.hairline}`, borderRadius:9999, padding:'8px 14px', cursor:'pointer',
+          background: exceptionsOnly ? C.danger : C.white, color: exceptionsOnly ? '#fff' : C.ink,
+          fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, display:'flex', alignItems:'center', gap:6,
+        }}>
+          <Icon name="alertTriangle" size={13} color={exceptionsOnly ? '#fff' : C.danger} /> Delivery exceptions
+        </button>
+      </div>
+
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+        {['ALL', ...SHIPMENT_STATUSES].map(s => (
+          <button key={s} onClick={() => { setStatus(s); setExceptionsOnly(false); setPage(1); }} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: !exceptionsOnly && status === s ? C.ink : C.paper, color: !exceptionsOnly && status === s ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, textTransform:'capitalize' }}>{s === 'ALL' ? 'All' : s.replace('_',' ')}</button>
+        ))}
+      </div>
+
+      <AdminCard padded={false} style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead><tr><Th>Order</Th><Th>Seller</Th><Th>Items</Th><Th>Carrier / Tracking</Th><Th>Status</Th><Th align="right">Fee</Th><Th align="right">Actions</Th></tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="Loading shipments…" /></td></tr>
+            ) : result.timedOut ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="Couldn't reach the server — check your connection and try again." /></td></tr>
+            ) : shipments.length === 0 ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="No shipments match these filters" /></td></tr>
+            ) : shipments.map(s => (
+              <tr key={s.id}>
+                <Td style={{ fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>#{s.order_id.slice(0,8)}</Td>
+                <Td>
+                  <div style={{ fontWeight:600 }}>{s.profiles?.full_name || 'Seller'}</div>
+                  <div style={{ fontSize:11, color:C.mute }}>{s.shops?.name || ''}</div>
+                </Td>
+                <Td style={{ fontSize:12 }}>{(s.order_items ?? []).map(it => it.title).join(', ') || '—'}</Td>
+                <Td>
+                  {s.tracking_number ? (
+                    <>
+                      <div style={{ fontWeight:600 }}>{s.carrier || '—'}</div>
+                      <div style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", color:C.mute }}>{s.tracking_number}</div>
+                    </>
+                  ) : <span style={{ color:C.mute }}>—</span>}
+                </Td>
+                <Td><StatusPill tone={SHIPMENT_STATUS_TONE[s.status] || 'mute'}>{s.status.replace('_',' ')}</StatusPill></Td>
+                <Td align="right" style={{ fontFamily:"'JetBrains Mono',monospace" }}>${(s.shipping_fee ?? 0).toFixed(2)}</Td>
+                <Td align="right">
+                  {can('shipping.manage') && (
+                    <button onClick={() => setOverrideShipment(s)} title="Override" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name="edit" size={14} color={C.mute} />
+                    </button>
+                  )}
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </AdminCard>
+
+      {totalPages > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:10 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Previous</button>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Next</button>
+        </div>
+      )}
+
+      {overrideShipment && (
+        <AdminShipmentOverrideModal
+          shipment={overrideShipment}
+          onClose={() => setOverrideShipment(null)}
+          onDone={() => { setOverrideShipment(null); load(); }}
+          onLog={(detail) => logAdminAction('Overrode shipment', detail, 'shipments', overrideShipment.id)}
+        />
+      )}
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
+  );
+}
+
+function AdminShipmentOverrideModal({ shipment, onClose, onDone, onLog }) {
+  const [status, setStatus] = React.useState(shipment.status);
+  const [carrier, setCarrier] = React.useState(shipment.carrier || '');
+  const [trackingNumber, setTrackingNumber] = React.useState(shipment.tracking_number || '');
+  const [note, setNote] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  async function submit() {
+    if (!note.trim()) { setError('A note explaining this correction is required.'); return; }
+    setSaving(true);
+    setError('');
+    const { error: err } = await sbAdminOverrideShipment(shipment.id, { status, carrier: carrier || null, trackingNumber: trackingNumber || null }, note.trim());
+    setSaving(false);
+    if (err) { setError(err.message || 'Could not apply this override.'); return; }
+    onLog(`#${shipment.order_id.slice(0,8)} → ${status} (${note.trim()})`);
+    onDone();
+  }
+
+  return (
+    <Modal open title="Override shipment" onClose={onClose}>
+      <div style={{ marginBottom:14, fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>
+        This is a correction tool, not a routine edit — every override is written to this shipment's permanent history with your note attached.
+      </div>
+      <AdminField label="Status">
+        <select value={status} onChange={e => setStatus(e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+          {SHIPMENT_STATUSES.map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
+        </select>
+      </AdminField>
+      <div style={{ height:10 }} />
+      <AdminField label="Carrier"><AdminTextInput value={carrier} onChange={setCarrier} placeholder="e.g. DHL" /></AdminField>
+      <div style={{ height:10 }} />
+      <AdminField label="Tracking number"><AdminTextInput value={trackingNumber} onChange={setTrackingNumber} placeholder="Optional" mono /></AdminField>
+      <div style={{ height:10 }} />
+      <AdminField label="Note (required)"><AdminTextInput value={note} onChange={setNote} placeholder="Why is this being corrected?" /></AdminField>
+      {error && <div style={{ marginTop:10, fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{error}</div>}
+      <Btn wide onClick={submit} disabled={saving} style={{ marginTop:16 }}>{saving ? 'Saving…' : 'Apply override'}</Btn>
+    </Modal>
+  );
+}
+
 // ─── MAIN SHELL ──────────────────────────────────────────────────
 function AdminShellScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
@@ -2882,6 +3054,7 @@ function AdminShellScreen({ params = {} }) {
       case 'overview': return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={window._ADMIN_REVIEWS} kycCount={adminStats?.pendingKyc ?? 0} />;
 
       case 'orders': return <AdminOrdersSection accessCtx={accessCtx} />;
+      case 'shipping': return <AdminShippingSection accessCtx={accessCtx} />;
 
       case 'products': return <AdminProductsSection />;
 
