@@ -12,6 +12,22 @@
 -- except where explicitly noted (orders.shipping_fee now reflects real
 -- per-seller shipment fees instead of the Phase 4 hardcoded 0).
 --
+-- PREREQUISITES (in addition to schema.sql + Phase 0–4 +
+-- product_moderation_migration.sql): notifications_migration.sql. §21
+-- below seeds rows into notification_templates, a table that file
+-- creates — not schema.sql, not any phase0-4 file. On the live project
+-- this was already applied (same as product_moderation_migration.sql),
+-- so the dependency was invisible there. It has no dependency on
+-- Phase 0–4 itself (only on profiles/notifications/banners from
+-- schema.sql), so the simplest correct position is immediately after
+-- schema.sql, any time before this file runs:
+--   schema.sql -> notifications_migration.sql -> Phase 0 -> Phase 1 ->
+--   Phase 2 -> Phase 3 -> product_moderation_migration.sql -> Phase 4 ->
+--   Phase 5
+-- Found during local Postgres 17 integration testing — see that report
+-- for the exact failure ("relation public.notification_templates does
+-- not exist").
+--
 -- MARKETPLACE RULE enforced throughout this file: a single customer
 -- order may contain shipments from multiple sellers. A seller can only
 -- ever see/modify shipments where shipments.seller_id = auth.uid().
@@ -477,8 +493,20 @@ on conflict do nothing;
 -- any country > platform-wide + exact country > platform-wide + any
 -- country. Returns available:false (never a fabricated number) when no
 -- active rate matches at any level.
+--
+-- p_item_count is bigint, not int: every caller passes it a
+-- `sum(quantity)` over order_items/cart_items (quantity is plain int),
+-- and Postgres's sum() over an int column always returns bigint —
+-- there is no implicit bigint->int cast for function-overload
+-- resolution, so every call with an int-typed parameter here failed
+-- outright with "function does not exist". bigint is a lossless
+-- widening of int (every int value fits exactly), so this accepts the
+-- same real-world item counts with no truncation/overflow risk in
+-- either direction — not a narrowing/unsafe cast. Found during local
+-- Postgres 17 integration testing.
+drop function if exists public.calculate_shipping_fee(uuid, text, text, int);
 create or replace function public.calculate_shipping_fee(
-  p_shop_id uuid, p_destination_country text, p_method text default 'standard', p_item_count int default 1
+  p_shop_id uuid, p_destination_country text, p_method text default 'standard', p_item_count bigint default 1
 ) returns jsonb
 language plpgsql
 security definer set search_path = public, pg_temp
@@ -492,8 +520,12 @@ begin
     and (shop_id = p_shop_id or shop_id is null)
     and (destination_country is null or destination_country = p_destination_country)
   order by
-    (shop_id = p_shop_id) desc,            -- shop-specific beats platform-wide
-    (destination_country is not null) desc -- exact country beats any-country
+    -- "= p_shop_id" is NULL (not false) for a platform-wide row (shop_id is
+    -- null), and plain "desc" sorts NULL ahead of true by default — the
+    -- opposite of the intended "shop-specific beats platform-wide". Explicit
+    -- nulls last restores that intent (same fix needed for the country term).
+    (shop_id = p_shop_id) desc nulls last,            -- shop-specific beats platform-wide
+    (destination_country is not null) desc nulls last -- exact country beats any-country
   limit 1;
 
   if v_rate.id is null then
@@ -507,8 +539,8 @@ begin
   );
 end;
 $$;
-revoke all on function public.calculate_shipping_fee(uuid, text, text, int) from public, anon;
-grant execute on function public.calculate_shipping_fee(uuid, text, text, int) to authenticated;
+revoke all on function public.calculate_shipping_fee(uuid, text, text, bigint) from public, anon;
+grant execute on function public.calculate_shipping_fee(uuid, text, text, bigint) to authenticated;
 
 -- ─── 9. preview_shipping_fees() — transparent pre-checkout breakdown ──
 -- Reads the buyer's OWN cart (never a client-supplied item list), groups
@@ -618,16 +650,31 @@ grant execute on function public.admin_deactivate_shipping_rate(uuid) to authent
 -- ─── 11. create_order() — extended, NOT replaced in spirit ────────────
 -- Preserves every Phase 4 guarantee (buyer's own cart only, server-side
 -- price/stock re-read under row lock, server-computed subtotal/discount,
--- always starts pending/pending). The ONLY change: shipping_fee is no
--- longer hardcoded to 0 — it is the sum of each seller group's real,
--- admin-configured rate, computed by calculate_shipping_fee(). If ANY
--- seller group in the cart has no valid rate for the given destination,
--- the entire order creation is aborted (raise exception) rather than
--- completing with an invented or zero fee for that seller — this also
--- means no partial order/shipment rows are left behind, since the
--- raise rolls back everything already done inside this function call.
+-- always starts pending/pending). shipping_fee is no longer hardcoded to
+-- 0 — it is the sum of each seller group's real, admin-configured rate,
+-- computed by calculate_shipping_fee(). If ANY seller group in the cart
+-- has no valid rate for the given destination, the entire order creation
+-- is aborted (raise exception) before anything is written at all.
 -- Also creates exactly one shipment per seller group, and backfills
 -- order_items.shipment_id for every item in that group.
+--
+-- Second-pass fix: this function used to insert `orders` with 0/0/0/0
+-- placeholders and correct them with a follow-up UPDATE — exactly the
+-- Phase 4 pattern that collides with protect_order_fields_trg (the
+-- ordering buyer has neither orders.edit nor orders.cancel, so that
+-- trigger silently reverted the UPDATE to OLD, leaving subtotal/
+-- shipping_fee/total_amount permanently at 0 despite this function's own
+-- return value reporting the real total). Fixed the same way as Phase
+-- 4's create_order(): PASS 1 locks and validates every cart line AND
+-- computes the real shipping fee per seller group (from the cart, since
+-- no order/order_items exist yet) into a short-lived temp table, with NO
+-- write to orders/order_items/products/shipments yet; the totals are
+-- then known before the single INSERT into orders, so no follow-up
+-- UPDATE — and therefore no collision with the trigger — is ever
+-- needed. PASS 2 (after the order exists) writes order_items, decrements
+-- stock, and creates the shipments using the SAME already-computed fees
+-- (not recomputed, so the two passes can never disagree). Found during
+-- local Postgres 17 integration testing — see that report.
 create or replace function public.create_order(
   p_shipping_address jsonb,
   p_shipping_method text default 'standard',
@@ -663,15 +710,19 @@ begin
 
   v_destination_country := p_shipping_address->>'country';
 
-  insert into public.orders (
-    buyer_id, status, subtotal, discount, shipping_fee, total_amount,
-    promo_code, shipping_address, shipping_method, payment_method, payment_status
-  ) values (
-    v_buyer, 'pending', 0, 0, 0, 0,
-    p_promo_code, coalesce(p_shipping_address, '{}'::jsonb), coalesce(p_shipping_method, 'standard'),
-    p_payment_method, 'pending'
-  ) returning id into v_order_id;
+  -- Short-lived, call-scoped holding area for each seller group's
+  -- already-computed shipping fee — written once in PASS 1 (before the
+  -- order exists, from the cart), read back in PASS 2 (after the order
+  -- exists, to create the actual shipments) so the fee is computed
+  -- exactly once and the two passes can never disagree.
+  create temporary table if not exists _create_order_shipping_calc (
+    seller_id uuid, shop_id uuid, item_count bigint, fee numeric, rate_id uuid
+  ) on commit drop;
+  delete from _create_order_shipping_calc;
 
+  -- PASS 1: lock every cart line's product row, validate it, and sum
+  -- the real subtotal — no write to orders/order_items/products/
+  -- shipments here yet.
   for v_item in
     select ci.id as cart_item_id, ci.product_id, ci.quantity, ci.variant,
            p.price, p.stock, p.title, p.images, p.shop_id, p.status as p_status, p.approval_status,
@@ -689,12 +740,6 @@ begin
     if v_item.stock < v_item.quantity then
       raise exception 'Insufficient stock for %: % available', v_item.title, v_item.stock;
     end if;
-
-    insert into public.order_items (order_id, product_id, shop_id, seller_id, title, image_url, variant, quantity, unit_price)
-    values (v_order_id, v_item.product_id, v_item.shop_id, v_item.seller_id, v_item.title,
-            v_item.images[1], coalesce(v_item.variant, '{}'::jsonb), v_item.quantity, v_item.price);
-
-    update public.products set stock = stock - v_item.quantity where id = v_item.product_id;
     v_subtotal := v_subtotal + (v_item.price * v_item.quantity);
   end loop;
 
@@ -715,13 +760,16 @@ begin
     end if;
   end if;
 
-  -- One shipment per seller group, with a REAL, admin-configured fee.
-  -- Any missing rate aborts the whole order — no invented/zero fee ever
-  -- reaches orders.shipping_fee or a shipments row.
+  -- One shipment per seller group, with a REAL, admin-configured fee —
+  -- computed from the CART (order_items doesn't exist yet). Any missing
+  -- rate aborts the whole order before any write happens at all.
   for v_seller_group in
-    select seller_id, shop_id, sum(quantity) as item_count
-    from public.order_items where order_id = v_order_id
-    group by seller_id, shop_id
+    select p.shop_id, s.seller_id, sum(ci.quantity) as item_count
+    from public.cart_items ci
+    join public.products p on p.id = ci.product_id
+    join public.shops s on s.id = p.shop_id
+    where ci.cart_id = v_cart_id
+    group by p.shop_id, s.seller_id
   loop
     v_calc := public.calculate_shipping_fee(v_seller_group.shop_id, v_destination_country, p_shipping_method, v_seller_group.item_count);
     if not (v_calc->>'available')::boolean then
@@ -730,9 +778,53 @@ begin
 
     v_shipping_fee := v_shipping_fee + (v_calc->>'fee')::numeric;
 
+    insert into _create_order_shipping_calc (seller_id, shop_id, item_count, fee, rate_id)
+    values (v_seller_group.seller_id, v_seller_group.shop_id, v_seller_group.item_count,
+            (v_calc->>'fee')::numeric, (v_calc->>'rate_id')::uuid);
+  end loop;
+
+  v_total := v_subtotal - v_discount + v_shipping_fee;
+
+  -- The ONE write to orders — with the real, already-computed totals,
+  -- so no follow-up UPDATE (and therefore no collision with
+  -- protect_order_fields_trg) is ever needed.
+  insert into public.orders (
+    buyer_id, status, subtotal, discount, shipping_fee, total_amount,
+    promo_code, shipping_address, shipping_method, payment_method, payment_status
+  ) values (
+    v_buyer, 'pending', v_subtotal, v_discount, v_shipping_fee, v_total,
+    p_promo_code, coalesce(p_shipping_address, '{}'::jsonb), coalesce(p_shipping_method, 'standard'),
+    p_payment_method, 'pending'
+  ) returning id into v_order_id;
+
+  -- PASS 2: same locked rows (the FOR UPDATE lock from PASS 1 is held
+  -- for the rest of this transaction) — now write order_items and
+  -- decrement stock.
+  for v_item in
+    select ci.id as cart_item_id, ci.product_id, ci.quantity, ci.variant,
+           p.price, p.stock, p.title, p.images, p.shop_id, p.status as p_status, p.approval_status,
+           s.seller_id
+    from public.cart_items ci
+    join public.products p on p.id = ci.product_id
+    join public.shops s on s.id = p.shop_id
+    where ci.cart_id = v_cart_id
+    for update of p
+  loop
+    insert into public.order_items (order_id, product_id, shop_id, seller_id, title, image_url, variant, quantity, unit_price)
+    values (v_order_id, v_item.product_id, v_item.shop_id, v_item.seller_id, v_item.title,
+            v_item.images[1], coalesce(v_item.variant, '{}'::jsonb), v_item.quantity, v_item.price);
+
+    update public.products set stock = stock - v_item.quantity where id = v_item.product_id;
+  end loop;
+
+  -- Create each seller group's shipment using the SAME fee already
+  -- computed and validated in PASS 1 (no recomputation).
+  for v_seller_group in
+    select seller_id, shop_id, item_count, fee, rate_id from _create_order_shipping_calc
+  loop
     insert into public.shipments (order_id, seller_id, shop_id, status, shipping_fee, rate_id, fee_status)
     values (v_order_id, v_seller_group.seller_id, v_seller_group.shop_id, 'pending',
-            (v_calc->>'fee')::numeric, (v_calc->>'rate_id')::uuid, 'calculated')
+            v_seller_group.fee, v_seller_group.rate_id, 'calculated')
     returning id into v_shipment_id;
 
     insert into public.shipment_status_history (shipment_id, status, source, changed_by)
@@ -747,12 +839,8 @@ begin
     perform set_config('app.bypass_shipment_protection', 'false', true);
   end loop;
 
-  v_total := v_subtotal - v_discount + v_shipping_fee;
-
-  update public.orders set subtotal = v_subtotal, discount = v_discount, shipping_fee = v_shipping_fee, total_amount = v_total
-  where id = v_order_id;
-
   delete from public.cart_items where cart_id = v_cart_id;
+  delete from _create_order_shipping_calc;
 
   perform public.log_audit('order_created', 'orders', v_order_id::text, null,
     jsonb_build_object('total_amount', v_total, 'item_count', v_item_count, 'shipping_fee', v_shipping_fee));

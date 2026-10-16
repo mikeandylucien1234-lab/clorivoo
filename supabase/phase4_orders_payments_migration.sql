@@ -6,6 +6,20 @@
 -- transcript. Run this file manually in the Supabase SQL editor
 -- (or via a reviewed `apply_migration`) only after explicit approval.
 --
+-- PREREQUISITES (run before this file, in addition to schema.sql and
+-- Phase 0–3): product_moderation_migration.sql. create_order() (§13
+-- below) reads and checks products.approval_status, a column that file
+-- adds — not schema.sql, not any Phase 0–3 file. On the live project
+-- this was already applied (dated before Phase 4 in the project's own
+-- migration history), so the dependency was invisible there; a clean
+-- database built only from schema.sql + Phase 0–3 has create_order()
+-- fail at runtime ("column approval_status does not exist") the first
+-- time anyone calls it, even though the migration itself applies with
+-- no error (CREATE FUNCTION doesn't validate a plpgsql body's column
+-- references until first execution). Found and fixed during local
+-- Postgres 17 integration testing — see that report for the exact
+-- failure.
+--
 -- Business rules applied here, as approved by the user on 2026-10-10:
 --   - Commission: 10% of the product subtotal, EXCLUDING shipping fees.
 --     Rate is stored server-side (commission_rules) and snapshotted onto
@@ -272,6 +286,9 @@ returns trigger
 language plpgsql
 security definer set search_path = public, pg_temp
 as $$
+declare
+  v_requested_payment_status text;
+  v_requested_status text;
 begin
   if public.has_permission(auth.uid(), 'orders.edit') then
     if new.status is distinct from old.status then
@@ -288,6 +305,43 @@ begin
     perform public.log_audit('order_cancelled', 'orders', new.id::text,
       jsonb_build_object('status', old.status), jsonb_build_object('status', 'cancelled'));
     return new;
+  end if;
+
+  -- payments.confirm — the one other legitimate direct write to `orders`:
+  -- admin_confirm_payment() (payment_status -> paid/failed, plus the
+  -- matching pending->confirmed status bump only on a successful
+  -- payment) and admin_record_refund_result() (payment_status ->
+  -- refunded/partially_refunded). Narrowly scoped to those exact values
+  -- and that exact status transition — everything else about the row,
+  -- including any other column the caller's UPDATE statement tried to
+  -- set, is reset to OLD below, the same way the orders.cancel branch
+  -- above only ever applies its own one sanctioned change. Neither
+  -- function is weakened or bypassed by this — this only lets their
+  -- own, already permission-checked UPDATE actually persist instead of
+  -- being silently reverted. (Second-pass fix: found during local
+  -- Postgres 17 integration testing — admin_confirm_payment()'s and
+  -- admin_record_refund_result()'s own UPDATEs to orders were being
+  -- silently discarded by this trigger, since payments.confirm was
+  -- never one of its allowed permissions, even though both functions
+  -- already correctly check for it themselves before attempting the
+  -- update. orders.refund was audited too: neither admin_initiate_refund()
+  -- nor admin_decide_refund() ever updates `orders` directly, so no
+  -- branch for it was added here — there is nothing for it to protect.)
+  if public.has_permission(auth.uid(), 'payments.confirm') then
+    v_requested_payment_status := new.payment_status;
+    v_requested_status := new.status;
+    if v_requested_payment_status is distinct from old.payment_status
+       and v_requested_payment_status in ('paid','failed','refunded','partially_refunded') then
+      new := old;
+      new.payment_status := v_requested_payment_status;
+      if v_requested_payment_status = 'paid' and old.status = 'pending' and v_requested_status = 'confirmed' then
+        new.status := 'confirmed';
+      end if;
+      new.updated_at := now();
+      perform public.log_audit('order_payment_status_changed', 'orders', new.id::text,
+        jsonb_build_object('payment_status', old.payment_status), jsonb_build_object('payment_status', v_requested_payment_status));
+      return new;
+    end if;
   end if;
 
   -- No other direct client update to `orders` is permitted at all — every
@@ -420,15 +474,21 @@ begin
   select id into v_cart_id from public.carts where user_id = v_buyer;
   if v_cart_id is null then raise exception 'Cart is empty'; end if;
 
-  insert into public.orders (
-    buyer_id, status, subtotal, discount, shipping_fee, total_amount,
-    promo_code, shipping_address, shipping_method, payment_method, payment_status
-  ) values (
-    v_buyer, 'pending', 0, 0, 0, 0,
-    p_promo_code, coalesce(p_shipping_address, '{}'::jsonb), coalesce(p_shipping_method, 'standard'),
-    p_payment_method, 'pending'
-  ) returning id into v_order_id;
-
+  -- PASS 1: lock every cart line's product row, validate it, and sum the
+  -- real subtotal — no write to orders/order_items/products here yet.
+  -- (Second-pass fix: orders used to be inserted with 0/0/0/0 placeholders
+  -- and corrected by a follow-up UPDATE below — but protect_order_fields_trg
+  -- (§10 above) fires on every UPDATE to orders and, since the ordering
+  -- buyer has neither orders.edit nor an orders.cancel transition, silently
+  -- reverted that UPDATE to OLD, leaving every real order permanently
+  -- stuck at subtotal/total_amount = 0 in the table despite this function's
+  -- own return value reporting the correct total. Confirmed by live
+  -- execution against a local Postgres 17 test database — see that
+  -- report. Fixed by computing the real totals BEFORE the single INSERT
+  -- below, so orders is only ever INSERTed here, never UPDATEd, and
+  -- protect_order_fields_trg is never involved in order creation at all —
+  -- the trigger itself is unchanged and still protects the row from any
+  -- later UPDATE exactly as before.)
   for v_item in
     select ci.id as cart_item_id, ci.product_id, ci.quantity, ci.variant,
            p.price, p.stock, p.title, p.images, p.shop_id, p.status as p_status, p.approval_status,
@@ -446,12 +506,6 @@ begin
     if v_item.stock < v_item.quantity then
       raise exception 'Insufficient stock for %: % available', v_item.title, v_item.stock;
     end if;
-
-    insert into public.order_items (order_id, product_id, shop_id, seller_id, title, image_url, variant, quantity, unit_price)
-    values (v_order_id, v_item.product_id, v_item.shop_id, v_item.seller_id, v_item.title,
-            v_item.images[1], coalesce(v_item.variant, '{}'::jsonb), v_item.quantity, v_item.price);
-
-    update public.products set stock = stock - v_item.quantity where id = v_item.product_id;
     v_subtotal := v_subtotal + (v_item.price * v_item.quantity);
   end loop;
 
@@ -476,8 +530,37 @@ begin
   -- shippingFee: 0) — documented limitation, not a Phase 4 invention.
   v_total := v_subtotal - v_discount + v_shipping_fee;
 
-  update public.orders set subtotal = v_subtotal, discount = v_discount, shipping_fee = v_shipping_fee, total_amount = v_total
-  where id = v_order_id;
+  -- The ONE write to orders — with the real, already-computed totals, so
+  -- no follow-up UPDATE (and therefore no collision with
+  -- protect_order_fields_trg) is ever needed.
+  insert into public.orders (
+    buyer_id, status, subtotal, discount, shipping_fee, total_amount,
+    promo_code, shipping_address, shipping_method, payment_method, payment_status
+  ) values (
+    v_buyer, 'pending', v_subtotal, v_discount, v_shipping_fee, v_total,
+    p_promo_code, coalesce(p_shipping_address, '{}'::jsonb), coalesce(p_shipping_method, 'standard'),
+    p_payment_method, 'pending'
+  ) returning id into v_order_id;
+
+  -- PASS 2: same locked rows (the FOR UPDATE lock from PASS 1 is held for
+  -- the rest of this transaction), now actually write order_items and
+  -- decrement stock.
+  for v_item in
+    select ci.id as cart_item_id, ci.product_id, ci.quantity, ci.variant,
+           p.price, p.stock, p.title, p.images, p.shop_id, p.status as p_status, p.approval_status,
+           s.seller_id
+    from public.cart_items ci
+    join public.products p on p.id = ci.product_id
+    join public.shops s on s.id = p.shop_id
+    where ci.cart_id = v_cart_id
+    for update of p
+  loop
+    insert into public.order_items (order_id, product_id, shop_id, seller_id, title, image_url, variant, quantity, unit_price)
+    values (v_order_id, v_item.product_id, v_item.shop_id, v_item.seller_id, v_item.title,
+            v_item.images[1], coalesce(v_item.variant, '{}'::jsonb), v_item.quantity, v_item.price);
+
+    update public.products set stock = stock - v_item.quantity where id = v_item.product_id;
+  end loop;
 
   delete from public.cart_items where cart_id = v_cart_id;
 
