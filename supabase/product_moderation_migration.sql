@@ -48,6 +48,31 @@ drop policy if exists "Permitted staff can moderate products" on public.products
 create policy "Permitted staff can moderate products" on public.products for all to authenticated
   using (public.has_permission(auth.uid(), 'products.approve'));
 
+-- ─── ANON READ ACCESS FIX ────────────────────────────────────────────
+-- Found investigating the fix above: none of the non-public policies on
+-- products carried a `TO` clause, so they applied implicitly to every
+-- role, anon included. Postgres must evaluate every applicable policy's
+-- USING clause for a query, even ones that can't grant it — and anon has
+-- no EXECUTE on is_active_account()/has_permission() (revoked by Phase 1),
+-- so a bare anon SELECT on products errored out entirely instead of just
+-- falling through to "Active products are public". Scoping these 4
+-- policies to `authenticated` is the idiomatic fix: Postgres then skips
+-- their USING clauses for anon altogether, and the public SELECT policy
+-- (unchanged) still lets anon read approved+active rows. This only
+-- narrows who these 4 policies apply to — their USING conditions are
+-- untouched — so it cannot grant anon any access it didn't already have.
+drop policy if exists "Sellers can manage own products by seller_id" on public.products;
+create policy "Sellers can manage own products by seller_id" on public.products for all to authenticated
+  using (seller_id = auth.uid() and public.is_active_account(auth.uid()) and public.is_verified_seller(auth.uid()));
+
+drop policy if exists "Sellers can manage their products" on public.products;
+create policy "Sellers can manage their products" on public.products for all to authenticated
+  using (shop_id in (select id from shops where shops.seller_id = auth.uid()) and public.is_active_account(auth.uid()) and public.is_verified_seller(auth.uid()));
+
+drop policy if exists "Admins can manage all products" on public.products;
+create policy "Admins can manage all products" on public.products for all to authenticated
+  using ((select role from profiles where profiles.id = auth.uid()) = 'admin');
+
 -- ─── SELLER SELF-MODERATION PROTECTION ──────────────────────────────
 -- Group B audit finding: schema.sql's "Sellers can manage their products"
 -- is a FOR ALL policy scoped only by shop_id/seller_id, with no WITH
