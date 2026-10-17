@@ -253,6 +253,7 @@ function CheckoutPaymentScreen({ params = {} }) {
   const [loading, setLoading] = React.useState(false);
   const [card, setCard] = React.useState({ number:'', expiry:'', cvv:'', name:'' });
   const [cardErrors, setCardErrors] = React.useState({});
+  const [orderError, setOrderError] = React.useState('');
 
   const walletInsufficient = total > WALLET_BALANCE;
   const accountSuspended = window._PROFILE?.status === 'suspended';
@@ -267,35 +268,37 @@ function CheckoutPaymentScreen({ params = {} }) {
     return Object.keys(e).length === 0;
   }
 
+  // Creating an order never means it's paid — payment_status starts and
+  // stays 'pending' server-side until a permitted admin records a real
+  // provider confirmation. There is no gateway connected yet for any of
+  // these methods, so this screen never claims success or failure on its
+  // own: it places the order, logs the chosen method as a payment
+  // attempt, and sends the buyer to a screen that honestly says "pending".
   async function handlePay() {
     if (accountSuspended) return;
     if (paymentMethod === 'card' && !validateCard()) return;
     if (paymentMethod === 'wallet' && walletInsufficient) return;
 
     setLoading(true);
-    let success = true;
+    setOrderError('');
     try {
       const user = await sbGetUser();
-      await sbCreateOrder(user?.id, {
-        items: params.items || [],
+      const { data: order, error } = await sbCreateOrder(user?.id, {
         shippingAddress: address,
         shippingMethod: 'standard',
         paymentMethod,
-        subtotal, discount, shippingFee: 0, total,
-        promoCode: null,
       });
+      if (error || !order) {
+        setLoading(false);
+        setOrderError(error?.message || "Couldn't place your order — please try again.");
+        return;
+      }
+      await sbRecordPaymentAttempt(order.id, paymentMethod);
+      setLoading(false);
+      navigate('order-confirmation', { ...params, orderId: order.id, total: order.total_amount ?? total, paymentMethod });
     } catch (e) {
-      // Non-fatal for the demo flow — still proceed with the simulated result below
-    }
-    // Simulate a real payment gateway round-trip
-    await new Promise(r => setTimeout(r, 1400));
-    success = Math.random() > 0.12;
-    setLoading(false);
-
-    if (success) {
-      navigate('order-confirmation', { ...params, paymentMethod });
-    } else {
-      navigate('payment-failed', { ...params, paymentMethod });
+      setLoading(false);
+      setOrderError(e?.message || "Couldn't place your order — please try again.");
     }
   }
 
@@ -432,6 +435,12 @@ function CheckoutPaymentScreen({ params = {} }) {
               <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.danger, fontWeight:600 }}>Your account is suspended — checkout is disabled. Contact support to appeal.</span>
             </div>
           )}
+          {orderError && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, background:'#FDEDED', border:'1px solid #F6C9C9', borderRadius:10, padding:'8px 12px', marginBottom:10 }}>
+              <Icon name="alertTriangle" size={14} color={C.danger} />
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.danger, fontWeight:600 }}>{orderError}</span>
+            </div>
+          )}
           <Btn variant="primary" size="lg" wide onClick={handlePay} disabled={loading || accountSuspended}
             style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, boxShadow:'0 8px 20px rgba(108,77,255,0.3)' }}>
             {loading ? 'Processing…' : (<><Icon name="lock" size={15} color="#fff" /> Pay ${total.toFixed(2)}</>)}
@@ -447,7 +456,7 @@ function OrderConfirmationScreen({ params = {} }) {
   const { replace } = useNav();
   const isDesktop = useIsDesktop();
   const total = params.total ?? 0;
-  const orderNumber = React.useMemo(() => `CLR-${Math.floor(100000 + Math.random() * 900000)}`, []);
+  const orderNumber = params.orderId ? `CLR-${params.orderId.slice(0, 8).toUpperCase()}` : '—';
   const deliveryDate = React.useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 3);
@@ -467,8 +476,13 @@ function OrderConfirmationScreen({ params = {} }) {
           <div style={{ width:72, height:72, borderRadius:9999, background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px', position:'relative' }}>
             <Icon name="checkCircle" size={38} color="#fff" />
           </div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:'#fff', marginBottom:6, position:'relative' }}>Order Confirmed!</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:'#fff', marginBottom:6, position:'relative' }}>Order Placed!</div>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:'rgba(255,255,255,0.9)', position:'relative' }}>Thank you for shopping with CLORIVO</div>
+        </div>
+
+        <div style={{ background:'#FFF6E5', borderRadius:12, padding:'10px 14px', marginTop:14, display:'flex', alignItems:'center', gap:8 }}>
+          <Icon name="clock" size={15} color={C.warning} />
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:'#92400E' }}>Payment pending confirmation — your order ships once it's confirmed.</span>
         </div>
 
         <div style={{ background:C.white, borderRadius:16, padding:'16px', marginTop:14, boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
@@ -477,8 +491,12 @@ function OrderConfirmationScreen({ params = {} }) {
             <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700, color:C.ink }}>{orderNumber}</span>
           </div>
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:10 }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Amount Paid</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Order Total</span>
             <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700, color:C.primary }}>${total.toFixed(2)}</span>
+          </div>
+          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:10 }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Payment Status</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.warning }}>Pending</span>
           </div>
           <div style={{ display:'flex', justifyContent:'space-between' }}>
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Payment Method</span>

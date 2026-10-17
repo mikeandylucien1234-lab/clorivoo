@@ -29,6 +29,7 @@ const ADMIN_NAV = [
   { key:'overview', label:'Dashboard', icon:'barChart' },
   { group:'Catalog', items:[
     { key:'orders',     label:'Orders',      icon:'cart' },
+    { key:'shipping',   label:'Shipping',    icon:'truck' },
     { key:'products',   label:'Products',    icon:'package' },
     { key:'categories', label:'Categories',  icon:'grid' },
     { key:'brands',     label:'Brands',      icon:'tag' },
@@ -2412,7 +2413,7 @@ function AdminProductsSection() {
 const ORDER_STATUS_TONE = { pending:'warning', confirmed:'info', processing:'info', shipped:'primary', delivered:'success', cancelled:'danger', refunded:'mute' };
 const PAGE_SIZE = 10;
 
-function AdminOrdersSection() {
+function AdminOrdersSection({ accessCtx }) {
   const [result, setResult] = React.useState({ orders:[], totalOrders:0, totalPages:0, currentPage:1 });
   const [loading, setLoading] = React.useState(true);
   const [page, setPage] = React.useState(1);
@@ -2453,13 +2454,7 @@ function AdminOrdersSection() {
     load();
   }
 
-  async function handleRefund(order) {
-    await sbAdminUpdateOrderStatus(order.id, 'refunded');
-    logAdminAction('Refunded order', `#${order.id.slice(0,8)} — $${(order.total_amount ?? 0).toFixed(2)}`);
-    load();
-  }
-
-  if (detailId) return <AdminOrderDetail orderId={detailId} onBack={() => { setDetailId(null); load(); }} onStatusChange={handleStatusChange} onRefund={handleRefund} />;
+  if (detailId) return <AdminOrderDetail orderId={detailId} accessCtx={accessCtx} onBack={() => { setDetailId(null); load(); }} onStatusChange={handleStatusChange} />;
 
   const { orders, totalOrders, totalPages } = result;
 
@@ -2495,14 +2490,14 @@ function AdminOrdersSection() {
 
       <AdminCard padded={false} style={{ overflowX:'auto' }}>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
-          <thead><tr><Th>Order</Th><Th>Placed</Th><Th>Customer</Th><Th>Seller</Th><Th align="right">Total</Th><Th>Status</Th><Th align="right">Actions</Th></tr></thead>
+          <thead><tr><Th>Order</Th><Th>Placed</Th><Th>Customer</Th><Th>Seller</Th><Th align="right">Total</Th><Th>Payment</Th><Th>Status</Th><Th align="right">Actions</Th></tr></thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7}><AdminEmptyRow text="Loading orders…" /></td></tr>
+              <tr><td colSpan={8}><AdminEmptyRow text="Loading orders…" /></td></tr>
             ) : result.timedOut ? (
-              <tr><td colSpan={7}><AdminEmptyRow text="Couldn't reach the server — check your connection and try again." /></td></tr>
+              <tr><td colSpan={8}><AdminEmptyRow text="Couldn't reach the server — check your connection and try again." /></td></tr>
             ) : orders.length === 0 ? (
-              <tr><td colSpan={7}><AdminEmptyRow text="No orders yet" /></td></tr>
+              <tr><td colSpan={8}><AdminEmptyRow text="No orders yet" /></td></tr>
             ) : orders.map(o => (
               <tr key={o.id}>
                 <Td style={{ fontWeight:700, cursor:'pointer' }} onClick={() => setDetailId(o.id)}>#{o.id.slice(0,8)}</Td>
@@ -2513,6 +2508,7 @@ function AdminOrdersSection() {
                 </Td>
                 <Td>{o.shopNames?.length ? o.shopNames.join(', ') : '—'}</Td>
                 <Td align="right" style={{ fontFamily:"'JetBrains Mono',monospace" }}>${(o.total_amount ?? 0).toFixed(2)}</Td>
+                <Td><StatusPill tone={o.payment_status === 'paid' ? 'success' : o.payment_status === 'failed' ? 'danger' : o.payment_status === 'refunded' || o.payment_status === 'partially_refunded' ? 'mute' : 'warning'}>{o.payment_status || 'pending'}</StatusPill></Td>
                 <Td>
                   <select value={o.status} onChange={e => handleStatusChange(o.id, e.target.value)}
                     style={{ border:'none', borderRadius:9999, padding:'4px 10px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, textTransform:'capitalize', ...(() => { const t = { success:{bg:'#EFF9F4',fg:C.success}, danger:{bg:'#FDEDED',fg:C.danger}, warning:{bg:'#FFF6E5',fg:C.warning}, mute:{bg:C.paper,fg:C.mute}, primary:{bg:C.primarySoft,fg:C.primaryDeep}, info:{bg:'#EBF2FF',fg:'#2563EB'} }[ORDER_STATUS_TONE[o.status] || 'mute']; return { background:t.bg, color:t.fg }; })() }}>
@@ -2524,11 +2520,6 @@ function AdminOrdersSection() {
                     <button onClick={() => setDetailId(o.id)} title="View details" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                       <Icon name="eye" size={14} color={C.mute} />
                     </button>
-                    {o.status !== 'refunded' && o.status !== 'cancelled' && (
-                      <button onClick={() => handleRefund(o)} title="Refund" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        <Icon name="refreshCw" size={14} color={C.danger} />
-                      </button>
-                    )}
                   </div>
                 </Td>
               </tr>
@@ -2548,10 +2539,34 @@ function AdminOrdersSection() {
   );
 }
 
-function AdminOrderDetail({ orderId, onBack, onStatusChange, onRefund }) {
+const PAYMENT_STATUS_TONE = { pending:'warning', paid:'success', failed:'danger', refunded:'mute', partially_refunded:'mute' };
+
+function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
   const [order, setOrder] = React.useState(null);
   const [fetching, setFetching] = React.useState(true);
-  React.useEffect(() => { setFetching(true); sbAdminGetOrderDetail(orderId).then(o => { setOrder(o); setFetching(false); }); }, [orderId]);
+  const [intents, setIntents] = React.useState([]);
+  const [refunds, setRefunds] = React.useState([]);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  const [startingRefund, setStartingRefund] = React.useState(false);
+  const [refundReason, setRefundReason] = React.useState('');
+  const [recordingRefundId, setRecordingRefundId] = React.useState(null);
+  const [recordAmount, setRecordAmount] = React.useState('');
+  const [recordRef, setRecordRef] = React.useState('');
+
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+
+  const refresh = React.useCallback(() => {
+    setFetching(true);
+    Promise.all([
+      sbAdminGetOrderDetail(orderId),
+      sbAdminGetPaymentIntents({ orderId }),
+      sbAdminGetRefundRequests({ orderId, limit: 50 }),
+    ]).then(([o, ints, refundsRes]) => {
+      setOrder(o); setIntents(ints); setRefunds(refundsRes.requests || []); setFetching(false);
+    });
+  }, [orderId]);
+  React.useEffect(() => { refresh(); }, [refresh]);
 
   if (!order) {
     return (
@@ -2566,9 +2581,22 @@ function AdminOrderDetail({ orderId, onBack, onStatusChange, onRefund }) {
 
   const items = order.order_items || [];
   const tone = ORDER_STATUS_TONE[order.status] || 'mute';
+  const alreadyRefunded = refunds.reduce((s, r) => s + (r.refunds || []).filter(x => x.status === 'succeeded').reduce((s2, x) => s2 + (x.amount || 0), 0), 0);
+  const pendingRequestAmount = refunds.filter(r => ['requested','under_review','approved','processing'].includes(r.status)).reduce((s, r) => s + (r.amount_requested || 0), 0);
+  const remaining = (order.total_amount ?? 0) - alreadyRefunded - pendingRequestAmount;
+  const canRefund = ['paid','partially_refunded'].includes(order.payment_status) && remaining > 0;
+
+  async function runAction(fn) {
+    setBusy(true); setErr('');
+    const { error } = await fn();
+    setBusy(false);
+    if (error) { setErr(error.message || 'This action was rejected by the server.'); return false; }
+    refresh();
+    return true;
+  }
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:620 }}>
+    <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:640 }}>
       <button onClick={onBack} style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:0, width:'fit-content' }}>
         <Icon name="arrowLeft" size={16} color={C.mute} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Orders</span>
       </button>
@@ -2579,7 +2607,10 @@ function AdminOrderDetail({ orderId, onBack, onStatusChange, onRefund }) {
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:800, color:C.ink }}>Order #{order.id.slice(0,8)}</div>
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute, marginTop:2 }}>{new Date(order.created_at).toLocaleString('en-US', { month:'long', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' })}</div>
           </div>
-          <StatusPill tone={tone}>{order.status}</StatusPill>
+          <div style={{ display:'flex', gap:6 }}>
+            <StatusPill tone={PAYMENT_STATUS_TONE[order.payment_status] || 'warning'}>{order.payment_status || 'pending'}</StatusPill>
+            <StatusPill tone={tone}>{order.status}</StatusPill>
+          </div>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:6, paddingTop:12, borderTop:`1px solid ${C.hairline}` }}>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Customer</div>
@@ -2595,30 +2626,292 @@ function AdminOrderDetail({ orderId, onBack, onStatusChange, onRefund }) {
           <div key={it.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{it.title}</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{it.shops?.name || '—'} · Qty {it.quantity}</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{it.shops?.name || '—'} · Qty {it.quantity} · <span style={{ textTransform:'capitalize' }}>{it.fulfillment_status || 'pending'}</span></div>
             </div>
             <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:700, color:C.ink }}>${(it.unit_price ?? 0).toFixed(2)}</span>
           </div>
         ))}
         <div style={{ display:'flex', justifyContent:'space-between', padding:'12px 16px', borderTop:`1px solid ${C.hairline}` }}>
           <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Total</span>
-          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:800, color:C.ink }}>${(order.total_amount ?? 0).toFixed(2)}</span>
+          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:800, color:C.ink }}>${(order.total_amount ?? 0).toFixed(2)} {order.currency || 'USD'}</span>
         </div>
       </AdminCard>
 
       <AdminCard>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:10 }}>Update status</div>
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <select value={order.status} onChange={e => { onStatusChange(order.id, e.target.value); setOrder(o => ({ ...o, status:e.target.value })); }}
-            style={{ flex:1, minWidth:160, border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }}>
-            {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          {order.status !== 'refunded' && order.status !== 'cancelled' && (
-            <Btn variant="secondary" onClick={() => { onRefund(order); setOrder(o => ({ ...o, status:'refunded' })); }} style={{ color:C.danger }}>Refund order</Btn>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:10 }}>Fulfillment status</div>
+        <select value={order.status} onChange={e => { onStatusChange(order.id, e.target.value); setOrder(o => ({ ...o, status:e.target.value })); }}
+          disabled={!can('orders.edit') && !can('orders.cancel')}
+          style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }}>
+          {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </AdminCard>
+
+      {err && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{err}</div>}
+
+      <div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:8 }}>Payment attempts</div>
+        <AdminCard padded={false}>
+          {intents.length === 0 ? <AdminEmptyRow text="No payment attempt recorded yet." /> : intents.map((it, i) => (
+            <div key={it.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.ink, textTransform:'capitalize' }}>{it.provider} · ${Number(it.amount).toFixed(2)}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{new Date(it.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}{it.provider_reference ? ` · ref ${it.provider_reference}` : ''}</div>
+              </div>
+              <StatusPill tone={it.status === 'succeeded' ? 'success' : it.status === 'failed' ? 'danger' : 'warning'}>{it.status}</StatusPill>
+              {it.status === 'pending' && can('payments.confirm') && (
+                <div style={{ display:'flex', gap:6 }}>
+                  <button disabled={busy} onClick={() => runAction(() => sbAdminConfirmPayment(it.id, 'failed'))} title="Mark failed" style={{ border:`1px solid ${C.danger}`, background:'#FDEDED', borderRadius:8, width:30, height:30, cursor:'pointer' }}>
+                    <Icon name="x" size={14} color={C.danger} />
+                  </button>
+                  <button disabled={busy} onClick={() => runAction(() => sbAdminConfirmPayment(it.id, 'succeeded'))} title="Confirm paid" style={{ border:`1px solid ${C.success}`, background:'#EFF9F4', borderRadius:8, width:30, height:30, cursor:'pointer' }}>
+                    <Icon name="check" size={14} color={C.success} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </AdminCard>
+      </div>
+
+      <div>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Refunds {remaining > 0 ? `· $${remaining.toFixed(2)} refundable` : ''}</span>
+          {canRefund && can('orders.refund') && !startingRefund && (
+            <Btn size="sm" variant="secondary" style={{ color:C.danger }} onClick={() => setStartingRefund(true)}>Start a refund</Btn>
           )}
         </div>
-      </AdminCard>
+
+        {startingRefund && (
+          <AdminCard style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:10 }}>
+            <textarea value={refundReason} onChange={e => setRefundReason(e.target.value)} placeholder="Reason — this is shown to the seller/buyer record." rows={2}
+              style={{ border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'9px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, resize:'vertical' }} />
+            <div style={{ display:'flex', gap:8 }}>
+              <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => { setStartingRefund(false); setRefundReason(''); }} disabled={busy}>Cancel</Btn>
+              <Btn size="sm" variant="danger" style={{ flex:1 }} disabled={busy || !refundReason.trim()}
+                onClick={async () => { const ok = await runAction(() => sbAdminInitiateRefund(order.id, refundReason)); if (ok) { setStartingRefund(false); setRefundReason(''); } }}>
+                Approve refund request
+              </Btn>
+            </div>
+          </AdminCard>
+        )}
+
+        <AdminCard padded={false}>
+          {refunds.length === 0 ? <AdminEmptyRow text="No refund activity on this order." /> : refunds.map((r, i) => (
+            <div key={r.id} style={{ padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.ink }}>${Number(r.amount_requested).toFixed(2)} requested</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{r.reason}</div>
+                </div>
+                <StatusPill tone={r.status === 'succeeded' ? 'success' : r.status === 'rejected' || r.status === 'failed' ? 'danger' : 'warning'}>{r.status}</StatusPill>
+              </div>
+              {r.status === 'requested' && can('orders.refund') && (
+                <div style={{ display:'flex', gap:6, marginTop:8 }}>
+                  <Btn size="sm" style={{ flex:1, color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} disabled={busy}
+                    onClick={() => runAction(() => sbAdminDecideRefund(r.id, 'rejected', 'Not eligible'))}>Reject</Btn>
+                  <Btn size="sm" variant="primary" style={{ flex:1 }} disabled={busy}
+                    onClick={() => runAction(() => sbAdminDecideRefund(r.id, 'approved'))}>Approve</Btn>
+                </div>
+              )}
+              {['approved','processing'].includes(r.status) && can('payments.confirm') && (
+                recordingRefundId === r.id ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:8 }}>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <input value={recordAmount} onChange={e => setRecordAmount(e.target.value)} placeholder={`Amount (≤ $${Number(r.amount_approved).toFixed(2)})`}
+                        style={{ flex:1, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'7px 10px', fontFamily:"'JetBrains Mono',monospace", fontSize:12.5 }} />
+                      <input value={recordRef} onChange={e => setRecordRef(e.target.value)} placeholder="Provider reference"
+                        style={{ flex:1, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'7px 10px', fontFamily:"'Inter',sans-serif", fontSize:12.5 }} />
+                    </div>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => setRecordingRefundId(null)} disabled={busy}>Cancel</Btn>
+                      <Btn size="sm" style={{ flex:1, color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} disabled={busy}
+                        onClick={() => runAction(() => sbAdminRecordRefundResult(r.id, 'failed', r.amount_requested, recordRef || null, 'Recorded as failed'))}>Mark failed</Btn>
+                      <Btn size="sm" variant="primary" style={{ flex:1 }} disabled={busy || !recordAmount}
+                        onClick={async () => { const ok = await runAction(() => sbAdminRecordRefundResult(r.id, 'succeeded', parseFloat(recordAmount), recordRef || null)); if (ok) { setRecordingRefundId(null); setRecordAmount(''); setRecordRef(''); } }}>
+                        Confirm refunded
+                      </Btn>
+                    </div>
+                  </div>
+                ) : (
+                  <Btn size="sm" variant="secondary" style={{ marginTop:8 }} onClick={() => { setRecordingRefundId(r.id); setRecordAmount(String(r.amount_approved ?? '')); }}>Record provider result</Btn>
+                )
+              )}
+            </div>
+          ))}
+        </AdminCard>
+      </div>
     </div>
+  );
+}
+
+// ─── ADMIN SHIPPING MANAGEMENT ────────────────────────────────────
+// Cross-order shipment search (requires shipping.view). Each row is one
+// seller's shipment, never a whole-order summary, so a multi-vendor order
+// shows up as one row per seller here. Override requires shipping.manage
+// AND a mandatory note — enforced again server-side regardless of this
+// screen's own gating.
+const SHIPMENT_STATUS_TONE = { pending:'mute', processing:'primary', shipped:'info', in_transit:'info', delivered:'success', failed:'danger', returned:'danger', cancelled:'mute' };
+const SHIPMENT_STATUSES = ['pending','processing','shipped','in_transit','delivered','failed','returned','cancelled'];
+
+function AdminShippingSection({ accessCtx }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const [result, setResult] = React.useState({ shipments:[], totalShipments:0, totalPages:0, currentPage:1 });
+  const [loading, setLoading] = React.useState(true);
+  const [page, setPage] = React.useState(1);
+  const [status, setStatus] = React.useState('ALL');
+  const [searchInput, setSearchInput] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [carrierInput, setCarrierInput] = React.useState('');
+  const [carrier, setCarrier] = React.useState('');
+  const [exceptionsOnly, setExceptionsOnly] = React.useState(false);
+  const [overrideShipment, setOverrideShipment] = React.useState(null);
+  const [toast, setToast] = React.useState(null);
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    sbAdminGetShipments({ page, limit:PAGE_SIZE, status, search, carrier, exceptionsOnly }).then(r => { setResult(r); setLoading(false); });
+  }, [page, status, search, carrier, exceptionsOnly]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setSearch(searchInput); }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+  React.useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setCarrier(carrierInput); }, 350);
+    return () => clearTimeout(t);
+  }, [carrierInput]);
+
+  const { shipments, totalShipments, totalPages } = result;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Shipping" sub={`${totalShipments} shipment${totalShipments === 1 ? '' : 's'}`} />
+
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ flex:'1 1 220px', position:'relative' }}>
+          <Icon name="search" size={15} color={C.mute} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)' }} />
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Order ID, shipment ID or tracking number…"
+            style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px 9px 34px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        </div>
+        <input value={carrierInput} onChange={e => setCarrierInput(e.target.value)} placeholder="Carrier…"
+          style={{ flex:'0 1 160px', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        <button onClick={() => { setExceptionsOnly(v => !v); setPage(1); }} style={{
+          border: exceptionsOnly ? 'none' : `1.5px solid ${C.hairline}`, borderRadius:9999, padding:'8px 14px', cursor:'pointer',
+          background: exceptionsOnly ? C.danger : C.white, color: exceptionsOnly ? '#fff' : C.ink,
+          fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, display:'flex', alignItems:'center', gap:6,
+        }}>
+          <Icon name="alertTriangle" size={13} color={exceptionsOnly ? '#fff' : C.danger} /> Delivery exceptions
+        </button>
+      </div>
+
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+        {['ALL', ...SHIPMENT_STATUSES].map(s => (
+          <button key={s} onClick={() => { setStatus(s); setExceptionsOnly(false); setPage(1); }} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: !exceptionsOnly && status === s ? C.ink : C.paper, color: !exceptionsOnly && status === s ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, textTransform:'capitalize' }}>{s === 'ALL' ? 'All' : s.replace('_',' ')}</button>
+        ))}
+      </div>
+
+      <AdminCard padded={false} style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead><tr><Th>Order</Th><Th>Seller</Th><Th>Items</Th><Th>Carrier / Tracking</Th><Th>Status</Th><Th align="right">Fee</Th><Th align="right">Actions</Th></tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="Loading shipments…" /></td></tr>
+            ) : result.timedOut ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="Couldn't reach the server — check your connection and try again." /></td></tr>
+            ) : shipments.length === 0 ? (
+              <tr><td colSpan={7}><AdminEmptyRow text="No shipments match these filters" /></td></tr>
+            ) : shipments.map(s => (
+              <tr key={s.id}>
+                <Td style={{ fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>#{s.order_id.slice(0,8)}</Td>
+                <Td>
+                  <div style={{ fontWeight:600 }}>{s.profiles?.full_name || 'Seller'}</div>
+                  <div style={{ fontSize:11, color:C.mute }}>{s.shops?.name || ''}</div>
+                </Td>
+                <Td style={{ fontSize:12 }}>{(s.order_items ?? []).map(it => it.title).join(', ') || '—'}</Td>
+                <Td>
+                  {s.tracking_number ? (
+                    <>
+                      <div style={{ fontWeight:600 }}>{s.carrier || '—'}</div>
+                      <div style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", color:C.mute }}>{s.tracking_number}</div>
+                    </>
+                  ) : <span style={{ color:C.mute }}>—</span>}
+                </Td>
+                <Td><StatusPill tone={SHIPMENT_STATUS_TONE[s.status] || 'mute'}>{s.status.replace('_',' ')}</StatusPill></Td>
+                <Td align="right" style={{ fontFamily:"'JetBrains Mono',monospace" }}>${(s.shipping_fee ?? 0).toFixed(2)}</Td>
+                <Td align="right">
+                  {can('shipping.manage') && (
+                    <button onClick={() => setOverrideShipment(s)} title="Override" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name="edit" size={14} color={C.mute} />
+                    </button>
+                  )}
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </AdminCard>
+
+      {totalPages > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:10 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Previous</button>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Next</button>
+        </div>
+      )}
+
+      {overrideShipment && (
+        <AdminShipmentOverrideModal
+          shipment={overrideShipment}
+          onClose={() => setOverrideShipment(null)}
+          onDone={() => { setOverrideShipment(null); load(); }}
+          onLog={(detail) => logAdminAction('Overrode shipment', detail, 'shipments', overrideShipment.id)}
+        />
+      )}
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
+  );
+}
+
+function AdminShipmentOverrideModal({ shipment, onClose, onDone, onLog }) {
+  const [status, setStatus] = React.useState(shipment.status);
+  const [carrier, setCarrier] = React.useState(shipment.carrier || '');
+  const [trackingNumber, setTrackingNumber] = React.useState(shipment.tracking_number || '');
+  const [note, setNote] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  async function submit() {
+    if (!note.trim()) { setError('A note explaining this correction is required.'); return; }
+    setSaving(true);
+    setError('');
+    const { error: err } = await sbAdminOverrideShipment(shipment.id, { status, carrier: carrier || null, trackingNumber: trackingNumber || null }, note.trim());
+    setSaving(false);
+    if (err) { setError(err.message || 'Could not apply this override.'); return; }
+    onLog(`#${shipment.order_id.slice(0,8)} → ${status} (${note.trim()})`);
+    onDone();
+  }
+
+  return (
+    <Modal open title="Override shipment" onClose={onClose}>
+      <div style={{ marginBottom:14, fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>
+        This is a correction tool, not a routine edit — every override is written to this shipment's permanent history with your note attached.
+      </div>
+      <AdminField label="Status">
+        <select value={status} onChange={e => setStatus(e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+          {SHIPMENT_STATUSES.map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
+        </select>
+      </AdminField>
+      <div style={{ height:10 }} />
+      <AdminField label="Carrier"><AdminTextInput value={carrier} onChange={setCarrier} placeholder="e.g. DHL" /></AdminField>
+      <div style={{ height:10 }} />
+      <AdminField label="Tracking number"><AdminTextInput value={trackingNumber} onChange={setTrackingNumber} placeholder="Optional" mono /></AdminField>
+      <div style={{ height:10 }} />
+      <AdminField label="Note (required)"><AdminTextInput value={note} onChange={setNote} placeholder="Why is this being corrected?" /></AdminField>
+      {error && <div style={{ marginTop:10, fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{error}</div>}
+      <Btn wide onClick={submit} disabled={saving} style={{ marginTop:16 }}>{saving ? 'Saving…' : 'Apply override'}</Btn>
+    </Modal>
   );
 }
 
@@ -2760,7 +3053,8 @@ function AdminShellScreen({ params = {} }) {
     switch (section) {
       case 'overview': return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={window._ADMIN_REVIEWS} kycCount={adminStats?.pendingKyc ?? 0} />;
 
-      case 'orders': return <AdminOrdersSection />;
+      case 'orders': return <AdminOrdersSection accessCtx={accessCtx} />;
+      case 'shipping': return <AdminShippingSection accessCtx={accessCtx} />;
 
       case 'products': return <AdminProductsSection />;
 

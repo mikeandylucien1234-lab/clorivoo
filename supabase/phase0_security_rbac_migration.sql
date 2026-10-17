@@ -77,31 +77,15 @@ alter table public.staff_roles enable row level security;
 alter table public.role_permissions enable row level security;
 alter table public.staff_members enable row level security;
 
-create policy "Authenticated can read permission catalog" on public.permissions for select
-  using (auth.role() = 'authenticated');
-create policy "Admins and staff.manage can write permission catalog" on public.permissions for all
-  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.manage'));
-
-create policy "Staff can view roles" on public.staff_roles for select
-  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.view'));
-create policy "Admins and staff.manage can write roles" on public.staff_roles for all
-  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.manage'));
-
-create policy "Staff can view role permissions" on public.role_permissions for select
-  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.view'));
-create policy "Admins and staff.manage can write role permissions" on public.role_permissions for all
-  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.manage'));
-
-create policy "Admins, staff.view and self can view staff members" on public.staff_members for select
-  using (
-    (select role from public.profiles where id = auth.uid()) = 'admin'
-    or public.has_permission(auth.uid(), 'staff.view')
-    or user_id = auth.uid()
-  );
-create policy "Admins and staff.manage can write staff members" on public.staff_members for all
-  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.manage'));
-
 -- ─── 3. SECURITY DEFINER HELPERS (used inside RLS policies) ────────
+-- Moved ahead of the policies in section 2b below, which call
+-- has_permission() — CREATE POLICY resolves and validates that call at
+-- creation time, so the function must already exist. (Second-pass fix:
+-- this file originally defined has_permission() AFTER the policies that
+-- reference it, which fails outright on a clean database — see the
+-- local-Postgres test report this fix responds to. Every statement's
+-- content below is unchanged from the original; only its position moved.)
+--
 -- role='admin' is always the Super Admin — full bypass, matches the existing
 -- "Admins can manage X" policies already used throughout the schema.
 create or replace function public.has_permission(p_user_id uuid, p_permission text)
@@ -123,6 +107,42 @@ as $$
   );
 $$;
 grant execute on function public.has_permission(uuid, text) to authenticated;
+
+-- ─── 2b. RBAC TABLE POLICIES ────────────────────────────────────────
+-- drop-if-exists guards added so this file can be safely re-run (it
+-- previously had no such guard here, unlike the audit_logs policy
+-- below and the pattern phase6 already uses elsewhere in this codebase).
+drop policy if exists "Authenticated can read permission catalog" on public.permissions;
+create policy "Authenticated can read permission catalog" on public.permissions for select
+  using (auth.role() = 'authenticated');
+drop policy if exists "Admins and staff.manage can write permission catalog" on public.permissions;
+create policy "Admins and staff.manage can write permission catalog" on public.permissions for all
+  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.manage'));
+
+drop policy if exists "Staff can view roles" on public.staff_roles;
+create policy "Staff can view roles" on public.staff_roles for select
+  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.view'));
+drop policy if exists "Admins and staff.manage can write roles" on public.staff_roles;
+create policy "Admins and staff.manage can write roles" on public.staff_roles for all
+  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.manage'));
+
+drop policy if exists "Staff can view role permissions" on public.role_permissions;
+create policy "Staff can view role permissions" on public.role_permissions for select
+  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.view'));
+drop policy if exists "Admins and staff.manage can write role permissions" on public.role_permissions;
+create policy "Admins and staff.manage can write role permissions" on public.role_permissions for all
+  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.manage'));
+
+drop policy if exists "Admins, staff.view and self can view staff members" on public.staff_members;
+create policy "Admins, staff.view and self can view staff members" on public.staff_members for select
+  using (
+    (select role from public.profiles where id = auth.uid()) = 'admin'
+    or public.has_permission(auth.uid(), 'staff.view')
+    or user_id = auth.uid()
+  );
+drop policy if exists "Admins and staff.manage can write staff members" on public.staff_members;
+create policy "Admins and staff.manage can write staff members" on public.staff_members for all
+  using ((select role from public.profiles where id = auth.uid()) = 'admin' or public.has_permission(auth.uid(), 'staff.manage'));
 
 create or replace function public.is_active_account(p_user_id uuid)
 returns boolean
@@ -195,17 +215,37 @@ grant execute on function public.log_audit(text, text, text, jsonb, jsonb) to au
 
 -- ─── 5. FIX REAL ADVISORIES FOUND IN THE ARCHITECTURE REVIEW ───────
 -- 5a. Mutable search_path on pre-existing functions.
+-- _create_policy_if_not_exists's real signature (schema.sql) is 5 params
+-- (p_name, p_table, p_cmd, p_using, p_check text default null) — the
+-- original (text, text, text) here didn't match anything and always
+-- failed with "function does not exist". Fixed to the real signature.
 alter function public.update_conversation_on_message() set search_path = public, pg_temp;
-alter function public._create_policy_if_not_exists(text, text, text) set search_path = public, pg_temp;
+alter function public._create_policy_if_not_exists(text, text, text, text, text) set search_path = public, pg_temp;
 alter function public.handle_updated_at() set search_path = public, pg_temp;
 alter function public.handle_new_user() set search_path = public, pg_temp;
-alter function public.seed_demo_products(uuid) set search_path = public, pg_temp;
+
+-- seed_demo_products(uuid) is defined in seed.sql, not this migration or
+-- schema.sql, and is demo/seed-data tooling, not part of Phase 0's RBAC
+-- scope — it's hardened here only because production already had it
+-- (seed.sql having been run during initial setup) by the time this file
+-- was first applied there. On a database where seed.sql hasn't been run
+-- yet (a fresh local/test environment, or a disposable branch seeded
+-- from schema.sql alone), these two statements previously failed
+-- outright with "function does not exist". Guarded so this migration
+-- no longer depends on seed.sql's run order: the hardening still applies
+-- whenever the function exists, and is skipped harmlessly when it doesn't.
+do $$
+begin
+  if to_regprocedure('public.seed_demo_products(uuid)') is not null then
+    execute 'alter function public.seed_demo_products(uuid) set search_path = public, pg_temp';
+    execute 'revoke execute on function public.seed_demo_products(uuid) from public, anon, authenticated';
+  end if;
+end $$;
 
 -- 5b. SECURITY DEFINER functions callable by anon/authenticated via RPC that
 -- should only ever run as triggers (trigger execution is not gated by these
 -- grants, so revoking here does not break the on_auth_user_created trigger).
 revoke execute on function public.handle_new_user() from public, anon, authenticated;
-revoke execute on function public.seed_demo_products(uuid) from public, anon, authenticated;
 
 -- 5c. Seller-write RLS on products had no verification check at all — any
 -- seller with a shop row (verified or not) could create/edit products.

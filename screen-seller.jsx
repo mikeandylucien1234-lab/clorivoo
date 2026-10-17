@@ -798,50 +798,164 @@ function SellerDashboardScreen() {
   );
 }
 
-// ─── SELLER ORDERS ────────────────────────────────────────────
+// ─── SELLER ORDERS (Phase 5: real shipments, seller's own only) ──
+const SHIPMENT_STATUS_COLOR = {
+  pending: C.mute, processing: C.primary, shipped: '#3B82F6', in_transit: '#3B82F6',
+  delivered: C.success, failed: C.danger, returned: C.danger, cancelled: C.mute,
+};
+const SHIPMENT_STATUS_LABEL = {
+  pending: 'Pending', processing: 'Processing', shipped: 'Shipped', in_transit: 'In Transit',
+  delivered: 'Delivered', failed: 'Delivery failed', returned: 'Returned', cancelled: 'Cancelled',
+};
+const SHIPMENT_NEXT_STATUS = { pending: 'processing', processing: 'shipped', shipped: 'in_transit', in_transit: 'delivered' };
+const SHIPMENT_NEXT_LABEL  = { pending: 'Confirm', processing: 'Mark shipped', shipped: 'Mark in transit', in_transit: 'Mark delivered' };
+
 function SellerOrdersScreen() {
-  const { navigate, goBack } = useNav();
-  const [filter, setFilter] = React.useState(1);
-  const filters = ['All','New','Packed','Shipped','Returns'];
-  const orders = [];
+  const { goBack } = useNav();
+  const [shipments, setShipments] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [busyId, setBusyId] = React.useState(null);
+  const [trackingModal, setTrackingModal] = React.useState(null); // shipment
+  const [carrierInput, setCarrierInput] = React.useState('');
+  const [trackingInput, setTrackingInput] = React.useState('');
+  const [failureModal, setFailureModal] = React.useState(null); // shipment
+  const [failureReason, setFailureReason] = React.useState('');
+  const [toast, setToast] = React.useState(null);
+
+  const reload = React.useCallback(() => {
+    sbGetUser().then(async user => {
+      if (!user) { setLoading(false); return; }
+      const data = await sbGetSellerShipments(user.id, 50);
+      setShipments(data);
+      setLoading(false);
+    });
+  }, []);
+
+  React.useEffect(() => { reload(); }, [reload]);
+
+  async function doAdvance(shipment, next, extra = {}) {
+    setBusyId(shipment.id);
+    const { error } = await sbSellerUpdateShipment(shipment.id, next, extra);
+    setBusyId(null);
+    if (error) { setToast({ type:'error', message: error.message ?? 'Could not update this shipment.' }); return; }
+    reload();
+  }
+
+  function advance(shipment) {
+    const next = SHIPMENT_NEXT_STATUS[shipment.status];
+    if (!next) return;
+    if (next === 'shipped' && !shipment.tracking_number) {
+      setCarrierInput(shipment.carrier ?? '');
+      setTrackingInput(shipment.tracking_number ?? '');
+      setTrackingModal(shipment);
+      return;
+    }
+    doAdvance(shipment, next);
+  }
+
+  function confirmTrackingModal() {
+    if (!trackingInput.trim()) { setToast({ type:'error', message:'A tracking number is required.' }); return; }
+    const shipment = trackingModal;
+    setTrackingModal(null);
+    doAdvance(shipment, 'shipped', { carrier: carrierInput.trim() || null, trackingNumber: trackingInput.trim() });
+  }
+
+  async function confirmFailureModal() {
+    if (!failureReason.trim()) { setToast({ type:'error', message:'A reason is required.' }); return; }
+    const shipment = failureModal;
+    setFailureModal(null);
+    setBusyId(shipment.id);
+    const { error } = await sbSellerReportDeliveryFailure(shipment.id, failureReason.trim());
+    setBusyId(null);
+    if (error) { setToast({ type:'error', message: error.message ?? 'Could not record this failure.' }); return; }
+    reload();
+  }
+
+  // Splits one item off a multi-item shipment into its own, brand-new
+  // shipment — never touches any other seller's items; the server RPC
+  // re-checks ownership independently.
+  async function splitItem(shipment, item) {
+    setBusyId(shipment.id);
+    const { error } = await sbSellerCreateShipment(shipment.order_id, [item.id]);
+    setBusyId(null);
+    if (error) { setToast({ type:'error', message: error.message ?? 'Could not create a separate shipment.' }); return; }
+    reload();
+  }
+
   return (
     <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
       <StatusBar />
       <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
-        <NavBar title="Orders" onBack={goBack} right={
-          <button style={{ width:44, height:44, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-            <Icon name="search" size={20} color={C.mute} />
-          </button>
-        } />
-        <div style={{ display:'flex', gap:8, padding:'6px 16px 12px', overflowX:'auto' }}>
-          {filters.map((f, i) => <Chip key={i} active={filter === i} onClick={() => setFilter(i)}>{f}</Chip>)}
-        </div>
+        <NavBar title="My Shipments" onBack={goBack} />
       </div>
       <div style={{ flex:1, overflowY:'auto', padding:'12px 16px', display:'flex', flexDirection:'column', gap:10, paddingBottom:30 }}>
-        {orders.length === 0 && (
+        {loading ? (
           <div style={{ padding:'40px 16px', textAlign:'center' }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No orders yet</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Loading…</span>
           </div>
-        )}
-        {orders.map((o, i) => (
-          <div key={i} style={{ background:C.white, borderRadius:14, padding:'12px 14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)', display:'flex', gap:12 }}>
-            <Img label="" tint={i % 5} style={{ width:52, height:52, borderRadius:10, flexShrink:0 }} />
-            <div style={{ flex:1 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:3 }}>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:600, color:C.primary }}>{o.id}</span>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:700, color:C.ink }}>{o.price}</span>
+        ) : shipments.length === 0 ? (
+          <div style={{ padding:'40px 16px', textAlign:'center' }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No shipments yet</span>
+          </div>
+        ) : shipments.map(s => {
+          const color = SHIPMENT_STATUS_COLOR[s.status] ?? C.mute;
+          const canAdvance = !!SHIPMENT_NEXT_STATUS[s.status];
+          const canReportFailure = s.status === 'shipped' || s.status === 'in_transit';
+          const busy = busyId === s.id;
+          return (
+            <div key={s.id} style={{ background:C.white, borderRadius:14, padding:'14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:600, color:C.primary }}>#{s.order_id.slice(0,8).toUpperCase()}</span>
+                <span style={{ background: color + '20', color, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:9999 }}>{SHIPMENT_STATUS_LABEL[s.status] ?? s.status}</span>
               </div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.ink, marginBottom:2 }}>{o.sku}</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:6 }}>{o.buyer} · qty {o.qty}</div>
-              <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-                <span style={{ background: o.status === 'new' ? C.primarySoft : C.paper, color: o.status === 'new' ? C.primaryDeep : C.mute, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, padding:'3px 8px', borderRadius:9999 }}>{o.status}</span>
-                {o.urgent && <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:C.danger }}>Ship today</span>}
-                <button style={{ marginLeft:'auto', border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:C.primary }}>Process →</button>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:10 }}>
+                {new Date(s.created_at).toLocaleDateString(undefined, { day:'numeric', month:'short' })}
+                {s.tracking_number ? ` · ${s.carrier ?? 'Tracking'}: ${s.tracking_number}` : ''}
+              </div>
+              {(s.order_items ?? []).map((item, i) => (
+                <div key={item.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', borderTop: i > 0 ? `1px solid ${C.hairline}` : 'none', paddingTop: i > 0 ? 8 : 0, marginTop: i > 0 ? 8 : 0 }}>
+                  <div>
+                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{item.title}</div>
+                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Qty {item.quantity} · ${Number(item.unit_price).toFixed(2)}</div>
+                  </div>
+                  {(s.order_items ?? []).length > 1 && (s.status === 'pending' || s.status === 'processing') && (
+                    <button onClick={() => splitItem(s, item)} disabled={busy} style={{ border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:600, color:C.primary }}>Ship separately</button>
+                  )}
+                </div>
+              ))}
+              {s.failure_reason && (
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.danger, marginTop:8 }}>Failure: {s.failure_reason}</div>
+              )}
+              <div style={{ display:'flex', gap:8, marginTop:12 }}>
+                {canAdvance && (
+                  <Btn size="sm" disabled={busy} onClick={() => advance(s)}>{busy ? '…' : SHIPMENT_NEXT_LABEL[s.status]}</Btn>
+                )}
+                {canReportFailure && (
+                  <Btn size="sm" variant="outline" disabled={busy} onClick={() => { setFailureReason(''); setFailureModal(s); }}>Report failure</Btn>
+                )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      <Modal open={!!trackingModal} title="Shipping info" onClose={() => setTrackingModal(null)}>
+        <div style={{ marginBottom:14, fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>
+          This information is provided by you and shown to the buyer as seller-reported tracking.
+        </div>
+        <Input label="Carrier" placeholder="e.g. DHL, Flash Express" value={carrierInput} onChange={e => setCarrierInput(e.target.value)} style={{ marginBottom:10 }} />
+        <Input label="Tracking number" placeholder="Required" value={trackingInput} onChange={e => setTrackingInput(e.target.value)} style={{ marginBottom:16 }} />
+        <Btn wide onClick={confirmTrackingModal}>Mark shipped</Btn>
+      </Modal>
+
+      <Modal open={!!failureModal} title="Report delivery failure" onClose={() => setFailureModal(null)}>
+        <div style={{ marginBottom:14, fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>
+          Describe briefly what happened (required).
+        </div>
+        <Input placeholder="e.g. address not found, package refused..." value={failureReason} onChange={e => setFailureReason(e.target.value)} style={{ marginBottom:16 }} />
+        <Btn wide onClick={confirmFailureModal}>Confirm</Btn>
+      </Modal>
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }

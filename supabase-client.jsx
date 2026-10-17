@@ -761,7 +761,7 @@ async function sbUpsertCartItem(userId, productId, variant, quantity, price) {
     return { error: null };
   }
   const { error } = await _sb.from('cart_items').upsert({
-    cart_id: cart.id, product_id: productId, variant, quantity, price,
+    cart_id: cart.id, product_id: productId, variant, quantity, unit_price: price,
   }, { onConflict: 'cart_id,product_id,variant' });
   return { error };
 }
@@ -773,40 +773,127 @@ async function sbClearCart(userId) {
 }
 
 // ─── ORDERS ──────────────────────────────────────────────────────
-async function sbCreateOrder(userId, { items, shippingAddress, shippingMethod, paymentMethod, subtotal, discount, shippingFee, total, promoCode }) {
+// Creation goes exclusively through the create_order() RPC: it re-reads
+// real price/stock/availability from `products` under a row lock and
+// recomputes subtotal/discount/total server-side from the buyer's own
+// persisted cart — nothing here is trusted from the browser. The order
+// always starts status='pending' / payment_status='pending'; nothing in
+// this function (or anywhere else on the client) can mark it paid.
+async function sbCreateOrder(userId, { shippingAddress, shippingMethod = 'standard', paymentMethod = 'moncash', promoCode = null } = {}) {
   if (!_sb || !userId) {
     const fakeId = 'CLV' + Date.now();
-    window._LAST_ORDER = { id: fakeId, status: 'confirmed', tracking_number: 'TRK' + Math.random().toString(36).slice(2,10).toUpperCase() };
+    window._LAST_ORDER = { id: fakeId, status: 'pending', payment_status: 'pending', tracking_number: 'TRK' + Math.random().toString(36).slice(2,10).toUpperCase() };
     return { data: window._LAST_ORDER, error: null };
   }
-  const { data: order, error } = await _sb.from('orders').insert({
-    buyer_id: userId,
-    status: 'confirmed',
-    subtotal, discount, shipping_fee: shippingFee, total, promo_code: promoCode,
-    shipping_address: shippingAddress,
-    shipping_method: shippingMethod,
-    payment_method: paymentMethod,
-    payment_status: 'paid',
-    tracking_number: 'TRK' + Math.random().toString(36).slice(2,10).toUpperCase(),
-  }).select().single();
+  const { data, error } = await _sb.rpc('create_order', {
+    p_shipping_address: shippingAddress ?? {},
+    p_shipping_method: shippingMethod,
+    p_payment_method: paymentMethod,
+    p_promo_code: promoCode,
+  });
   if (error) return { data: null, error };
 
-  if (items?.length) {
-    await _sb.from('order_items').insert(items.map(item => ({
-      order_id: order.id,
-      product_id: item.product_id,
-      shop_id: item.shop_id,
-      title: item.title,
-      image_url: item.image_url,
-      variant: item.variant,
-      quantity: item.quantity,
-      price: item.price,
-    })));
-  }
-
+  const order = await sbGetOrder(data.order_id);
   window._LAST_ORDER = order;
-  await sbClearCart(userId);
   return { data: order, error: null };
+}
+
+// Logs a payment attempt against an order already created by
+// sbCreateOrder(); the amount is read server-side from the order itself,
+// never supplied by the client. This does NOT mark anything paid — only
+// admin_confirm_payment() (server-side, permission-gated) can do that.
+async function sbRecordPaymentAttempt(orderId, provider, providerReference = null) {
+  if (!_sb) return { data: { ok: true, intent_id: 'demo' }, error: null };
+  const { data, error } = await _sb.rpc('record_payment_attempt', {
+    p_order_id: orderId, p_provider: provider, p_provider_reference: providerReference,
+  });
+  return { data, error };
+}
+
+// ─── REFUNDS (buyer side) ──────────────────────────────────────────
+// orderItemId (optional): scope the refund to one line item instead of
+// the whole order — the server then caps it to that item's own value
+// and, once recorded, reverses only that item's seller's commission.
+async function sbRequestRefund(orderId, reason, amount = null, orderItemId = null) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('request_refund', { p_order_id: orderId, p_reason: reason, p_amount: amount, p_order_item_id: orderItemId });
+  return { data, error };
+}
+
+async function sbGetMyRefundRequests(orderId = null) {
+  if (!_sb) return [];
+  let q = _sb.from('refund_requests').select('*, refunds(*)').order('created_at', { ascending: false });
+  if (orderId) q = q.eq('order_id', orderId);
+  const { data } = await q;
+  return data ?? [];
+}
+
+// ─── ADMIN: PAYMENTS, COMMISSIONS & REFUNDS ────────────────────────
+async function sbAdminGetPaymentIntents({ orderId = null, limit = 50 } = {}) {
+  if (!_sb) return [];
+  let q = _sb.from('payment_intents').select('*, orders(id, buyer_id, total_amount, profiles(full_name, email))').order('created_at', { ascending: false }).limit(limit);
+  if (orderId) q = q.eq('order_id', orderId);
+  const { data } = await q;
+  return data ?? [];
+}
+
+// The ONLY client call that can ever move payment_status to 'paid' — and
+// it only succeeds server-side for a caller holding payments.confirm.
+async function sbAdminConfirmPayment(intentId, result, providerReference = null, notes = null) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('admin_confirm_payment', {
+    p_intent_id: intentId, p_result: result, p_provider_reference: providerReference, p_notes: notes,
+  });
+  return { data, error };
+}
+
+async function sbAdminGetRefundRequests({ page = 1, limit = 20, status = 'ALL', search = '', orderId = null } = {}) {
+  const empty = { requests: [], totalRequests: 0, totalPages: 0, currentPage: page };
+  if (!_sb) return empty;
+  let query = _sb.from('refund_requests').select('*, orders(id, total_amount, payment_status, profiles(full_name, email)), refunds(*)', { count: 'exact' });
+  if (status !== 'ALL') query = query.eq('status', status);
+  if (orderId) query = query.eq('order_id', orderId);
+  const q = (search || '').trim();
+  if (q) query = query.ilike('reason', `%${q}%`);
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
+  if (error) return empty;
+  return { requests: data ?? [], totalRequests: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
+// Admin/staff-initiated goodwill refund (not started by the buyer) — still
+// capped at the refundable amount, still a distinct step from actually
+// recording a provider result below.
+async function sbAdminInitiateRefund(orderId, reason, amount = null, orderItemId = null) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('admin_initiate_refund', { p_order_id: orderId, p_reason: reason, p_amount: amount, p_order_item_id: orderItemId });
+  return { data, error };
+}
+
+// The business decision (approve/reject a refund request) — requires orders.refund.
+async function sbAdminDecideRefund(requestId, decision, notes = null) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('admin_decide_refund', { p_request_id: requestId, p_decision: decision, p_notes: notes });
+  return { data, error };
+}
+
+// Recording what actually happened at the provider — requires
+// payments.confirm. Never call this to simulate a success; only to
+// record a real, verified provider-side outcome.
+async function sbAdminRecordRefundResult(requestId, result, amount, providerReference = null, notes = null) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('admin_record_refund_result', {
+    p_request_id: requestId, p_result: result, p_amount: amount, p_provider_reference: providerReference, p_notes: notes,
+  });
+  return { data, error };
+}
+
+async function sbAdminGetCommissionLedger({ orderId = null, limit = 50 } = {}) {
+  if (!_sb) return [];
+  let q = _sb.from('commission_ledger').select('*, shops(name)').order('created_at', { ascending: false }).limit(limit);
+  if (orderId) q = q.eq('order_id', orderId);
+  const { data } = await q;
+  return data ?? [];
 }
 
 async function sbGetOrder(orderId) {
@@ -822,11 +909,59 @@ async function sbGetOrder(orderId) {
 async function sbGetOrders(userId) {
   if (!_sb || !userId) return [];
   const { data } = await _sb.from('orders')
-    .select('*, order_items(title, quantity, price)')
+    .select('*, order_items(title, quantity, price), shipments(status)')
     .eq('buyer_id', userId)
     .order('created_at', { ascending: false })
     .limit(20);
   return data ?? [];
+}
+
+// Phase 5: a single order may carry one shipment per seller (or more, if
+// a seller splits their own items into several). Each shipment's own
+// items and immutable status history are nested so the tracking page can
+// render independent per-seller cards and timelines — never a single
+// fabricated whole-order carrier/timeline.
+async function sbGetOrderShipments(orderId) {
+  if (!_sb || !orderId) return [];
+  const { data, error } = await _sb.from('shipments')
+    .select('*, order_items(id, title, quantity, unit_price), shipment_status_history(status, source, note, created_at)')
+    .eq('order_id', orderId)
+    .order('created_at', { ascending: true });
+  if (error) return [];
+  return (data ?? []).map(s => ({
+    ...s,
+    shipment_status_history: (s.shipment_status_history ?? []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)),
+  }));
+}
+
+// Mirrors the order_fulfillment_summary SQL view's CASE logic exactly
+// (see that view in phase5_shipping_migration.sql for the full
+// documented combination table). Every one of the 8 shipment statuses
+// is explicitly accounted for:
+//   1. no shipments                              -> 'awaiting_shipment'
+//   2. every shipment 'cancelled'                 -> 'cancelled' (never
+//      silently falls through to 'pending')
+//   3. any shipment 'failed' or 'returned'         -> 'delivery_exception'
+//      (a return is treated as an exception, same as a failure)
+//   4. every NON-cancelled shipment 'delivered',   -> 'delivered'
+//      and at least one is delivered (a cancelled shipment is excluded
+//      from "required" — documented business rule, not invented here)
+//   5. any shipment 'shipped'/'in_transit'         -> 'partially_shipped'
+//   6. any shipment 'processing'                   -> 'processing'
+//   7. otherwise (only 'pending', or 'pending'      -> 'pending'
+//      mixed with 'cancelled')
+function computeOrderFulfillmentStatus(shipments) {
+  if (!shipments || shipments.length === 0) return 'awaiting_shipment';
+  const all = shipments.length;
+  const cancelled = shipments.filter(s => s.status === 'cancelled').length;
+  const delivered = shipments.filter(s => s.status === 'delivered').length;
+  const nonCancelled = all - cancelled;
+  if (cancelled === all) return 'cancelled';
+  if (shipments.some(s => s.status === 'failed' || s.status === 'returned')) return 'delivery_exception';
+  if (delivered > 0 && delivered === nonCancelled) return 'delivered';
+  if (shipments.some(s => s.status === 'shipped' || s.status === 'in_transit')) return 'partially_shipped';
+  if (shipments.some(s => s.status === 'processing')) return 'processing';
+  return 'pending';
 }
 
 async function sbCancelOrder(orderId) {
@@ -949,6 +1084,49 @@ async function sbGetSellerOrders(shopId) {
     .order('created_at', { ascending: false })
     .limit(30);
   return data ?? _DEMO_SELLER_ORDERS;
+}
+
+// Phase 5: shipments are the real unit of fulfillment, one row per
+// seller-created shipment on an order (a seller may have more than one
+// shipment per order — partial shipping). This returns ONLY this
+// seller's own shipments, each with its own order_items nested under
+// it — never another seller's shipment on the same multi-vendor order.
+async function sbGetSellerShipments(sellerId, limit = 50) {
+  if (!_sb || !sellerId) return [];
+  const { data, error } = await _sb.from('shipments')
+    .select('id, order_id, status, carrier, tracking_number, tracking_url, shipping_fee, estimated_delivery, shipped_at, delivered_at, failed_at, failure_reason, created_at, order_items(id, title, quantity, unit_price)')
+    .eq('seller_id', sellerId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return data ?? [];
+}
+
+// Splits a subset of this seller's own, not-yet-shipped items on an
+// order into a brand-new shipment (partial/staged shipping). The server
+// RPC independently re-checks ownership and eligibility.
+async function sbSellerCreateShipment(orderId, orderItemIds) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('seller_create_shipment', { p_order_id: orderId, p_order_item_ids: orderItemIds });
+  return { data, error };
+}
+
+// Advances one of this seller's own shipments. carrier/tracking fields
+// are always seller-provided — no carrier API integration exists yet,
+// so nothing here is presented as carrier-verified.
+async function sbSellerUpdateShipment(shipmentId, status, { carrier = null, trackingNumber = null, trackingUrl = null, estimatedDelivery = null } = {}) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('seller_update_shipment', {
+    p_shipment_id: shipmentId, p_status: status, p_carrier: carrier,
+    p_tracking_number: trackingNumber, p_tracking_url: trackingUrl, p_estimated_delivery: estimatedDelivery,
+  });
+  return { data, error };
+}
+
+async function sbSellerReportDeliveryFailure(shipmentId, reason) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('seller_report_delivery_failure', { p_shipment_id: shipmentId, p_reason: reason });
+  return { data, error };
 }
 
 // ─── ADMIN HELPERS ────────────────────────────────────────────────
@@ -1128,6 +1306,59 @@ async function _sbAdminGetOrdersImpl({ page = 1, limit = 10, status = 'ALL', sea
   const orders = (data || []).map(o => ({ ...o, shopNames: [...(shopsByOrder[o.id] || [])] }));
 
   return { orders, totalOrders: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
+// ─── ADMIN SHIPPING MANAGEMENT ──────────────────────────────────────
+// Cross-order shipment search for staff with shipping.view/shipping.manage:
+// by order id, tracking number, seller or carrier, plus a dedicated filter
+// for shipments currently in a delivery exception (status = 'failed').
+async function sbAdminGetShipments(opts = {}) {
+  const { page = 1 } = opts;
+  const emptyResult = { shipments: [], totalShipments: 0, totalPages: 0, currentPage: page };
+  if (!_sb) return emptyResult;
+  return _withTimeout(_sbAdminGetShipmentsImpl(opts), 10000, { ...emptyResult, timedOut: true });
+}
+async function _sbAdminGetShipmentsImpl({ page = 1, limit = 15, status = 'ALL', search = '', sellerId = '', carrier = '', exceptionsOnly = false } = {}) {
+  let query = _sb.from('shipments').select(
+    '*, orders(id, buyer_id, profiles(full_name, email)), profiles!shipments_seller_id_fkey(full_name, email), shops(name), order_items(id, title, quantity, unit_price)',
+    { count: 'exact' }
+  );
+
+  if (exceptionsOnly) query = query.eq('status', 'failed');
+  else if (status && status !== 'ALL') query = query.eq('status', status);
+  if (sellerId) query = query.eq('seller_id', sellerId);
+  if (carrier) query = query.ilike('carrier', `%${carrier}%`);
+
+  const q = (search || '').trim();
+  if (q) {
+    const orClauses = [`tracking_number.ilike.%${q}%`, `order_id.eq.${q}`, `id.eq.${q}`];
+    query = query.or(orClauses.join(','));
+  }
+
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
+  if (error) return { shipments: [], totalShipments: 0, totalPages: 0, currentPage: page };
+  return { shipments: data ?? [], totalShipments: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
+async function sbAdminGetCarriersList() {
+  if (!_sb) return [];
+  const { data } = await _sb.from('shipping_carriers').select('name').eq('is_active', true).order('name');
+  return (data ?? []).map(c => c.name);
+}
+
+// The only function that can touch a shipment it does not own — requires
+// shipping.manage, and the server rejects the call outright without a
+// note explaining the correction (enforced again here client-side only
+// to fail fast; the real guarantee is the RPC's own check).
+async function sbAdminOverrideShipment(shipmentId, { status = null, carrier = null, trackingNumber = null, trackingUrl = null, estimatedDelivery = null } = {}, note) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const { data, error } = await _sb.rpc('admin_override_shipment', {
+    p_shipment_id: shipmentId, p_status: status, p_carrier: carrier,
+    p_tracking_number: trackingNumber, p_tracking_url: trackingUrl,
+    p_estimated_delivery: estimatedDelivery, p_note: note,
+  });
+  return { data, error };
 }
 
 async function sbAdminGetOrderDetail(orderId) {
@@ -1464,10 +1695,17 @@ Object.assign(window, {
   sbGetBanners, sbUpsertBanner, sbDeleteBanner, sbGetSignupBanner,
   sbGetCart, sbUpsertCartItem, sbClearCart,
   sbCreateOrder, sbGetOrder, sbGetOrders, sbCancelOrder,
+  sbGetOrderShipments, computeOrderFulfillmentStatus,
+  sbRecordPaymentAttempt, sbRequestRefund, sbGetMyRefundRequests,
+  sbAdminGetPaymentIntents, sbAdminConfirmPayment,
+  sbAdminGetRefundRequests, sbAdminInitiateRefund, sbAdminDecideRefund, sbAdminRecordRefundResult,
+  sbAdminGetCommissionLedger,
   sbGetConversations, sbGetMessages, sbSendMessage,
   sbSubscribeToMessages, sbMarkConversationRead, sbGetOrCreateConversation,
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
+  sbGetSellerShipments, sbSellerCreateShipment, sbSellerUpdateShipment, sbSellerReportDeliveryFailure,
+  sbAdminGetShipments, sbAdminGetCarriersList, sbAdminOverrideShipment,
   sbAdminGetStats, sbAdminGetSalesTimeseries, sbSubscribeAdminOrders,
   sbAdminGetOrders, sbAdminGetOrderDetail, sbAdminUpdateOrderStatus, ORDER_STATUSES,
   sbAdminGetKycRequests, sbAdminGetKycRequest, sbAdminGetKycDocUrl, sbAdminReviewKyc,

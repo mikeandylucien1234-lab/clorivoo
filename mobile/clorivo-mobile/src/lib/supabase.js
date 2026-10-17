@@ -191,29 +191,33 @@ export async function clearCart(userId) {
 }
 
 // ─── ORDERS ───────────────────────────────────────────────────────
-export async function createOrder(userId, items, total, shippingAddress, shippingMethod = 'standard') {
-  const subtotal = items.reduce((s, i) => s + (i.unit_price ?? i.price ?? 0) * (i.quantity ?? 1), 0);
-  const shippingFee = total - subtotal;
-  const { data: order, error } = await supabase.from('orders').insert({
-    buyer_id: userId, status: 'confirmed',
-    subtotal, discount: 0, shipping_fee: shippingFee, total_amount: total,
-    shipping_address: shippingAddress,
-    shipping_method: shippingMethod,
-    payment_method: 'card',
-    payment_status: 'paid',
-    tracking_number: 'TRK' + Math.random().toString(36).slice(2, 10).toUpperCase(),
-  }).select().single();
+// Creation goes exclusively through the create_order() RPC (Phase 4):
+// it re-reads real price/stock from `products` server-side and
+// recomputes totals from the buyer's own persisted cart — nothing here
+// is trusted from the client. The order always starts
+// status='pending' / payment_status='pending'; nothing on this client
+// can mark it paid.
+export async function createOrder(userId, shippingAddress, shippingMethod = 'standard', paymentMethod = 'card') {
+  const { data, error } = await supabase.rpc('create_order', {
+    p_shipping_address: shippingAddress ?? {},
+    p_shipping_method: shippingMethod,
+    p_payment_method: paymentMethod,
+  });
   if (error) throw error;
-  if (items?.length) {
-    await supabase.from('order_items').insert(items.map(i => ({
-      order_id: order.id, product_id: i.product_id, shop_id: i.shop_id,
-      title: i.title, variant: i.variant ?? {},
-      quantity: i.quantity ?? 1, unit_price: i.unit_price ?? i.price,
-      seller_id: i.seller_id,
-    })));
-  }
-  await clearCart(userId);
+  const order = await getOrder(data.order_id);
+  await recordPaymentAttempt(order.id, paymentMethod);
   return order;
+}
+
+// Logs a payment attempt — the amount is read server-side from the
+// order itself. This never marks anything paid; only an admin with
+// payments.confirm can do that, after a real provider confirmation.
+export async function recordPaymentAttempt(orderId, provider, providerReference = null) {
+  const { data, error } = await supabase.rpc('record_payment_attempt', {
+    p_order_id: orderId, p_provider: provider, p_provider_reference: providerReference,
+  });
+  if (error) throw error;
+  return data;
 }
 
 export async function getOrders(userId) {
@@ -231,25 +235,94 @@ export async function getOrder(orderId) {
   return data;
 }
 
+// Returns orders grouped with ONLY this seller's own order_items — a
+// multi-vendor order's other sellers' items never appear here, and this
+// seller's fulfillment_status is tracked per item, never as one
+// whole-order status (Phase 4: orders.status is no longer writable by a
+// plain seller at all; only order_items.fulfillment_status is, one at a
+// time, for the seller's own rows).
 export async function getSellerOrders(userId, limit = 50) {
-  const { data } = await supabase.from('orders')
-    .select('*, order_items(*)')
-    .contains('order_items', [])
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  // fallback: fetch orders where any order_item matches seller's products
-  const { data: sellerData } = await supabase.from('order_items')
-    .select('*, orders!inner(id,status,created_at,total_amount,shipping_address,shipping_method)')
+  const { data } = await supabase.from('order_items')
+    .select('id, order_id, fulfillment_status, quantity, unit_price, title, orders!inner(id, created_at, total_amount, shipping_address, shipping_method)')
     .eq('seller_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit);
-  // deduplicate by order id
-  const seen = new Set();
-  return (sellerData ?? []).reduce((acc, item) => {
+
+  const byOrder = new Map();
+  for (const item of data ?? []) {
     const o = item.orders;
-    if (o && !seen.has(o.id)) { seen.add(o.id); acc.push(o); }
-    return acc;
-  }, []);
+    if (!o) continue;
+    if (!byOrder.has(o.id)) {
+      byOrder.set(o.id, {
+        id: o.id, created_at: o.created_at, total_amount: o.total_amount,
+        shipping_address: o.shipping_address, shipping_method: o.shipping_method,
+        items: [],
+      });
+    }
+    byOrder.get(o.id).items.push({
+      id: item.id, fulfillment_status: item.fulfillment_status,
+      quantity: item.quantity, unit_price: item.unit_price, title: item.title,
+    });
+  }
+  return Array.from(byOrder.values());
+}
+
+// Advances ONE of this seller's own order_items one fulfillment step —
+// RLS + the protect_order_item_fields trigger both enforce seller_id
+// ownership and the one-step-forward rule server-side; this is just the
+// client call, with no local-state optimism on error.
+export async function advanceItemFulfillment(orderItemId, nextStatus) {
+  const { error } = await supabase.from('order_items')
+    .update({ fulfillment_status: nextStatus })
+    .eq('id', orderItemId);
+  if (error) throw error;
+}
+
+// Phase 5: shipments are the actual unit of fulfillment, one row per
+// seller-created shipment on an order (a seller may have more than one
+// shipment per order — partial shipping). Returns ONLY this seller's own
+// shipments; order_items are nested under the shipment they belong to,
+// never under another seller's shipment on the same order.
+export async function getSellerShipments(userId, limit = 50) {
+  const { data, error } = await supabase.from('shipments')
+    .select('id, order_id, status, carrier, tracking_number, tracking_url, shipping_fee, estimated_delivery, shipped_at, delivered_at, failed_at, failure_reason, created_at, orders!inner(id, created_at, shipping_address), order_items(id, title, quantity, unit_price)')
+    .eq('seller_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+// Splits a subset of this seller's own, not-yet-shipped items on an order
+// into a brand-new shipment (partial/staged shipping). Server-side RPC
+// re-checks ownership and eligibility independently of this call.
+export async function createSellerShipment(orderId, orderItemIds) {
+  const { data, error } = await supabase.rpc('seller_create_shipment', {
+    p_order_id: orderId, p_order_item_ids: orderItemIds,
+  });
+  if (error) throw error;
+  return data;
+}
+
+// Advances one of THIS seller's own shipments. carrier/tracking fields are
+// always seller-provided — there is no carrier API integration yet, so
+// nothing here is presented as carrier-verified.
+export async function updateSellerShipment(shipmentId, status, { carrier, trackingNumber, trackingUrl, estimatedDelivery } = {}) {
+  const { data, error } = await supabase.rpc('seller_update_shipment', {
+    p_shipment_id: shipmentId, p_status: status,
+    p_carrier: carrier ?? null, p_tracking_number: trackingNumber ?? null,
+    p_tracking_url: trackingUrl ?? null, p_estimated_delivery: estimatedDelivery ?? null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function reportShipmentDeliveryFailure(shipmentId, reason) {
+  const { data, error } = await supabase.rpc('seller_report_delivery_failure', {
+    p_shipment_id: shipmentId, p_reason: reason,
+  });
+  if (error) throw error;
+  return data;
 }
 
 export async function getSellerStats(userId) {
