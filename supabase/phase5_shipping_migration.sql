@@ -155,7 +155,7 @@ create policy "Buyers can view shipments on their own orders" on public.shipment
   using (order_id in (select id from public.orders where buyer_id = auth.uid()));
 create policy "Sellers can view only their own shipments" on public.shipments for select
   using (seller_id = auth.uid());
-create policy "Permitted staff can view all shipments" on public.shipments for select
+create policy "Permitted staff can view all shipments" on public.shipments for select to authenticated
   using (public.has_permission(auth.uid(), 'shipping.view') or public.has_permission(auth.uid(), 'shipping.manage'));
 -- No direct insert/update policy for any client role: shipments are only
 -- ever created/mutated by the SECURITY DEFINER RPCs below, each of which
@@ -312,7 +312,7 @@ create policy "Buyers can view history for shipments on their own orders" on pub
   ));
 create policy "Sellers can view history of only their own shipments" on public.shipment_status_history for select
   using (shipment_id in (select id from public.shipments where seller_id = auth.uid()));
-create policy "Permitted staff can view all shipment history" on public.shipment_status_history for select
+create policy "Permitted staff can view all shipment history" on public.shipment_status_history for select to authenticated
   using (public.has_permission(auth.uid(), 'shipping.view') or public.has_permission(auth.uid(), 'shipping.manage'));
 -- No insert/update/delete policy for any client role: rows are written
 -- only inside the RPCs below, and never updated or deleted by anyone —
@@ -371,8 +371,36 @@ $$;
 revoke all on function public.seller_has_items_on_order(uuid, uuid) from public, anon;
 grant execute on function public.seller_has_items_on_order(uuid, uuid) to authenticated;
 
-create policy "Sellers can view orders containing their own items" on public.orders for select
+create policy "Sellers can view orders containing their own items" on public.orders for select to authenticated
   using (public.seller_has_items_on_order(orders.id, auth.uid()));
+
+-- ─── 6a-bis. ANON READ-ERROR FIX ON `orders` ────────────────────────
+-- Same structural class as the anon/products RLS bug fixed separately:
+-- none of orders' non-public policies carried a `TO` clause, so each
+-- applied implicitly to every role, anon included. Postgres must
+-- evaluate every applicable policy's USING clause for a query — and
+-- anon has no EXECUTE on has_permission()/seller_has_items_on_order()
+-- (revoked by Phase 1 / above), so a bare anon SELECT (or UPDATE) on
+-- orders errored out entirely instead of cleanly returning no rows.
+-- Confirmed live by elimination: dropping just the seller policy above
+-- still left anon erroring via has_permission() through the policy
+-- below; dropping both leaves a clean empty result for anon. No frontend
+-- screen today queries `orders` while logged out, so this has had no
+-- observed user-facing symptom (unlike the products case), but it's the
+-- same latent robustness/hygiene defect. Re-declaring the two Phase 4
+-- staff policies here (phase5 runs after phase4) rather than editing
+-- phase4_orders_payments_migration.sql — only their role scope changes,
+-- their USING conditions are copied verbatim from that file.
+drop policy if exists "Permitted staff can view all orders" on public.orders;
+create policy "Permitted staff can view all orders" on public.orders for select to authenticated
+  using (
+    public.has_permission(auth.uid(), 'orders.view') or public.has_permission(auth.uid(), 'orders.edit')
+    or public.has_permission(auth.uid(), 'orders.cancel') or public.has_permission(auth.uid(), 'orders.refund')
+    or public.has_permission(auth.uid(), 'payments.view') or public.has_permission(auth.uid(), 'payments.confirm')
+  );
+drop policy if exists "Permitted staff can update orders" on public.orders;
+create policy "Permitted staff can update orders" on public.orders for update to authenticated
+  using (public.has_permission(auth.uid(), 'orders.edit') or public.has_permission(auth.uid(), 'orders.cancel'));
 
 -- ─── 6b. ORDER FULFILLMENT ROLLUP — derived, read-only, never self-set ──
 -- Never written to any column; computed on read.
