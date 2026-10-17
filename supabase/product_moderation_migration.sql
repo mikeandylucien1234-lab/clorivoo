@@ -32,3 +32,78 @@ alter table public.products alter column shop_id drop not null;
 drop policy if exists "Active products are public" on public.products;
 create policy "Active products are public" on public.products for select
   using (status = 'active' and approval_status = 'approved');
+
+-- ─── STAFF MODERATOR ACCESS (found missing during the same audit) ──
+-- Only two ALL policies existed on products before this: role='admin',
+-- and the two seller-own-shop ones. A staff member holding
+-- 'products.approve' (seeded in Phase 0, never granted an actual RLS
+-- path) had no policy letting them reach any row here at all —
+-- confirmed live: an UPDATE from such a session matched 0 rows,
+-- blocked by RLS before protect_product_moderation_fields_trg below
+-- even runs. This is what actually lets a permitted staff moderator
+-- (not just role='admin') approve/reject, per the same
+-- has_permission() check the trigger uses — the trigger alone cannot
+-- compensate for an RLS policy that never let the row through.
+drop policy if exists "Permitted staff can moderate products" on public.products;
+create policy "Permitted staff can moderate products" on public.products for all to authenticated
+  using (public.has_permission(auth.uid(), 'products.approve'));
+
+-- ─── SELLER SELF-MODERATION PROTECTION ──────────────────────────────
+-- Group B audit finding: schema.sql's "Sellers can manage their products"
+-- is a FOR ALL policy scoped only by shop_id/seller_id, with no WITH
+-- CHECK restricting which columns a seller may change on their own row.
+-- Combined with approval_status's own DEFAULT above ('approved' — correct
+-- for the pre-moderation admin-only products this column was added for),
+-- a seller could set approval_status='approved' directly (bypassing the
+-- review queue entirely), or simply omit the column on a raw INSERT and
+-- get the same result from the default.
+--
+-- Same pattern as protect_profile_privileged_fields_trg
+-- (phase1_auth_hardening_migration.sql): a BEFORE INSERT OR UPDATE
+-- trigger forces/reverts approval_status and rejection_reason unless the
+-- acting user holds 'products.approve' — seeded in Phase 0's permission
+-- catalog already, granted to Super Admin there already, but never
+-- actually enforced anywhere until now. role='admin' bypasses
+-- has_permission() itself, so sbAdminCreateProduct (explicit
+-- approval_status:'approved' on insert) and sbAdminModerateProduct
+-- (explicit approval_status/rejection_reason on update) are unaffected.
+-- `status` (active/draft/archived — publish/unpublish) is deliberately
+-- left out: that's a publish toggle a seller legitimately owns on their
+-- own already-approved listings, not moderation metadata, and the
+-- policy above already keeps an unapproved product unlisted regardless
+-- of its `status` value.
+create or replace function public.protect_product_moderation_fields()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if not public.has_permission(auth.uid(), 'products.approve') then
+      new.approval_status := 'pending';
+      new.rejection_reason := null;
+    end if;
+    return new;
+  end if;
+
+  if new.approval_status is distinct from old.approval_status
+     and not public.has_permission(auth.uid(), 'products.approve') then
+    new.approval_status := old.approval_status;
+  end if;
+  if new.rejection_reason is distinct from old.rejection_reason
+     and not public.has_permission(auth.uid(), 'products.approve') then
+    new.rejection_reason := old.rejection_reason;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists protect_product_moderation_fields_trg on public.products;
+create trigger protect_product_moderation_fields_trg
+before insert or update on public.products
+for each row execute function public.protect_product_moderation_fields();
+
+-- Trigger functions are invoked by the trigger mechanism itself, never via
+-- PostgREST RPC — matches the same revoke already applied to
+-- protect_profile_privileged_fields() in Phase 1 for the identical reason.
+revoke execute on function public.protect_product_moderation_fields() from public, anon, authenticated;
