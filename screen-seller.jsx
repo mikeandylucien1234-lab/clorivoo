@@ -703,9 +703,8 @@ function SellerDashboardScreen() {
   const navItems = [
     { icon:'package',  label:'Orders', badge:sellerOrders.filter(o=>o.orders?.status==='pending').length, action: () => navigate('seller-orders') },
     { icon:'store',    label:'Products',  badge:0,  action: () => {} },
-    { icon:'creditCard',label:'Wallet',   badge:0,  action: () => {} },
+    { icon:'creditCard',label:'Wallet',   badge:0,  action: () => navigate('seller-wallet') },
     { icon:'barChart', label:'Analytics', badge:0,  action: () => {} },
-    { icon:'zap',      label:'Withdraw',   badge:0,  action: () => {} },
     { icon:'camera',   label:'CJ Import', badge:0,  action: () => navigate('cj-connect') },
   ];
 
@@ -1527,9 +1526,126 @@ function SellerProductFormScreen() {
   );
 }
 
+// ─── SELLER WALLET — real balance (from commission_ledger, via
+// seller_get_wallet_summary()) and real payout requests (withdrawal_requests,
+// via seller_request_withdrawal()/admin_decide_withdrawal()). Replaces the
+// two previously-dead "Wallet"/"Withdraw" dashboard tiles. ─────────────
+function SellerWalletScreen() {
+  const { goBack } = useNav();
+  const isDesktop = useIsDesktop();
+  const [sellerId, setSellerId] = React.useState(null);
+  const [summary, setSummary] = React.useState(null);
+  const [requests, setRequests] = React.useState(null);
+  const [modalOpen, setModalOpen] = React.useState(false);
+  const [amount, setAmount] = React.useState('');
+  const [method, setMethod] = React.useState('bank');
+  const [accountDetails, setAccountDetails] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+  const [toast, setToast] = React.useState(null);
+
+  const load = React.useCallback((uid) => {
+    sbGetSellerWalletSummary().then(setSummary);
+    sbGetMyWithdrawals(uid).then(setRequests);
+  }, []);
+  React.useEffect(() => { sbGetUser().then(u => { setSellerId(u?.id || null); if (u?.id) load(u.id); }); }, [load]);
+
+  const hasPending = (requests || []).some(r => r.status === 'pending');
+
+  async function submitRequest() {
+    const val = parseFloat(amount);
+    if (!val || val <= 0) { setToast({ type:'error', message:'Enter a valid amount' }); return; }
+    if (!accountDetails.trim()) { setToast({ type:'error', message:'Enter your payout account details' }); return; }
+    setSubmitting(true);
+    const { error } = await sbSellerRequestWithdrawal(val, method, accountDetails.trim());
+    setSubmitting(false);
+    if (error) { setToast({ type:'error', message: error.message || 'Could not submit this request.' }); return; }
+    setToast({ type:'success', message:'Payout request submitted.' });
+    setModalOpen(false); setAmount(''); setAccountDetails('');
+    load(sellerId);
+  }
+
+  const statusTone = { pending:'warning', approved:'success', rejected:'danger' };
+
+  return (
+    <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
+      <StatusBar />
+      <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
+        <div style={{ maxWidth: isDesktop ? 640 : undefined, margin: isDesktop ? '0 auto' : undefined, padding: isDesktop ? '20px 0' : '14px 20px', display:'flex', alignItems:'center', gap:10 }}>
+          <button onClick={goBack} style={{ width:36, height:36, borderRadius:9999, border:`1.5px solid ${C.hairline}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            <Icon name="arrowLeft" size={18} color={C.ink} />
+          </button>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:19, fontWeight:800, color:C.ink, letterSpacing:'-0.02em' }}>Wallet</span>
+        </div>
+      </div>
+
+      <div style={{ flex:1, overflowY:'auto', padding: isDesktop ? '24px 0 40px' : '16px 16px 40px', display:'flex', flexDirection:'column', gap:14, maxWidth: isDesktop ? 640 : undefined, margin: isDesktop ? '0 auto' : undefined, width: isDesktop ? '100%' : undefined }}>
+        <div style={{ borderRadius:20, background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)`, padding:'22px 20px', position:'relative', overflow:'hidden', flexShrink:0 }}>
+          <div style={{ position:'absolute', right:-30, top:-30, width:160, height:160, borderRadius:9999, background:'rgba(255,255,255,0.07)' }} />
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:'rgba(255,255,255,0.8)', position:'relative' }}>Available to withdraw</div>
+          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:34, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', position:'relative' }}>${summary ? summary.available_balance.toFixed(2) : '0.00'}</div>
+          <Btn variant="secondary" size="md" onClick={() => setModalOpen(true)} disabled={!summary || summary.available_balance <= 0 || hasPending} style={{ marginTop:14, background:'rgba(255,255,255,0.16)', border:'none', color:'#fff' }}>
+            {hasPending ? 'Request pending' : 'Request payout'}
+          </Btn>
+        </div>
+
+        <div style={{ display:'flex', gap:10 }}>
+          <AdminLikeStat label="Total earned" value={summary ? `$${summary.total_earned.toFixed(2)}` : '—'} />
+          <AdminLikeStat label="Withdrawn" value={summary ? `$${summary.total_withdrawn.toFixed(2)}` : '—'} />
+          <AdminLikeStat label="Pending" value={summary ? `$${summary.pending_withdrawal.toFixed(2)}` : '—'} />
+        </div>
+
+        <div style={{ background:C.white, borderRadius:16, padding:'16px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink, marginBottom:12 }}>Payout requests</div>
+          {requests === null ? (
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Loading…</div>
+          ) : requests.length === 0 ? (
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No payout requests yet.</div>
+          ) : requests.map((r, i) => (
+            <div key={r.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderTop: i > 0 ? `1px solid ${C.hairline}` : 'none' }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13.5, fontWeight:600, color:C.ink }}>${Number(r.amount).toFixed(2)} via {r.method}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{new Date(r.created_at).toLocaleDateString()}{r.admin_note ? ` · ${r.admin_note}` : ''}</div>
+              </div>
+              <StatusPill tone={statusTone[r.status] || 'mute'}>{r.status}</StatusPill>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Modal open={modalOpen} title="Request payout" onClose={() => !submitting && setModalOpen(false)}>
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Available balance: ${summary ? summary.available_balance.toFixed(2) : '0.00'}</div>
+          <Input label="Amount (USD)" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g,''))} />
+          <AdminField label="Payout method">
+            <select value={method} onChange={e => setMethod(e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+              <option value="bank">Bank transfer</option>
+              <option value="moncash">MonCash</option>
+              <option value="natcash">NatCash</option>
+            </select>
+          </AdminField>
+          <Input label="Account details" placeholder="Account number / phone" value={accountDetails} onChange={e => setAccountDetails(e.target.value)} />
+          <Btn variant="primary" size="lg" wide onClick={submitRequest} disabled={submitting} style={{ marginTop:4 }}>
+            {submitting ? 'Submitting…' : 'Submit request'}
+          </Btn>
+        </div>
+      </Modal>
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
+  );
+}
+function AdminLikeStat({ label, value }) {
+  return (
+    <div style={{ flex:1, background:C.white, borderRadius:14, padding:'12px 14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{label}</div>
+      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight:700, color:C.ink, marginTop:2 }}>{value}</div>
+    </div>
+  );
+}
+
 Object.assign(window, {
   SellerWelcomeScreen, BecomeSellerScreen,
   KycVerifyIdentityScreen, KycDocScreen, KycSelfieIntroScreen, KycSelfieScreen,
   KycReviewScreen, KycSuccessScreen,
-  SellerDashboardScreen, SellerOrdersScreen, SellerProductFormScreen,
+  SellerDashboardScreen, SellerOrdersScreen, SellerProductFormScreen, SellerWalletScreen,
 });

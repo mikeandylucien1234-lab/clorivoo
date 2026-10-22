@@ -1796,6 +1796,35 @@ async function sbAdminDeleteCoupon(couponId) {
   return { error };
 }
 
+// ─── SELLER WALLET / PAYOUTS ───────────────────────────────────────
+async function sbGetSellerWalletSummary() {
+  if (!_sb) return { total_earned: 0, total_withdrawn: 0, pending_withdrawal: 0, available_balance: 0 };
+  const { data, error } = await _sb.rpc('seller_get_wallet_summary');
+  if (error) return { total_earned: 0, total_withdrawn: 0, pending_withdrawal: 0, available_balance: 0 };
+  return data;
+}
+async function sbGetMyWithdrawals(sellerId) {
+  if (!_sb || !sellerId) return [];
+  const { data } = await _sb.from('withdrawal_requests').select('*').eq('seller_id', sellerId).order('created_at', { ascending: false });
+  return data ?? [];
+}
+async function sbSellerRequestWithdrawal(amount, method, accountDetails) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('seller_request_withdrawal', { p_amount: amount, p_method: method, p_account_details: accountDetails });
+  return { data, error };
+}
+async function sbAdminGetWithdrawalRequests(status = 'ALL') {
+  if (!_sb) return [];
+  const { data, error } = await _sb.rpc('admin_get_withdrawal_requests', { p_status: status });
+  if (error) return [];
+  return data ?? [];
+}
+async function sbAdminDecideWithdrawal(requestId, decision, note = null) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('admin_decide_withdrawal', { p_request_id: requestId, p_decision: decision, p_note: note });
+  return { data, error };
+}
+
 // ─── WISHLIST ──────────────────────────────────────────────────────
 async function sbGetWishlist(userId) {
   if (!_sb || !userId) return [];
@@ -2589,6 +2618,8 @@ Object.assign(window, {
   sbAdminGetCoupons, sbAdminCreateCoupon, sbAdminUpdateCoupon, sbAdminDeleteCoupon,
   sbAdminGetPlatformSettings, sbAdminSetPlatformSetting, sbAdminGetCommissionRate, sbAdminSetCommissionRate,
   sbGetWishlist, sbAddToWishlist, sbRemoveFromWishlist, sbGetWishlistCount,
+  sbGetSellerWalletSummary, sbGetMyWithdrawals, sbSellerRequestWithdrawal,
+  sbAdminGetWithdrawalRequests, sbAdminDecideWithdrawal,
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
   sbGetSellerShipments, sbSellerCreateShipment, sbSellerUpdateShipment, sbSellerReportDeliveryFailure,

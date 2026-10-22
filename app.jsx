@@ -87,6 +87,7 @@ const SCREENS = {
   'store':          () => window.SellerStoreScreen,
   'seller-home':    () => window.SellerDashboardScreen,
   'seller-orders':  () => window.SellerOrdersScreen,
+  'seller-wallet':  () => window.SellerWalletScreen,
   'seller-product-new': () => window.SellerProductFormScreen,
   'shop-customize': () => window.ShopCustomizeScreen,
   // V2 — CJ Import

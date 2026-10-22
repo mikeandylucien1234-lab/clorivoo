@@ -28,6 +28,7 @@ const ADMIN_NAV = [
     { key:'payments',   label:'Payments',    icon:'creditCard' },
     { key:'refunds',    label:'Refunds',     icon:'refreshCw' },
     { key:'commissions',label:'Commissions', icon:'dollarSign' },
+    { key:'wallet',     label:'Wallet',      icon:'wallet' },
     { key:'shipping',   label:'Shipping',    icon:'truck' },
     { key:'products',   label:'Products',    icon:'package' },
     { key:'categories', label:'Categories',  icon:'grid' },
@@ -4426,12 +4427,66 @@ function AdminCommissionsSection() {
                 <Td align="right">{(Number(e.commission_rate) * 100).toFixed(1)}%</Td>
                 <Td align="right">${Number(e.commission_amount).toFixed(2)}</Td>
                 <Td align="right">${Number(e.net_amount).toFixed(2)}</Td>
-                <Td><StatusPill tone={e.status === 'settled' ? 'success' : 'mute'}>{e.status}</StatusPill></Td>
+                <Td><StatusPill tone={e.status === 'confirmed' ? 'success' : e.status === 'reversed' ? 'danger' : 'mute'}>{e.status}</StatusPill></Td>
               </tr>
             ))}
           </tbody>
         </table>
       </AdminCard>
+    </div>
+  );
+}
+
+function AdminWalletSection({ accessCtx }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const [statusFilter, setStatusFilter] = React.useState('pending');
+  const [requests, setRequests] = React.useState(null);
+  const [toast, setToast] = React.useState(null);
+  const [busyId, setBusyId] = React.useState(null);
+  const load = React.useCallback(() => { sbAdminGetWithdrawalRequests(statusFilter === 'ALL' ? 'ALL' : statusFilter).then(setRequests); }, [statusFilter]);
+  React.useEffect(() => { load(); }, [load]);
+
+  async function decide(requestId, decision) {
+    setBusyId(requestId);
+    const { error } = await sbAdminDecideWithdrawal(requestId, decision);
+    setBusyId(null);
+    if (error) { setToast({ type:'error', message: error.message || 'Could not decide this payout request.' }); return; }
+    load();
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Wallet" sub="Seller payout requests" />
+      <div style={{ display:'flex', gap:6 }}>
+        {['pending','approved','rejected','ALL'].map(s => (
+          <button key={s} onClick={() => setStatusFilter(s)} style={{
+            padding:'5px 11px', borderRadius:7, border:`1px solid ${statusFilter === s ? C.primary : C.hairline}`,
+            background: statusFilter === s ? C.primarySoft : C.white, cursor:'pointer',
+            fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:600, color: statusFilter === s ? C.primaryDeep : C.mute,
+          }}>{s}</button>
+        ))}
+      </div>
+      <AdminCard padded={false}>
+        {requests === null ? <AdminEmptyRow text="Loading…" /> : requests.length === 0 ? <AdminEmptyRow text="No payout requests." /> : requests.map((r, i) => (
+          <div key={r.id} style={{ padding:'12px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
+            <div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{r.seller_name} — ${Number(r.amount).toFixed(2)}</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{r.method} · {r.account_details}</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{new Date(r.created_at).toLocaleString()}{r.admin_note ? ` · ${r.admin_note}` : ''}</div>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
+              <StatusPill tone={r.status === 'pending' ? 'warning' : r.status === 'rejected' ? 'danger' : 'success'}>{r.status}</StatusPill>
+              {can('wallet.manage') && r.status === 'pending' && (
+                <div style={{ display:'flex', gap:6 }}>
+                  <Btn variant="secondary" size="sm" disabled={busyId===r.id} onClick={() => decide(r.id, 'approved')}>Approve</Btn>
+                  <Btn variant="secondary" size="sm" disabled={busyId===r.id} onClick={() => decide(r.id, 'rejected')}>Reject</Btn>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </AdminCard>
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }
@@ -4608,6 +4663,7 @@ function AdminShellScreen({ params = {} }) {
       case 'payments': return <AdminPaymentsSection accessCtx={accessCtx} />;
       case 'refunds': return <AdminRefundsSection accessCtx={accessCtx} />;
       case 'commissions': return <AdminCommissionsSection />;
+      case 'wallet': return <AdminWalletSection accessCtx={accessCtx} />;
 
       case 'products': return <AdminProductsSection accessCtx={accessCtx} />;
 
