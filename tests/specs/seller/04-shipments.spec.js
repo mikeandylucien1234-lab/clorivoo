@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures.js';
 import { goto, mockAuth, seedSellerShipments } from '../../helpers/navigate.js';
 
 // Matches the real shipment shape returned by sbGetSellerShipments()
@@ -103,6 +103,51 @@ test.describe('Seller — Shipment management', () => {
     expect(splitCall).toBeTruthy();
     expect(splitCall.orderId).toBe('order-alpha-100');
     expect(splitCall.itemIds).toHaveLength(1);
+  });
+
+  test('Filtre de statut — narrows to the selected status only', async ({ page }) => {
+    // "Shipped" folds in 'in_transit' (see ORDER_FILTERS in
+    // screen-seller.jsx), "Delivery Exception" covers 'failed'/'returned' —
+    // both derived groupings, not literal shipments.status values.
+    await seedSellerShipments(page, [
+      ...SELLER_SHIPMENTS,
+      { id: 'ship-s3', order_id: 'order-charlie-300', status: 'in_transit', order_items: [{ id:'oi-300', title:'Sac en toile', quantity:1 }], shipping_fee:4, created_at: new Date().toISOString() },
+      { id: 'ship-s4', order_id: 'order-delta-400', status: 'failed', order_items: [{ id:'oi-400', title:'Montre Vintage', quantity:1 }], shipping_fee:4, created_at: new Date().toISOString() },
+      { id: 'ship-s5', order_id: 'order-echo-500', status: 'delivered', order_items: [{ id:'oi-500', title:'Coussin brodé', quantity:1 }], shipping_fee:4, created_at: new Date().toISOString() },
+    ]);
+    await goto(page, 'seller-orders');
+
+    await expect(page.locator('text=Lampe Boho Tressée')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Montre Vintage')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Shipped', exact: true }).click();
+    await expect(page.locator('text=Robe Lin Été')).toBeVisible({ timeout: 5000 }); // shipped
+    await expect(page.locator('text=Sac en toile')).toBeVisible(); // in_transit folded into "Shipped"
+    await expect(page.locator('text=Lampe Boho Tressée')).toHaveCount(0); // pending, excluded
+    await expect(page.locator('text=Montre Vintage')).toHaveCount(0); // failed, excluded
+
+    await page.getByRole('button', { name: 'Delivery Exception' }).click();
+    await expect(page.locator('text=Montre Vintage')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Robe Lin Été')).toHaveCount(0);
+    await expect(page.locator('text=Sac en toile')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Delivered', exact: true }).click();
+    await expect(page.locator('text=Coussin brodé')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Montre Vintage')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'All', exact: true }).click();
+    await expect(page.locator('text=Lampe Boho Tressée')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Montre Vintage')).toBeVisible();
+    await expect(page.locator('text=Coussin brodé')).toBeVisible();
+  });
+
+  test('Filtre de statut — n\'affiche jamais les expéditions d\'un autre vendeur', async ({ page }) => {
+    // The filter only narrows what sbGetSellerShipments() already
+    // returned for this seller — it is never a separate, broader fetch.
+    await page.getByRole('button', { name: 'All', exact: true }).click();
+    const log = await page.evaluate(() => window._SELLER_ACTIONS_LOG ?? []);
+    expect(log).toHaveLength(0);
+    await expect(page.locator('text=ship-other-seller')).toHaveCount(0);
   });
 
   test("Aucune modification possible sur l'expédition d'un autre vendeur", async ({ page }) => {

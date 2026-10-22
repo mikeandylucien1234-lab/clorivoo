@@ -443,8 +443,15 @@ function WishlistScreen() {
 
 // ─── EMPTY STATE ───────────────────────────────────────────────
 function WishlistEmptyState({ onBrowse }) {
-  const recommended = PRODUCTS.slice(0, 4);
+  const [recommended, setRecommended] = React.useState(null); // null = loading, [] = none/error
   const { navigate } = useNav();
+
+  React.useEffect(() => {
+    sbGetSimilarProducts({ limit: 4 })
+      .then(({ data }) => setRecommended((data || []).map(_withCardFields)))
+      .catch(() => setRecommended([]));
+  }, []);
+
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, padding:'30px 10px 10px' }}>
       <div style={{ width:120, height:120, borderRadius:9999, background:`linear-gradient(135deg, ${C.primarySoft} 0%, #EDE7FF 100%)`, display:'flex', alignItems:'center', justifyContent:'center', position:'relative' }}>
@@ -459,14 +466,22 @@ function WishlistEmptyState({ onBrowse }) {
       </div>
       <Btn variant="primary" size="md" onClick={onBrowse} style={{ background:`linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)` }}>Continue Shopping</Btn>
 
+      {(recommended === null || recommended.length > 0) && (
       <div style={{ width:'100%', marginTop:14 }}>
         <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink, marginBottom:12 }}>You Might Like</div>
+        {recommended === null ? (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            {[0,1].map(i => <div key={i} style={{ height:220, borderRadius:14, background:'linear-gradient(90deg, #EFEDF5 25%, #F6F5FA 37%, #EFEDF5 63%)', backgroundSize:'400% 100%', animation:'shimmer 1.4s ease infinite' }} />)}
+          </div>
+        ) : (
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
           {recommended.map((p, i) => (
             <ProductCard key={p.id} product={p} size="md" tint={i % 5} onPress={() => navigate('pdp', { product:p })} />
           ))}
         </div>
+        )}
       </div>
+      )}
     </div>
   );
 }

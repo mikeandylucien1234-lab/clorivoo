@@ -520,7 +520,7 @@ function OrderDetailScreen({ params = {} }) {
                     <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.success }}>{fmtDate(s.delivered_at, { month:'long', day:'numeric' })}</span>
                   </div>
                 )}
-                {s.failure_reason && (
+                {s.status === 'failed' && s.failure_reason && (
                   <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>Issue: {s.failure_reason}</div>
                 )}
                 {!s.carrier && !s.tracking_number && (s.status === 'pending' || s.status === 'processing') && (

@@ -12,7 +12,24 @@ function ShopCustomizeScreen() {
   const [bannerIdx, setBannerIdx] = React.useState(0);
 
   const accentOptions = ['#6C4DFF', '#C97B5A', '#1F8A5B', '#2563EB', '#DB2777'];
-  const shopProducts  = PRODUCTS.slice(0, 6);
+  // Real products from the signed-in seller's own shop — replaces the old
+  // fictitious `PRODUCTS` constant (always empty in production). null =
+  // loading, [] = no shop yet / no published products / fetch error.
+  const [shopProductsState, setShopProductsState] = React.useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const user = await sbGetUser();
+      const profile = user ? await sbGetProfile(user.id) : null;
+      if (cancelled) return;
+      if (!profile?.shop_id) { setShopProductsState([]); return; }
+      const { data } = await sbSearchProducts({ shopId: profile.shop_id, limit: 6 });
+      if (!cancelled) setShopProductsState((data || []).map(_withCardFields));
+    }
+    load().catch(() => { if (!cancelled) setShopProductsState([]); });
+    return () => { cancelled = true; };
+  }, []);
+  const shopProducts = shopProductsState || [];
 
   React.useEffect(() => {
     if (banners.length === 0) return;
@@ -79,17 +96,25 @@ function ShopCustomizeScreen() {
             </div>
           </div>
         )}
-        {/* Product grid */}
+        {/* Product grid — real products from this seller's own shop */}
         <div style={{ padding:'0 14px 14px' }}>
           <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:8 }}>Products ({shopProducts.length})</div>
+          {shopProductsState === null ? (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
+              {[0,1,2].map(i => <div key={i} style={{ height:64, borderRadius:8, background:'linear-gradient(90deg, #EFEDF5 25%, #F6F5FA 37%, #EFEDF5 63%)', backgroundSize:'400% 100%', animation:'shimmer 1.4s ease infinite' }} />)}
+            </div>
+          ) : shopProducts.length === 0 ? (
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, padding:'8px 0' }}>No published products yet.</div>
+          ) : (
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
             {shopProducts.map((p, i) => (
               <div key={p.id} style={{ borderRadius:8, overflow:'hidden' }}>
-                <Img label="" tint={i % 5} style={{ width:'100%', height:64, borderRadius:0 }} />
+                <Img label="" src={p.image_url} tint={i % 5} style={{ width:'100%', height:64, borderRadius:0 }} />
                 <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, fontWeight:700, color:C.ink, marginTop:3 }}>${p.price.toFixed(0)}</div>
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
     );
@@ -201,11 +226,18 @@ function ShopCustomizeScreen() {
             <div style={{ margin:'0 16px', background:C.white, borderRadius:16, padding:'14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:4 }}>Featured products</div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:12 }}>Drag to reorder · select featured items</div>
+              {shopProductsState === null ? (
+                <div style={{ display:'flex', gap:8 }}>
+                  {[0,1,2].map(i => <div key={i} style={{ width:80, height:80, flexShrink:0, borderRadius:10, background:'linear-gradient(90deg, #EFEDF5 25%, #F6F5FA 37%, #EFEDF5 63%)', backgroundSize:'400% 100%', animation:'shimmer 1.4s ease infinite' }} />)}
+                </div>
+              ) : shopProducts.length === 0 ? (
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>No published products to feature yet.</div>
+              ) : (
               <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:4 }}>
                 {shopProducts.map((p, i) => (
                   <div key={p.id} style={{ width:80, flexShrink:0, position:'relative' }}>
                     <div style={{ width:80, height:80, borderRadius:10, overflow:'hidden', border: i < 3 ? `2px solid ${C.primary}` : `2px solid transparent` }}>
-                      <Img label="" tint={i % 5} style={{ width:80, height:80 }} />
+                      <Img label="" src={p.image_url} tint={i % 5} style={{ width:80, height:80 }} />
                     </div>
                     {i < 3 && (
                       <div style={{ position:'absolute', top:4, right:4, width:18, height:18, borderRadius:9999, background:C.primary, display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -215,6 +247,7 @@ function ShopCustomizeScreen() {
                   </div>
                 ))}
               </div>
+              )}
             </div>
 
             {/* Save */}

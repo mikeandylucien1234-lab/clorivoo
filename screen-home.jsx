@@ -1,18 +1,36 @@
 // screen-home.jsx — Homepage A : deals feed
 
+// Real Supabase product rows don't carry a display-ready `oldPrice`/`discount`
+// (that's `compare_price`, numeric — sometimes returned as a string by
+// PostgREST) or a `tint` placeholder color index the way the old fictitious
+// PRODUCTS demo objects did. This derives them from the real columns instead
+// of inventing numbers.
+function _withCardFields(p, i) {
+  const price = Number(p.price);
+  const comparePrice = p.compare_price != null ? Number(p.compare_price) : null;
+  const discount = comparePrice && comparePrice > price ? Math.round((1 - price / comparePrice) * 100) : null;
+  return { ...p, tint: i % 5, price, oldPrice: comparePrice, discount };
+}
+
 function HomeScreen() {
   const { navigate } = useNav();
   const isDesktop = useIsDesktop();
   const [activeTab, setActiveTab]           = React.useState(0);
   const [activeCategory, setActiveCategory] = React.useState(0);
   const [cartCount, setCartCount]           = React.useState(window.CART_ITEMS.length);
-  const [products, setProducts]             = React.useState(PRODUCTS.map((p,i) => ({...p, tint: i%5})));
+  // null = loading, [] = Supabase returned zero products (real empty state),
+  // 'error' = the fetch itself failed. Never falls back to the fictitious
+  // PRODUCTS demo array once a real Supabase connection exists.
+  const [products, setProducts]             = React.useState(null);
+  const [productsState, setProductsState]   = React.useState('loading'); // loading | error | success
+  const [featuredProducts, setFeaturedProducts] = React.useState(null);
   const [shops, setShops]                   = React.useState(null);
   const [banners, setBanners]               = React.useState(null);
   const [user, setUser]                     = React.useState(null);
   const [activeBanner, setActiveBanner]     = React.useState(0);
   const [navCategories, setNavCategories]   = React.useState([]); // real top-level categories (show_in_navigation)
   const [featuredCategories, setFeaturedCategories] = React.useState([]);
+  const [flashDealsReal, setFlashDealsReal] = React.useState(null); // null = loading, [] = none active
 
   const homeSections = window._HOME_SECTIONS || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
   const announcement = window._ANNOUNCEMENT;
@@ -21,11 +39,27 @@ function HomeScreen() {
 
   React.useEffect(() => {
     sbGetUser().then(u => setUser(u));
-    sbGetProducts({ limit: 12 }).then(({ data }) => { if (data?.length) setProducts(data.map((p,i) => ({...p, tint: i%5}))); });
+    sbGetProducts({ limit: 12 }).then(({ data, error }) => {
+      if (error) { setProductsState('error'); setProducts([]); return; }
+      setProducts((data || []).map(_withCardFields));
+      setProductsState('success');
+    }).catch(() => { setProductsState('error'); setProducts([]); });
+    sbGetProducts({ limit: 8, featured: true }).then(({ data }) => {
+      setFeaturedProducts((data || []).map(_withCardFields));
+    });
     sbGetShops({ limit: 8 }).then(({ data }) => { if (data?.length) setShops(data); });
     sbGetBanners().then(({ data }) => { if (data?.length) setBanners(data); });
     sbGetCategoryTree().then(tree => setNavCategories(tree.filter(c => c.show_in_navigation !== false)));
     sbGetFeaturedCategories(4).then(setFeaturedCategories);
+    // Flash deals show the real flash_price (not the regular price) as the
+    // current price, with the regular price crossed out — computed from the
+    // same two real columns the admin set, never a fabricated discount.
+    sbGetActiveFlashDeals(4).then(({ data }) => setFlashDealsReal((data || []).map((p, i) => {
+      const regularPrice = Number(p.price);
+      const flashPrice = Number(p.flash_price);
+      const discount = flashPrice > 0 && regularPrice > flashPrice ? Math.round((1 - flashPrice / regularPrice) * 100) : null;
+      return { ...p, tint: i % 5, price: flashPrice, oldPrice: regularPrice, discount };
+    }))).catch(() => setFlashDealsReal([]));
     if (window._supabase) {
       sbGetUser().then(async u => {
         if (u) {
@@ -48,8 +82,16 @@ function HomeScreen() {
     return () => clearInterval(id);
   }, [heroBanners.length]);
 
-  const flashDeals = products.slice(0, 4);
-  const forYou     = products.slice(2, 8);
+  const safeProducts = products || [];
+  const discountedProducts = safeProducts.filter(p => p.discount);
+  // Real, admin-curated Flash Deals (products.is_flash_deal, within their real
+  // start/end window) — falls back to nothing shown if none are active,
+  // never to a fabricated promotion. Super Deals stays general real-discount
+  // products, unchanged.
+  const flashDeals = (flashDealsReal || []).slice(0, 2);
+  const superDeals = discountedProducts.slice(0, 2);
+  const superDealsMaxDiscount = superDeals.reduce((max, p) => Math.max(max, p.discount || 0), 0);
+  const forYou     = safeProducts.slice(2, 8);
   const displayShops = shops ?? [];
   const userName  = user?.user_metadata?.full_name?.split(' ')[0] ?? window._PROFILE?.name?.split(' ')[0] ?? 'there';
   const userInitials = user?.user_metadata?.full_name?.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() ?? (window._PROFILE?.name || '').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() ?? '';
@@ -204,11 +246,11 @@ function HomeScreen() {
               { icon:'share',      label:'Referrals',   ic:'#059669', badge:'EARN $',  badgeBg:C.success  },
               { icon:'zap',        label:'Flash Live',  ic:C.primary, badge:'LIVE',     badgeBg:C.danger   },
               { icon:'star',       label:'Coupons',     ic:'#2563EB', badge:null,       badgeBg:null       },
-              { icon:'store',      label:'Shops',       ic:'#DB2777', badge:null,       badgeBg:null       },
+              { icon:'store',      label:'Shops',       ic:'#DB2777', badge:null,       badgeBg:null,      nav:'shop' },
               { icon:'package',    label:'Tracking',    ic:'#EA580C', badge:null,       badgeBg:null       },
               { icon:'creditCard', label:'Payments',    ic:'#16A34A', badge:'NEW',      badgeBg:'#2563EB'  },
             ].map((s, i) => (
-              <div key={i} onClick={() => {}} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0, cursor:'pointer', width:52 }}>
+              <div key={i} onClick={() => s.nav && navigate(s.nav)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0, cursor:'pointer', width:52 }}>
                 <div style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', height:34 }}>
                   <Icon name={s.icon} size={28} color={s.ic} sw={1.5} />
                   {s.badge && (
@@ -226,7 +268,7 @@ function HomeScreen() {
         {/* Featured Shops */}
         {homeSections.shops && displayShops.length > 0 && (
         <div style={{ padding: '20px 20px 0' }}>
-          <SectionHeader title="Popular Shops" onSeeAll={() => {}} style={{ marginBottom: 14 }} />
+          <SectionHeader title="Popular Shops" onSeeAll={() => navigate('shop')} style={{ marginBottom: 14 }} />
           <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 4 }}>
             {displayShops.map((shop, i) => {
               const initial = shop.initial ?? shop.name?.[0]?.toUpperCase() ?? 'S';
@@ -255,67 +297,82 @@ function HomeScreen() {
         </div>
         )}
 
-        {/* Flash Deals + Super Deals — side by side */}
-        {homeSections.deals && products.length > 0 && (
+        {/* Flash Deals (admin-curated, products.is_flash_deal within its real
+            start/end window) + Super Deals (any product with a real discount).
+            Hidden entirely when neither has anything to show — never
+            backfilled with fictitious items. */}
+        {homeSections.deals && (flashDeals.length > 0 || superDeals.length > 0) && (
         <div style={{ padding: '20px 20px 0' }}>
           <div style={{ display:'flex', gap:10, background:C.white, borderRadius:16, padding:12, boxShadow:'0 2px 12px rgba(14,11,31,0.05)' }}>
 
             {/* Flash Deals */}
+            {flashDeals.length > 0 && (
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:4 }}>
                   <Icon name="zap" size={13} color={C.primary} />
                   <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:C.ink }}>Flash Deals</span>
                 </div>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, fontWeight:600, color:C.primary, background:C.primarySoft, borderRadius:9999, padding:'2px 6px' }}>01:42</span>
+                {/* Real end date only — shown only when the admin actually set one for at least one of these deals. */}
+                {flashDeals.some(p => p.flash_ends_at) && (
+                  <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, fontWeight:600, color:C.primary }}>
+                    Ends {new Date(flashDeals.find(p => p.flash_ends_at).flash_ends_at).toLocaleDateString('en-US', { month:'short', day:'numeric' })}
+                  </span>
+                )}
               </div>
               <div style={{ display:'flex', gap:6, marginBottom:8 }}>
-                {PRODUCTS.slice(0,2).map((p,i) => (
+                {flashDeals.map((p,i) => (
                   <div key={p.id} onClick={() => navigate('pdp',{product:p})} style={{ flex:1, borderRadius:10, background:C.paper, overflow:'hidden', cursor:'pointer' }}>
                     <div style={{ position:'relative' }}>
-                      <Img label="" tint={i} style={{ width:'100%', height:80, borderRadius:0 }} />
+                      <Img label="" src={p.image_url} tint={i} style={{ width:'100%', height:80, borderRadius:0 }} />
                       {p.discount && <div style={{ position:'absolute', top:4, left:4, background:C.primarySoft, color:C.primaryDeep, fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:9999 }}>-{p.discount}%</div>}
                     </div>
                     <div style={{ padding:'5px 6px' }}>
                       <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.mute, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis', marginBottom:2 }}>{p.title}</div>
                       <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:700, color:C.primary }}>${p.price.toFixed(2)}</div>
-                      {p.oldPrice && <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:C.mute, textDecoration:'line-through' }}>${p.oldPrice}</div>}
+                      {p.oldPrice && <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:C.mute, textDecoration:'line-through' }}>${p.oldPrice.toFixed(2)}</div>}
                     </div>
                   </div>
                 ))}
               </div>
               <button onClick={() => {}} style={{ width:'100%', height:30, border:`1.5px solid ${C.primary}`, borderRadius:9999, background:'transparent', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:C.primary }}>See all →</button>
             </div>
+            )}
 
             {/* Divider */}
-            <div style={{ width:1, background:C.hairline, flexShrink:0 }} />
+            {flashDeals.length > 0 && superDeals.length > 0 && <div style={{ width:1, background:C.hairline, flexShrink:0 }} />}
 
             {/* Super Deals */}
+            {superDeals.length > 0 && (
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:4 }}>
                   <Icon name="tag" size={13} color={'#D97706'} />
                   <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:C.ink }}>Super Deals</span>
                 </div>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, fontWeight:600, color:'#D97706', background:'#FEF3C7', borderRadius:9999, padding:'2px 6px' }}>-70%</span>
+                {/* Real figure: the best discount actually among these items, not a fixed "-70%". */}
+                {superDealsMaxDiscount > 0 && (
+                  <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, fontWeight:600, color:'#D97706', background:'#FEF3C7', borderRadius:9999, padding:'2px 6px' }}>Up to -{superDealsMaxDiscount}%</span>
+                )}
               </div>
               <div style={{ display:'flex', gap:6, marginBottom:8 }}>
-                {PRODUCTS.slice(2,4).map((p,i) => (
+                {superDeals.map((p,i) => (
                   <div key={p.id} onClick={() => navigate('pdp',{product:p})} style={{ flex:1, borderRadius:10, background:C.paper, overflow:'hidden', cursor:'pointer' }}>
                     <div style={{ position:'relative' }}>
-                      <Img label="" tint={i+2} style={{ width:'100%', height:80, borderRadius:0 }} />
+                      <Img label="" src={p.image_url} tint={i+2} style={{ width:'100%', height:80, borderRadius:0 }} />
                       {p.discount && <div style={{ position:'absolute', top:4, left:4, background:'#FEF3C7', color:'#D97706', fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:9999 }}>-{p.discount}%</div>}
                     </div>
                     <div style={{ padding:'5px 6px' }}>
                       <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.mute, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis', marginBottom:2 }}>{p.title}</div>
                       <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:700, color:'#D97706' }}>${p.price.toFixed(2)}</div>
-                      {p.oldPrice && <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:C.mute, textDecoration:'line-through' }}>${p.oldPrice}</div>}
+                      {p.oldPrice && <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:C.mute, textDecoration:'line-through' }}>${p.oldPrice.toFixed(2)}</div>}
                     </div>
                   </div>
                 ))}
               </div>
               <button onClick={() => {}} style={{ width:'100%', height:30, border:'1.5px solid #D97706', borderRadius:9999, background:'transparent', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:'#D97706' }}>See all →</button>
             </div>
+            )}
 
           </div>
         </div>
@@ -344,12 +401,12 @@ function HomeScreen() {
           );
         })()}
 
-        {/* Promo Banners */}
-        {products.length > 0 && (
+        {/* Promo Banners — real discounted products only */}
+        {discountedProducts.length > 0 && (
         <div style={{ padding: '20px 20px 0' }}>
           <SectionHeader title="Exclusive Offers" onSeeAll={() => {}} style={{ marginBottom: 12 }} />
           <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:4 }}>
-            {products.filter(p => p.discount).slice(0, 4).map((p, i) => (
+            {discountedProducts.slice(0, 4).map((p, i) => (
               <div key={p.id} onClick={() => navigate('pdp',{ product: p })} style={{ width:268, height:112, borderRadius:14, background:['#059669','#6C4DFF','#D97706','#DC2626'][i % 4], display:'flex', alignItems:'center', padding:'12px 14px', cursor:'pointer', flexShrink:0, position:'relative', overflow:'hidden' }}>
                 {/* bg circle decoration */}
                 <div style={{ position:'absolute', right:-20, top:-20, width:110, height:110, borderRadius:9999, background:'rgba(255,255,255,0.08)' }} />
@@ -361,7 +418,7 @@ function HomeScreen() {
                   </div>
                   {p.oldPrice && (
                     <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.75)', marginBottom:1 }}>
-                      Before: <span style={{ textDecoration:'line-through' }}>${p.oldPrice}</span>
+                      Before: <span style={{ textDecoration:'line-through' }}>${p.oldPrice.toFixed(2)}</span>
                     </div>
                   )}
                   <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', lineHeight:1.1, marginBottom:3 }}>${p.price.toFixed(2)}</div>
@@ -377,8 +434,11 @@ function HomeScreen() {
         </div>
         )}
 
-        {/* Featured — Sponsored Products */}
-        {homeSections.featured && products.length > 0 && (
+        {/* Featured — real products flagged is_featured by the admin (Admin
+            Console › Products), fetched separately via sbGetProducts({featured:true}).
+            Hidden while loading or when none are flagged — never backfilled
+            with the fictitious PRODUCTS array. */}
+        {homeSections.featured && featuredProducts && featuredProducts.length > 0 && (
         <div style={{ padding: '20px 20px 0' }}>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:12 }}>
             <div>
@@ -391,11 +451,11 @@ function HomeScreen() {
             </button>
           </div>
           <div style={{ display:'grid', gridTemplateColumns: isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap:12 }}>
-            {PRODUCTS.map((p, i) => (
+            {featuredProducts.map((p, i) => (
               <div key={p.id} style={{ position:'relative' }}>
                 <ProductCard product={p} size="md" tint={i % 5} onPress={() => navigate('pdp', { product: p })} />
                 <div style={{ position:'absolute', top:8, left:8, background:'rgba(14,11,31,0.55)', backdropFilter:'blur(4px)', borderRadius:9999, padding:'2px 8px', pointerEvents:'none' }}>
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:600, color:'rgba(255,255,255,0.92)', letterSpacing:'0.02em' }}>Sponsored</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:600, color:'rgba(255,255,255,0.92)', letterSpacing:'0.02em' }}>Featured</span>
                 </div>
               </div>
             ))}
@@ -404,14 +464,14 @@ function HomeScreen() {
         )}
 
         {/* Product Videos */}
-        {homeSections.videos && products.length > 0 && (
+        {homeSections.videos && safeProducts.length > 0 && (
         <div style={{ padding:'20px 20px 0' }}>
           <div style={{ marginBottom:12 }}>
             <span style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:700, color:C.ink, letterSpacing:'-0.02em' }}>Product Videos</span>
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:2 }}>See the products in action</div>
           </div>
           <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:4 }}>
-            {products.slice(0, 6).map((p, i) => (
+            {safeProducts.slice(0, 6).map((p, i) => (
               <div key={p.id} onClick={() => navigate('pdp',{ product:p })} style={{ width:148, height:228, borderRadius:14, overflow:'hidden', cursor:'pointer', flexShrink:0, position:'relative', background:'#1a1a2e', boxShadow:'0 4px 16px rgba(14,11,31,0.12)' }}>
                 {/* BG placeholder */}
                 <Img label="" src={p.image_url} tint={i % 5} style={{ position:'absolute', inset:0, width:148, height:228, borderRadius:0 }} />
@@ -444,14 +504,42 @@ function HomeScreen() {
         </div>
         )}
 
-        {/* For You */}
+        {/* For You — Loading / Error / Empty / Success, never backfilled
+            with the fictitious PRODUCTS demo array. */}
         <div style={{ padding: '20px 20px 16px' }}>
           <SectionHeader title="Just For You" onSeeAll={() => {}} style={{ marginBottom: 12 }} />
-          <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap: 12 }}>
-            {forYou.map((p, i) =>
-            <ProductCard key={p.id} product={p} size="md" tint={i + 2} onPress={() => navigate('pdp', { product: p })} />
-            )}
-          </div>
+          {productsState === 'loading' && (
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap: 12 }}>
+              {[0,1,2,3].map(i => (
+                <div key={i} style={{ borderRadius:12, overflow:'hidden', background:C.white }}>
+                  <div style={{ width:'100%', height:170, background:'linear-gradient(90deg, #EFEDF5 25%, #F6F5FA 37%, #EFEDF5 63%)', backgroundSize:'400% 100%', animation:'shimmer 1.4s ease infinite' }} />
+                  <div style={{ padding:10, display:'flex', flexDirection:'column', gap:8 }}>
+                    <div style={{ height:12, width:'80%', background:'#EFEDF5', borderRadius:6 }} />
+                    <div style={{ height:12, width:'40%', background:'#EFEDF5', borderRadius:6 }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {productsState === 'error' && (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:'30px 20px', textAlign:'center' }}>
+              <Icon name="alertTriangle" size={28} color={C.mute} />
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Couldn't load products right now. Pull to refresh or try again shortly.</span>
+            </div>
+          )}
+          {productsState === 'success' && forYou.length === 0 && (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:'30px 20px', textAlign:'center' }}>
+              <Icon name="package" size={28} color={C.mute} />
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No products available yet.</span>
+            </div>
+          )}
+          {productsState === 'success' && forYou.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap: 12 }}>
+              {forYou.map((p, i) =>
+              <ProductCard key={p.id} product={p} size="md" tint={i + 2} onPress={() => navigate('pdp', { product: p })} />
+              )}
+            </div>
+          )}
         </div>
         </div>
       </div>

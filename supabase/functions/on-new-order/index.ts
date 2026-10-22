@@ -15,9 +15,13 @@ const NOTIFY_URL   = `${SUPABASE_URL}/functions/v1/send-notification`;
 const RESEND_URL   = 'https://api.resend.com/emails';
 const FROM         = 'Clorivo <onboarding@resend.dev>';
 
+// x-internal-secret is what proves to send-notification (Phase 6
+// hardening) that this call comes from a trusted internal webhook
+// function, not an arbitrary request carrying only the service key.
 const authHeader = () => ({
   'Authorization': `Bearer ${SERVICE_KEY}`,
   'Content-Type': 'application/json',
+  'x-internal-secret': Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '',
 });
 
 async function sendEmail(to: string, subject: string, html: string) {
