@@ -4,12 +4,19 @@ function ShopCustomizeScreen() {
   const { navigate, goBack } = useNav();
   const [tab, setTab] = React.useState('preview'); // preview | edit
 
-  // Editable shop state
+  // Editable shop state — loaded from, and saved to, the real `shops` row.
+  const [shopId, setShopId]       = React.useState(null);
   const [shopName, setShopName]   = React.useState(window._PROFILE?.name || 'My Shop');
   const [shopBio, setShopBio]     = React.useState('');
   const [accent, setAccent]       = React.useState('#6C4DFF');
+  const [logoUrl, setLogoUrl]     = React.useState(null);
+  const [coverUrl, setCoverUrl]   = React.useState(null);
+  const [featuredIds, setFeaturedIds] = React.useState([]);
   const [banners, setBanners]     = React.useState([]);
   const [bannerIdx, setBannerIdx] = React.useState(0);
+  const [saving, setSaving]       = React.useState(false);
+  const [uploading, setUploading] = React.useState(null); // 'logo' | 'cover' | null
+  const [toast, setToast]         = React.useState(null);
 
   const accentOptions = ['#6C4DFF', '#C97B5A', '#1F8A5B', '#2563EB', '#DB2777'];
   // Real products from the signed-in seller's own shop — replaces the old
@@ -23,13 +30,53 @@ function ShopCustomizeScreen() {
       const profile = user ? await sbGetProfile(user.id) : null;
       if (cancelled) return;
       if (!profile?.shop_id) { setShopProductsState([]); return; }
-      const { data } = await sbSearchProducts({ shopId: profile.shop_id, limit: 6 });
-      if (!cancelled) setShopProductsState((data || []).map(_withCardFields));
+      const [{ data }, shop] = await Promise.all([
+        sbSearchProducts({ shopId: profile.shop_id, limit: 6 }),
+        sbGetShop(profile.shop_id),
+      ]);
+      if (cancelled) return;
+      setShopProductsState((data || []).map(_withCardFields));
+      if (shop) {
+        setShopId(shop.id);
+        setShopName(shop.name || window._PROFILE?.name || 'My Shop');
+        setShopBio(shop.description || '');
+        setAccent(shop.brand_color || '#6C4DFF');
+        setLogoUrl(shop.logo_url || null);
+        setCoverUrl(shop.cover_url || null);
+        setFeaturedIds(shop.featured_product_ids || []);
+      }
     }
     load().catch(() => { if (!cancelled) setShopProductsState([]); });
     return () => { cancelled = true; };
   }, []);
   const shopProducts = shopProductsState || [];
+
+  async function saveShop() {
+    if (!shopId) { setTab('preview'); return; }
+    setSaving(true);
+    const { error } = await sbUpdateShop(shopId, {
+      name: shopName, description: shopBio, brand_color: accent,
+      logo_url: logoUrl, cover_url: coverUrl, featured_product_ids: featuredIds,
+    });
+    setSaving(false);
+    if (error) { setToast({ type:'error', message: error.message || 'Could not save your shop.' }); return; }
+    setToast({ type:'success', message:'Shop updated.' });
+    setTab('preview');
+  }
+
+  async function uploadAsset(kind, file) {
+    if (!shopId || !file) return;
+    setUploading(kind);
+    const path = `${shopId}/${kind}-${Date.now()}-${file.name}`;
+    const { url, error } = await sbUploadFile('shops', path, file);
+    setUploading(null);
+    if (error || !url) { setToast({ type:'error', message:'Upload failed.' }); return; }
+    if (kind === 'logo') setLogoUrl(url); else setCoverUrl(url);
+  }
+
+  function toggleFeatured(productId) {
+    setFeaturedIds(prev => prev.includes(productId) ? prev.filter(id => id !== productId) : [...prev, productId].slice(-6));
+  }
 
   React.useEffect(() => {
     if (banners.length === 0) return;
@@ -58,7 +105,7 @@ function ShopCustomizeScreen() {
         </div>
         {/* Cover */}
         <div style={{ height:84, position:'relative', overflow:'hidden' }}>
-          <Img label="" tint={2} style={{ position:'absolute', inset:0, borderRadius:0 }} />
+          {coverUrl ? <img src={coverUrl} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} /> : <Img label="" tint={2} style={{ position:'absolute', inset:0, borderRadius:0 }} />}
           <div style={{ position:'absolute', inset:0, background:`linear-gradient(135deg, ${accent}cc, ${accent}66)` }} />
           <button style={{ position:'absolute', top:8, left:8, width:26, height:26, borderRadius:9999, background:'rgba(255,255,255,0.85)', border:'none', display:'flex', alignItems:'center', justifyContent:'center' }}>
             <Icon name="arrowLeft" size={14} color={C.ink} />
@@ -67,8 +114,8 @@ function ShopCustomizeScreen() {
         {/* Shop header */}
         <div style={{ padding:'0 14px 12px', marginTop:-24 }}>
           <div style={{ display:'flex', alignItems:'flex-end', gap:10, marginBottom:8 }}>
-            <div style={{ width:54, height:54, borderRadius:14, background:accent, border:`3px solid ${C.white}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:22, color:'#fff' }}>{shopName[0].toUpperCase()}</span>
+            <div style={{ width:54, height:54, borderRadius:14, background:accent, border:`3px solid ${C.white}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
+              {logoUrl ? <img src={logoUrl} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:22, color:'#fff' }}>{shopName[0].toUpperCase()}</span>}
             </div>
             <div style={{ flex:1, paddingBottom:2 }}>
               <div style={{ display:'flex', alignItems:'center', gap:5 }}>
@@ -159,14 +206,16 @@ function ShopCustomizeScreen() {
             <div style={{ margin:'0 16px', background:C.white, borderRadius:16, padding:'14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:12 }}>Logo & cover</div>
               <div style={{ display:'flex', gap:10 }}>
-                <button style={{ flex:1, height:80, border:`2px dashed ${C.hairline}`, borderRadius:12, background:C.paper, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:5 }}>
-                  <Icon name="camera" size={20} color={C.primary} />
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Logo</span>
-                </button>
-                <button style={{ flex:2, height:80, border:`2px dashed ${C.hairline}`, borderRadius:12, background:C.paper, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:5 }}>
-                  <Icon name="camera" size={20} color={C.primary} />
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Cover photo</span>
-                </button>
+                <label style={{ flex:1, height:80, border:`2px dashed ${C.hairline}`, borderRadius:12, background: logoUrl ? 'transparent' : C.paper, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:5, overflow:'hidden', position:'relative' }}>
+                  {logoUrl && <img src={logoUrl} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />}
+                  {!logoUrl && <><Icon name="camera" size={20} color={C.primary} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{uploading==='logo' ? 'Uploading…' : 'Logo'}</span></>}
+                  <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => uploadAsset('logo', e.target.files?.[0])} />
+                </label>
+                <label style={{ flex:2, height:80, border:`2px dashed ${C.hairline}`, borderRadius:12, background: coverUrl ? 'transparent' : C.paper, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:5, overflow:'hidden', position:'relative' }}>
+                  {coverUrl && <img src={coverUrl} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />}
+                  {!coverUrl && <><Icon name="camera" size={20} color={C.primary} /><span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{uploading==='cover' ? 'Uploading…' : 'Cover photo'}</span></>}
+                  <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => uploadAsset('cover', e.target.files?.[0])} />
+                </label>
               </div>
             </div>
 
@@ -225,7 +274,7 @@ function ShopCustomizeScreen() {
             {/* Featured products */}
             <div style={{ margin:'0 16px', background:C.white, borderRadius:16, padding:'14px', boxShadow:'0 2px 10px rgba(14,11,31,0.05)' }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:4 }}>Featured products</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:12 }}>Drag to reorder · select featured items</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:12 }}>Tap to feature or unfeature (up to 6)</div>
               {shopProductsState === null ? (
                 <div style={{ display:'flex', gap:8 }}>
                   {[0,1,2].map(i => <div key={i} style={{ width:80, height:80, flexShrink:0, borderRadius:10, background:'linear-gradient(90deg, #EFEDF5 25%, #F6F5FA 37%, #EFEDF5 63%)', backgroundSize:'400% 100%', animation:'shimmer 1.4s ease infinite' }} />)}
@@ -235,11 +284,11 @@ function ShopCustomizeScreen() {
               ) : (
               <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:4 }}>
                 {shopProducts.map((p, i) => (
-                  <div key={p.id} style={{ width:80, flexShrink:0, position:'relative' }}>
-                    <div style={{ width:80, height:80, borderRadius:10, overflow:'hidden', border: i < 3 ? `2px solid ${C.primary}` : `2px solid transparent` }}>
+                  <div key={p.id} onClick={() => toggleFeatured(p.id)} style={{ width:80, flexShrink:0, position:'relative', cursor:'pointer' }}>
+                    <div style={{ width:80, height:80, borderRadius:10, overflow:'hidden', border: featuredIds.includes(p.id) ? `2px solid ${C.primary}` : `2px solid transparent` }}>
                       <Img label="" src={p.image_url} tint={i % 5} style={{ width:80, height:80 }} />
                     </div>
-                    {i < 3 && (
+                    {featuredIds.includes(p.id) && (
                       <div style={{ position:'absolute', top:4, right:4, width:18, height:18, borderRadius:9999, background:C.primary, display:'flex', alignItems:'center', justifyContent:'center' }}>
                         <Icon name="star" size={10} color="#fff" filled />
                       </div>
@@ -252,13 +301,14 @@ function ShopCustomizeScreen() {
 
             {/* Save */}
             <div style={{ margin:'0 16px' }}>
-              <Btn variant="primary" size="lg" wide onClick={() => setTab('preview')}>
-                <Icon name="check" size={17} color="#fff" sw={2.5} /> Save & preview
+              <Btn variant="primary" size="lg" wide onClick={saveShop} disabled={saving}>
+                <Icon name="check" size={17} color="#fff" sw={2.5} /> {saving ? 'Saving…' : 'Save & preview'}
               </Btn>
             </div>
           </>
         )}
       </div>
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }

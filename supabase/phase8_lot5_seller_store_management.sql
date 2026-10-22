@@ -1,0 +1,23 @@
+-- ─────────────────────────────────────────────────────────────────
+-- CLORIVO — Phase 8, Lot 5: Seller Store Management.
+-- screen-shop.jsx's "Customize my shop" screen (name, bio, accent
+-- color, logo, cover, featured products) ran entirely on local React
+-- state — "Save & preview" only switched tabs, never touched the
+-- database, so a seller's edits never reached their real public
+-- storefront.
+--
+-- No new tables/RLS/storage policies were needed: `shops` already had
+-- an "ALL" RLS policy for seller_id = auth.uid() (direct update was
+-- already safe), and the `shops`/`shop-banners` storage buckets
+-- already had SELECT/INSERT/UPDATE policies provisioned but unused.
+-- This file documents that pre-existing state for the record; there
+-- is nothing to apply.
+-- ─────────────────────────────────────────────────────────────────
+
+-- Confirmed already present (no-op if run):
+-- select policyname, cmd from pg_policies where tablename = 'shops';
+--   "Sellers can manage their shop" | ALL  (seller_id = auth.uid())
+-- select policyname, cmd from pg_policies where tablename = 'objects' and policyname like '%shop%';
+--   "Public reads shop assets"      | SELECT (bucket_id in ('shops','shop-banners'))
+--   "Seller updates shop assets"    | UPDATE (bucket_id in ('shops','shop-banners'))
+--   "Seller uploads shop assets"    | INSERT (bucket_id in ('shops','shop-banners'))

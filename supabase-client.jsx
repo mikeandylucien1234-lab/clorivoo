@@ -2382,6 +2382,14 @@ async function sbGetMyShop(sellerId) {
   return data ?? null;
 }
 
+// Sellers can update their own shop directly — RLS ("Sellers can manage
+// their shop": seller_id = auth.uid()) already covers this, no RPC needed.
+async function sbUpdateShop(shopId, patch) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.from('shops').update(patch).eq('id', shopId).select().single();
+  return { data, error };
+}
+
 // Seller-submitted products start exactly where the admin moderation
 // queue (AdminProductsSection / sbAdminModerateProduct) expects an
 // unreviewed listing to start — draft + pending — never auto-published
@@ -2592,7 +2600,7 @@ Object.assign(window, {
   sbAdminGetUsers, sbAdminUpdateUser,
   sbAdminCreateProduct, sbAdminUpdateProduct, sbAdminDeleteProduct,
   sbAdminGetProducts, sbAdminModerateProduct, sbAdminTogglePublish, sbSubscribeAdminProducts,
-  sbGetMyShop, sbSellerCreateProduct,
+  sbGetMyShop, sbUpdateShop, sbSellerCreateProduct,
   sbGetCategoriesList,
   sbGetMyAccessContext, sbHasPermission, sbGetPermissionsCatalog,
   sbAdminGetStaffRoles, sbAdminCreateStaffRole, sbAdminUpdateStaffRole, sbAdminDeleteStaffRole, sbAdminSetRolePermissions,
