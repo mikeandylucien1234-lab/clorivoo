@@ -404,9 +404,11 @@ export async function markNotificationRead(id) {
   await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
 }
 
-export async function createNotification(userId, type, title, body, data = {}) {
-  await supabase.from('notifications').insert({ user_id: userId, type, title, body, data });
-}
+// PHASE 6: removed createNotification() — an unused, unauthenticated
+// direct-insert helper (zero callers anywhere in this app) that relied
+// on the notifications table's now-removed open insert policy. Any
+// future caller needing this should go through
+// sendNotificationToUser()/send-individual-notification above instead.
 
 // ─── REALTIME ─────────────────────────────────────────────────────
 export function subscribeToMessages(conversationId, callback) {
@@ -525,61 +527,38 @@ export async function upsertNotificationTemplate(template) {
   return { data, error };
 }
 
-// ─── EXPO PUSH (direct — no server, no quota) ─────────────────────
-const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
-
-async function sendExpoPush(messages) {
-  // Expo accepts up to 100 per request; we batch automatically
-  const BATCH = 100;
-  let sent = 0;
-  for (let i = 0; i < messages.length; i += BATCH) {
-    const batch = messages.slice(i, i + BATCH);
-    await fetch(EXPO_PUSH_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(batch),
-    });
-    sent += batch.length;
-  }
-  return sent;
-}
-
 // ─── NOTIFICATION BROADCAST ───────────────────────────────────────
-export async function sendBroadcastNotification({ segment = 'all', type = 'promo', title, body, data = {} }) {
-  // 1. Fetch all target push tokens directly (no Edge Function = no quota)
-  let query = supabase.from('profiles').select('id, push_token').not('push_token', 'is', null);
-  if (segment === 'buyers')  query = query.eq('role', 'buyer');
-  if (segment === 'sellers') query = query.eq('role', 'seller');
-  const { data: profiles, error } = await query;
+// PHASE 6 SECURITY FIX: this used to read every user's id + push_token
+// directly from `profiles` (relying on that table's public-read
+// policy) and insert into `notifications` directly (relying on that
+// table's since-removed `WITH CHECK (true)` insert policy) — any
+// authenticated account, not just an admin, could call this and
+// broadcast to the whole platform. It now routes through the
+// send-broadcast Edge Function, which forwards this session's own JWT
+// to the admin_send_broadcast() database function; that function is
+// the only thing that reads profiles/push_token or writes
+// notifications for a broadcast, and it refuses the call unless
+// has_permission(auth.uid(), 'notifications.broadcast') is true for
+// the actual signed-in caller. No push token is ever returned to this
+// client — the Edge Function does the Expo call itself.
+export async function sendBroadcastNotification({ segment = 'all', type = 'promo', title, body }) {
+  const { data, error } = await supabase.functions.invoke('send-broadcast', {
+    body: { segment, type, title, body },
+  });
   if (error) return { data: null, error };
-
-  const valid = (profiles ?? []).filter(p => p.push_token?.startsWith('ExponentPushToken['));
-
-  // 2. Insert in-app notifications in bulk
-  if (valid.length > 0) {
-    await supabase.from('notifications').insert(
-      valid.map(p => ({ user_id: p.id, type, title, body, data }))
-    );
-  }
-
-  // 3. Send push notifications directly to Expo (unlimited, free)
-  const messages = valid.map(p => ({ to: p.push_token, title, body, data, sound: 'default' }));
-  const sent = await sendExpoPush(messages);
-  return { data: { recipients: sent }, error: null };
+  return { data, error: null };
 }
 
 // ─── SEND TO ONE USER ─────────────────────────────────────────────
-export async function sendNotificationToUser({ userId, type = 'system', title, body, data = {} }) {
-  // Insert in-app notification
-  const { error: insertErr } = await supabase.from('notifications').insert({ user_id: userId, type, title, body, data });
-  if (insertErr) return { error: insertErr };
-
-  // Fetch push token and send if available
-  const { data: profile } = await supabase.from('profiles').select('push_token').eq('id', userId).single();
-  if (profile?.push_token?.startsWith('ExponentPushToken[')) {
-    await sendExpoPush([{ to: profile.push_token, title, body, data, sound: 'default' }]);
-  }
-  return { error: null };
+// Same fix as sendBroadcastNotification above, via
+// admin_send_notification() / the send-individual-notification Edge
+// Function — no longer reads another user's push_token or inserts
+// into notifications directly from this client.
+export async function sendNotificationToUser({ userId, type = 'system', title, body }) {
+  const { error } = await supabase.functions.invoke('send-individual-notification', {
+    body: { userId, type, title, body },
+  });
+  return { error };
 }
 
 // ─── FETCH USERS FOR ADMIN PICKER ────────────────────────────────

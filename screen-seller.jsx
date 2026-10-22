@@ -418,6 +418,11 @@ function KycSelfieScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
   const isDesktop = useIsDesktop();
   const [selfieFile, setSelfieFile] = React.useState(null);
+  // Camera-flash toggle for the capture row below (Flash / shutter / Flip) —
+  // purely local UI state for the native camera picker's `capture="user"`
+  // input, same as selfieFile above. Not a notification of any kind: there
+  // is no toast/alert here, just the icon's highlighted/dim state.
+  const [flash, setFlash] = React.useState(false);
   const fileRef = React.useRef(null);
   // This is a photo for a staff member to manually compare against the ID
   // document — not an automated liveness/biometric match. The "progress"
@@ -726,7 +731,7 @@ function SellerDashboardScreen() {
         <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(255,255,255,0.75)', marginTop:2, marginBottom:14 }}>↗ +$184 this week</div>
         <div style={{ display:'flex', gap:8 }}>
           <Btn variant="soft" size="sm" style={{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.3)' }}>Withdraw</Btn>
-          <Btn variant="soft" size="sm" style={{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.3)' }}>+ Product</Btn>
+          <Btn variant="soft" size="sm" onClick={() => navigate('seller-product-new')} style={{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.3)' }}>+ Product</Btn>
           <Btn variant="soft" size="sm" onClick={() => navigate('cj-connect')} style={{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.3)' }}>Import from CJ</Btn>
         </div>
       </div>
@@ -810,9 +815,27 @@ const SHIPMENT_STATUS_LABEL = {
 const SHIPMENT_NEXT_STATUS = { pending: 'processing', processing: 'shipped', shipped: 'in_transit', in_transit: 'delivered' };
 const SHIPMENT_NEXT_LABEL  = { pending: 'Confirm', processing: 'Mark shipped', shipped: 'Mark in transit', in_transit: 'Mark delivered' };
 
+// "Shipped" folds in 'in_transit' too (the real raw statuses split that
+// into two steps — SHIPMENT_NEXT_STATUS above — but the filter list
+// mirrors the buyer-facing tracker's 3-step Placed/Shipping/Delivered
+// view, not an 8-way raw-status picker). "Delivery Exception" is the
+// same derived concept OrderDetailScreen/screen-tracking.jsx already
+// uses for a shipment that needs attention ('failed' or 'returned'),
+// not a literal shipments.status value on its own.
+const ORDER_FILTERS = [
+  { key:'all',        label:'All',                match: () => true },
+  { key:'pending',    label:'Pending',             match: s => s.status === 'pending' },
+  { key:'processing', label:'Processing',          match: s => s.status === 'processing' },
+  { key:'shipped',    label:'Shipped',             match: s => s.status === 'shipped' || s.status === 'in_transit' },
+  { key:'delivered',  label:'Delivered',           match: s => s.status === 'delivered' },
+  { key:'cancelled',  label:'Cancelled',           match: s => s.status === 'cancelled' },
+  { key:'exception',  label:'Delivery Exception',  match: s => s.status === 'failed' || s.status === 'returned' },
+];
+
 function SellerOrdersScreen() {
   const { goBack } = useNav();
   const [shipments, setShipments] = React.useState([]);
+  const [filter, setFilter] = React.useState('all');
   const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState(null);
   const [trackingModal, setTrackingModal] = React.useState(null); // shipment
@@ -887,17 +910,35 @@ function SellerOrdersScreen() {
       <StatusBar />
       <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
         <NavBar title="My Shipments" onBack={goBack} />
+        <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'0 16px 12px' }}>
+          {ORDER_FILTERS.map(f => (
+            <button key={f.key} onClick={() => setFilter(f.key)} style={{
+              flexShrink:0, border:'none', cursor:'pointer', borderRadius:9999, padding:'7px 13px',
+              background: filter === f.key ? C.ink : C.paper, color: filter === f.key ? '#fff' : C.mute,
+              fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, whiteSpace:'nowrap',
+            }}>
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div style={{ flex:1, overflowY:'auto', padding:'12px 16px', display:'flex', flexDirection:'column', gap:10, paddingBottom:30 }}>
-        {loading ? (
-          <div style={{ padding:'40px 16px', textAlign:'center' }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Loading…</span>
-          </div>
-        ) : shipments.length === 0 ? (
-          <div style={{ padding:'40px 16px', textAlign:'center' }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No shipments yet</span>
-          </div>
-        ) : shipments.map(s => {
+        {(() => {
+          const activeFilter = ORDER_FILTERS.find(f => f.key === filter) ?? ORDER_FILTERS[0];
+          const filtered = shipments.filter(activeFilter.match);
+          if (loading) return (
+            <div style={{ padding:'40px 16px', textAlign:'center' }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Loading…</span>
+            </div>
+          );
+          if (filtered.length === 0) return (
+            <div style={{ padding:'40px 16px', textAlign:'center' }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>
+                {shipments.length === 0 ? 'No shipments yet' : `No ${activeFilter.label.toLowerCase()} shipments`}
+              </span>
+            </div>
+          );
+          return filtered.map(s => {
           const color = SHIPMENT_STATUS_COLOR[s.status] ?? C.mute;
           const canAdvance = !!SHIPMENT_NEXT_STATUS[s.status];
           const canReportFailure = s.status === 'shipped' || s.status === 'in_transit';
@@ -936,7 +977,8 @@ function SellerOrdersScreen() {
               </div>
             </div>
           );
-        })}
+        });
+        })()}
       </div>
 
       <Modal open={!!trackingModal} title="Shipping info" onClose={() => setTrackingModal(null)}>
@@ -960,9 +1002,534 @@ function SellerOrdersScreen() {
   );
 }
 
+// ─── SELLER — Add Product ───────────────────────────────────────
+// Destination of the dashboard's "+ Product" quick action. Submits a
+// NEW, unreviewed listing through the same moderation queue the admin
+// console already runs (AdminProductsSection) — sbSellerCreateProduct
+// sets status:'draft'/approval_status:'pending', never auto-published.
+// Ownership is resolved server-side from the caller's own shop
+// (sbGetMyShop, via shops.seller_id = auth.uid()) and re-checked by RLS
+// on the insert itself ("Sellers can manage their products": shop_id in
+// (select id from shops where seller_id = auth.uid())) — a buyer with
+// no shop, or any attempt to write another seller's shop_id, is
+// rejected independently of this screen's own guard below.
+// Local copy of screen-admin.jsx's _flattenCategories() — same behavior
+// (flattens the category tree into a depth-annotated list for a <select>),
+// but kept private to this file instead of relying on screen-admin.jsx's
+// global function existing by the time this effect runs. It happened to
+// work (Clorivo.html loads screen-seller.jsx before screen-admin.jsx, but
+// this call only fires from a useEffect, well after every script has
+// loaded) — fragile all the same: a seller-facing form has no business
+// depending on an admin screen's internal helper being defined first.
+function _sellerFlattenCategories(list, depth = 0, out = []) {
+  for (const c of list) {
+    out.push({ ...c, depth });
+    if (c.children?.length) _sellerFlattenCategories(c.children, depth + 1, out);
+  }
+  return out;
+}
+
+// Renders one category-attribute field from its Supabase-loaded template —
+// never a hardcoded field list. `attr.type` comes from category_attributes.type.
+function AttributeField({ attr, value, onChange }) {
+  const label = (attr.label || attr.name) + (attr.unit ? ` (${attr.unit})` : '') + (attr.is_required ? ' *' : '');
+  const common = { height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5, width:'100%' };
+  if (attr.type === 'boolean') {
+    return (
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.ink }}>{label}</span>
+        <Switch checked={value === 'true'} onChange={v => onChange(v ? 'true' : 'false')} />
+      </div>
+    );
+  }
+  if (attr.type === 'select' || attr.type === 'color' || attr.type === 'size') {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{label}</span>
+        <select value={value} onChange={e => onChange(e.target.value)} style={common}>
+          <option value="">—</option>
+          {(attr.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+    );
+  }
+  if (attr.type === 'multiselect') {
+    const selected = value ? value.split(',') : [];
+    function toggle(o) {
+      onChange(selected.includes(o) ? selected.filter(x => x !== o).join(',') : [...selected, o].join(','));
+    }
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{label}</span>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          {(attr.options || []).map(o => (
+            <Chip key={o} active={selected.includes(o)} onClick={() => toggle(o)}>{o}</Chip>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (attr.type === 'number' || attr.type === 'range') {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{label}</span>
+        <input type="number" value={value} onChange={e => onChange(e.target.value)} style={common} placeholder={attr.default_value || ''} />
+      </div>
+    );
+  }
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{label}</span>
+      <input value={value} onChange={e => onChange(e.target.value)} style={common} placeholder={attr.default_value || ''} />
+    </div>
+  );
+}
+
+const PRODUCT_CONDITIONS = [
+  { value:'new', label:'New' },
+  { value:'open_box', label:'Open Box' },
+  { value:'refurbished', label:'Refurbished' },
+  { value:'used_like_new', label:'Used – Like New' },
+  { value:'used_good', label:'Used – Good' },
+  { value:'used_fair', label:'Used – Fair' },
+];
+
+// Opens from "My brand isn't in the list" — a seller can never create or
+// activate a brand directly (sbRequestBrand only ever inserts into
+// brand_requests; RLS + admin_decide_brand_request() are what actually
+// turn a request into a usable brands row, after an admin with
+// brands.approve decides).
+function SellerBrandRequestModal({ sellerId, shopId, onClose, onSubmitted }) {
+  const [name, setName] = React.useState('');
+  const [reason, setReason] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  async function submit() {
+    if (!name.trim()) { setError('Please enter the brand name you need.'); return; }
+    setSubmitting(true); setError('');
+    const { error: err } = await sbRequestBrand(sellerId, shopId, name, reason);
+    setSubmitting(false);
+    if (err) { setError(err.message || 'Could not submit this request.'); return; }
+    onSubmitted();
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(14,11,31,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, padding:20 }}>
+      <div style={{ background:C.white, borderRadius:16, padding:20, width:'100%', maxWidth:380, display:'flex', flexDirection:'column', gap:12 }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:800, color:C.ink }}>Request a new brand</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Your request goes to the Clorivo team for review. You'll be notified once it's approved and the brand becomes selectable — you can't create or activate a brand yourself.</div>
+        <Input label="Brand name" placeholder="e.g. Acme Co." value={name} onChange={e => setName(e.target.value)} />
+        <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.mute }}>Why do you need this brand? (optional)</span>
+          <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3}
+            style={{ border:`1.5px solid ${C.hairline}`, borderRadius:12, padding:'10px 14px', fontFamily:"'Inter',sans-serif", fontSize:14, color:C.ink, resize:'vertical' }} />
+        </div>
+        {error && <div role="alert" style={{ background:'#FDEDED', border:`1px solid ${C.danger}`, borderRadius:10, padding:'9px 12px', fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{error}</div>}
+        <div style={{ display:'flex', gap:8, marginTop:4 }}>
+          <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={onClose} disabled={submitting}>Cancel</Btn>
+          <Btn variant="primary" size="sm" style={{ flex:1 }} onClick={submit} disabled={submitting}>{submitting ? 'Sending…' : 'Submit request'}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SellerProductFormScreen() {
+  const { navigate, goBack } = useNav();
+  const isDesktop = useIsDesktop();
+  const [access, setAccess] = React.useState('checking'); // checking | denied | ok
+  const [categoryTree, setCategoryTree] = React.useState([]);
+  const [categories, setCategories] = React.useState([]); // flat, for category suggestion
+  const [categoryPath, setCategoryPath] = React.useState([]); // [{id,name,children},...] drill-down, root → leaf
+  const [catAttrs, setCatAttrs] = React.useState({ product: [], variant: [] });
+  const [attrValues, setAttrValues] = React.useState({}); // { [category_attribute_id]: value }
+  const [suggestion, setSuggestion] = React.useState(null);
+  const [suggestionDismissed, setSuggestionDismissed] = React.useState(false);
+  const [brands, setBrands] = React.useState([]);
+  const [showBrandRequest, setShowBrandRequest] = React.useState(false);
+  const [brandRequestSent, setBrandRequestSent] = React.useState(false);
+  const [form, setForm] = React.useState({
+    title:'', price:'', oldPrice:'', stock:'1', category_id:'', sku:'', image_url:null,
+    brand_id:'', condition:'', authenticity_statement:'', authenticity_proof_paths:[],
+  });
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadingProof, setUploadingProof] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [done, setDone] = React.useState(false);
+  const [variantRows, setVariantRows] = React.useState([]); // optional — [] means this product has no variants (legacy behavior)
+  const fileRef = React.useRef(null);
+  const proofFileRef = React.useRef(null);
+  const shopRef = React.useRef(null);
+  const userRef = React.useRef(null);
+
+  React.useEffect(() => {
+    sbGetUser().then(async user => {
+      if (!user) { setAccess('denied'); return; }
+      const profile = await sbGetProfile(user.id);
+      // A buyer who hasn't completed (or isn't mid-) seller onboarding has
+      // no shop to own a product — the real barrier is still server-side
+      // (RLS above), this is just so the form doesn't dead-end on submit.
+      if (profile?.role !== 'seller') { setAccess('denied'); return; }
+      const shop = await sbGetMyShop(user.id);
+      if (!shop) { setAccess('denied'); return; }
+      userRef.current = user.id;
+      shopRef.current = shop.id;
+      setAccess('ok');
+    });
+    sbGetCategoryTree().then(tree => { setCategoryTree(tree); setCategories(_sellerFlattenCategories(tree)); });
+    sbGetActiveBrands().then(setBrands);
+  }, []);
+
+  // Dynamic attribute templates for the selected (leaf) category — loaded from
+  // Supabase, never hardcoded. Split by is_variant_option: product-level specs
+  // (RAM-as-spec) render as normal fields here; variant-level options (RAM as
+  // a purchase option with its own SKU/stock) show up as extra columns on the
+  // variant rows below instead, and never both.
+  React.useEffect(() => {
+    if (!form.category_id) { setCatAttrs({ product: [], variant: [] }); setAttrValues({}); return; }
+    sbGetCategoryAttributes(form.category_id).then(attrs => {
+      const active = (attrs || []).filter(a => a.is_active !== false);
+      setCatAttrs({
+        product: active.filter(a => !a.is_variant_option),
+        variant: active.filter(a => a.is_variant_option),
+      });
+      setAttrValues({});
+    });
+  }, [form.category_id]);
+
+  // Smart category suggestion (Phase 5) — rule-based keyword matching against
+  // the real category names, computed client-side. Never auto-applies; the
+  // seller must press "Use this category".
+  React.useEffect(() => {
+    if (form.category_id || suggestionDismissed || !categories.length) { setSuggestion(null); return; }
+    setSuggestion(sbSuggestCategory(form.title, '', categories));
+  }, [form.title, form.category_id, suggestionDismissed, categories]);
+
+  function applySuggestion() {
+    if (!suggestion) return;
+    const path = [];
+    let cur = categories.find(c => c.id === suggestion.id);
+    // Walk up to root using the flat (depth-annotated) list's parent_id chain.
+    while (cur) { path.unshift(cur); cur = cur.parent_id ? categories.find(c => c.id === cur.parent_id) : null; }
+    setCategoryPath(path);
+    setForm(f => ({ ...f, category_id: suggestion.id }));
+  }
+
+  // One <select> per depth level — root first, each showing the children of
+  // the previously-selected node. Works for any hierarchy depth the admin has
+  // configured (Electronics > Computers > Laptops, or just Books), not a fixed
+  // 2-level assumption.
+  function selectCategoryAt(level, id) {
+    if (!id) { setCategoryPath(path => path.slice(0, level)); setForm(f => ({ ...f, category_id:'' })); return; }
+    const options = level === 0 ? categoryTree : (categoryPath[level - 1]?.children || []);
+    const picked = options.find(c => c.id === id);
+    if (!picked) return;
+    const newPath = [...categoryPath.slice(0, level), picked];
+    setCategoryPath(newPath);
+    setForm(f => ({ ...f, category_id: picked.id }));
+  }
+
+  async function handleImageChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const path = `products/${Date.now()}-${file.name}`;
+    const { url, error: uploadErr } = await sbUploadFile('products', path, file);
+    setUploading(false);
+    if (uploadErr || !url) return;
+    setForm(f => ({ ...f, image_url: url }));
+  }
+
+  async function handleProofChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingProof(true);
+    const path = await sbUploadAuthenticityProof(userRef.current, file);
+    setUploadingProof(false);
+    if (!path) { setError('Could not upload this document. Please try again.'); return; }
+    setForm(f => ({ ...f, authenticity_proof_paths: [...f.authenticity_proof_paths, path] }));
+  }
+
+  const selectedBrand = brands.find(b => b.id === form.brand_id) || null;
+  const riskLevel = selectedBrand?.risk_level || 'low';
+  const needsAuthenticityStatement = riskLevel === 'medium' || riskLevel === 'high';
+  const needsAuthenticityProof = riskLevel === 'high';
+
+  const missingRequiredAttrs = catAttrs.product.filter(a => a.is_required && !attrValues[a.id]);
+  const canSubmit = form.title.trim() && parseFloat(form.price) > 0 && !!form.condition && !submitting
+    && (!needsAuthenticityStatement || form.authenticity_statement.trim())
+    && (!needsAuthenticityProof || form.authenticity_proof_paths.length > 0)
+    && missingRequiredAttrs.length === 0;
+
+  function addVariantRow() {
+    setVariantRows(rows => [...rows, { size:'', color:'', sku:'', stock:'0', price_override:'', low_stock_threshold:'', attributes:{} }]);
+  }
+  function updateVariantAttr(i, attrName, value) {
+    setVariantRows(rows => rows.map((r, idx) => idx === i ? { ...r, attributes: { ...r.attributes, [attrName]: value } } : r));
+  }
+  function updateVariantRow(i, field, value) {
+    setVariantRows(rows => rows.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+  }
+  function removeVariantRow(i) {
+    setVariantRows(rows => rows.filter((_, idx) => idx !== i));
+  }
+
+  async function handleSubmit() {
+    if (!form.title.trim() || !(parseFloat(form.price) > 0)) { setError('A title and a price greater than $0 are required.'); return; }
+    if (!form.condition) { setError('Please select the product condition.'); return; }
+    if (needsAuthenticityStatement && !form.authenticity_statement.trim()) { setError('An authenticity statement is required for this brand.'); return; }
+    if (needsAuthenticityProof && form.authenticity_proof_paths.length === 0) { setError('Proof of authenticity is required for this brand.'); return; }
+    if (missingRequiredAttrs.length > 0) {
+      setError(`Please fill in: ${missingRequiredAttrs.map(a => a.label || a.name).join(', ')}.`);
+      return;
+    }
+    const activeVariantRows = variantRows.filter(r => r.sku.trim());
+    if (activeVariantRows.some(r => !r.size.trim() && !r.color.trim())) {
+      setError('Each variant needs at least a size or a color.');
+      return;
+    }
+    setSubmitting(true); setError('');
+    const { data, error: submitError } = await sbSellerCreateProduct(shopRef.current, userRef.current, form);
+    if (submitError) { setSubmitting(false); setError(submitError.message || 'Could not create this product.'); return; }
+    if (Object.keys(attrValues).length > 0) {
+      await sbSetProductAttributeValues(data.id, attrValues);
+    }
+    for (const row of activeVariantRows) {
+      const { error: vErr } = await sbUpsertProductVariant({
+        product_id: data.id, sku: row.sku.trim(), size: row.size.trim() || null, color: row.color.trim() || null,
+        stock: parseInt(row.stock) || 0, price_override: row.price_override ? parseFloat(row.price_override) : null,
+        low_stock_threshold: row.low_stock_threshold ? parseInt(row.low_stock_threshold) : null,
+        attributes: row.attributes || {},
+      });
+      if (vErr) { setSubmitting(false); setError(`Product created, but variant "${row.sku}" failed: ${vErr.message}`); return; }
+    }
+    setSubmitting(false);
+    setDone(true);
+  }
+
+  if (access === 'checking') {
+    return (
+      <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Loading…</span>
+      </div>
+    );
+  }
+
+  if (access === 'denied') {
+    return (
+      <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
+        <StatusBar />
+        <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
+          <NavBar title="Add Product" onBack={goBack} />
+        </div>
+        <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:10, padding:32, textAlign:'center' }}>
+          <Icon name="lock" size={28} color={C.mute} />
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>Sellers only</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, maxWidth:280 }}>You need an approved seller account with a shop to add products.</div>
+          <Btn variant="primary" size="md" onClick={() => navigate('become-seller')} style={{ marginTop:8 }}>Become a Seller</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  if (done) {
+    return (
+      <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
+        <StatusBar />
+        <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14, padding:32, textAlign:'center' }}>
+          <div style={{ width:72, height:72, borderRadius:9999, background:'#EFF9F4', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <Icon name="checkCircle" size={34} color={C.success} />
+          </div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:18, fontWeight:800, color:C.ink }}>Product submitted</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute, maxWidth:280 }}>"{form.title}" is awaiting admin approval before it goes live in your shop.</div>
+          <Btn variant="primary" size="md" onClick={() => navigate('seller-home')} style={{ marginTop:8 }}>Back to Dashboard</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
+      <StatusBar />
+      <div style={{ paddingTop:STATUS_H, background:C.white, borderBottom:`1px solid ${C.hairline}`, flexShrink:0 }}>
+        <NavBar title="Add Product" onBack={goBack} />
+      </div>
+      <div style={{ flex:1, overflowY:'auto', padding:'18px 20px 40px', display:'flex', flexDirection:'column', gap:14, maxWidth: isDesktop ? 520 : undefined, width:'100%', margin: isDesktop ? '0 auto' : undefined }}>
+        <div onClick={() => fileRef.current?.click()} style={{ height:160, borderRadius:12, overflow:'hidden', position:'relative', cursor:'pointer', background: form.image_url ? undefined : C.white, border: form.image_url ? 'none' : `1.5px dashed ${C.hairline}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          {form.image_url ? (
+            <img src={form.image_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+              <Icon name="camera" size={22} color={C.mute} />
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{uploading ? 'Uploading…' : 'Add a product photo (optional)'}</span>
+            </div>
+          )}
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" onChange={handleImageChange} style={{ display:'none' }} />
+
+        <Input label="Product title" placeholder="e.g. Boho Woven Lamp" value={form.title} onChange={e => setForm(f => ({ ...f, title:e.target.value }))} />
+        <div style={{ display:'flex', gap:10 }}>
+          <Input label="Price" placeholder="29.99" value={form.price} onChange={e => setForm(f => ({ ...f, price:e.target.value }))} style={{ flex:1 }} />
+          <Input label="Compare-at (optional)" placeholder="39.99" value={form.oldPrice} onChange={e => setForm(f => ({ ...f, oldPrice:e.target.value }))} style={{ flex:1 }} />
+        </div>
+        <div style={{ display:'flex', gap:10 }}>
+          <Input label="Stock" placeholder="1" value={form.stock} onChange={e => setForm(f => ({ ...f, stock:e.target.value }))} style={{ flex:1 }} />
+          <Input label="SKU (optional)" placeholder="SKU-001" value={form.sku} onChange={e => setForm(f => ({ ...f, sku:e.target.value }))} style={{ flex:1 }} />
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.mute }}>Category (optional)</span>
+          {suggestion && (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, background:C.primarySoft, borderRadius:10, padding:'8px 12px' }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.primaryDeep }}>
+                Suggested category: <strong>{suggestion.name}</strong>
+              </span>
+              <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                <button onClick={applySuggestion} style={{ border:'none', background:C.primary, color:'#fff', borderRadius:8, padding:'5px 10px', fontSize:11.5, fontWeight:700, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>Use this</button>
+                <button onClick={() => setSuggestionDismissed(true)} style={{ border:'none', background:'none', color:C.mute, fontSize:11.5, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>Dismiss</button>
+              </div>
+            </div>
+          )}
+          {/* Drill-down: Main category → Subcategory → … — one level at a time, each loaded from the real category tree. */}
+          {[0, ...categoryPath.map((_, i) => i + 1)].map(level => {
+            const options = level === 0 ? categoryTree : (categoryPath[level - 1]?.children || []);
+            if (level > 0 && options.length === 0) return null;
+            return (
+              <select key={level} value={categoryPath[level]?.id || ''} onChange={e => selectCategoryAt(level, e.target.value)}
+                style={{ height:46, border:`1.5px solid ${C.hairline}`, borderRadius:12, padding:'0 14px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:14 }}>
+                <option value="">{level === 0 ? '— No category —' : '— Select subcategory —'}</option>
+                {options.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            );
+          })}
+
+          {catAttrs.product.length > 0 && (
+            <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:4 }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.ink }}>Specifications for this category</span>
+              {catAttrs.product.map(attr => (
+                <AttributeField key={attr.id} attr={attr} value={attrValues[attr.id] ?? ''} onChange={v => setAttrValues(a => ({ ...a, [attr.id]: v }))} />
+              ))}
+            </div>
+          )}
+          {catAttrs.variant.length > 0 && (
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>
+              This category also defines variant options ({catAttrs.variant.map(a => a.label || a.name).join(', ')}) — set them per variant below.
+            </div>
+          )}
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.mute }}>Brand (optional)</span>
+          <select value={form.brand_id} onChange={e => setForm(f => ({ ...f, brand_id:e.target.value, authenticity_statement:'', authenticity_proof_paths:[] }))}
+            aria-label="Brand"
+            style={{ height:50, border:`1.5px solid ${C.hairline}`, borderRadius:12, padding:'0 14px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:14 }}>
+            <option value="">— No brand —</option>
+            {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+          <button onClick={() => setShowBrandRequest(true)} style={{ border:'none', background:'none', cursor:'pointer', padding:0, textAlign:'left', fontFamily:"'Inter',sans-serif", fontSize:12, color:C.primary, width:'fit-content' }}>
+            My brand isn't in the list
+          </button>
+          {brandRequestSent && (
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.success }}>Your brand request was submitted — we'll notify you once it's reviewed.</div>
+          )}
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.mute }}>Condition (required)</span>
+          <select value={form.condition} onChange={e => setForm(f => ({ ...f, condition:e.target.value }))} aria-label="Condition"
+            style={{ height:50, border:`1.5px solid ${C.hairline}`, borderRadius:12, padding:'0 14px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:14 }}>
+            <option value="">— Select condition —</option>
+            {PRODUCT_CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+        </div>
+
+        {needsAuthenticityStatement && (
+          <div style={{ display:'flex', flexDirection:'column', gap:8, background:'#FFF8E8', border:`1px solid ${C.warning}`, borderRadius:12, padding:14 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <Icon name="alertTriangle" size={15} color="#92400E" />
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, color:'#92400E' }}>Authenticity required for this brand</span>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:500, color:'#92400E' }}>Authenticity statement (required)</span>
+              <textarea value={form.authenticity_statement} onChange={e => setForm(f => ({ ...f, authenticity_statement:e.target.value }))} rows={3}
+                placeholder="Describe how you can confirm this item is genuine (invoice, authorized reseller, etc.) — never describe it as a replica or imitation."
+                style={{ border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'10px 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink, resize:'vertical', background:C.white }} />
+            </div>
+            {needsAuthenticityProof && (
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:500, color:'#92400E' }}>Proof of authenticity (required — invoice, certificate, etc.)</span>
+                <input ref={proofFileRef} type="file" accept="image/*,.pdf" onChange={handleProofChange} style={{ display:'none' }} />
+                <Btn size="sm" onClick={() => proofFileRef.current?.click()} disabled={uploadingProof}>
+                  <Icon name="lock" size={12} /> {uploadingProof ? 'Uploading…' : 'Upload document'}
+                </Btn>
+                {form.authenticity_proof_paths.length > 0 && (
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:'#065F46' }}>{form.authenticity_proof_paths.length} document{form.authenticity_proof_paths.length > 1 ? 's' : ''} uploaded — kept private, visible only to you and Clorivo staff.</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>Variants (optional)</span>
+            <button onClick={addVariantRow} style={{ border:'none', background:'none', cursor:'pointer', padding:0, fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.primary, fontWeight:600 }}>+ Add variant</button>
+          </div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>Leave empty for a single-SKU product using the Stock field above. Add rows for different sizes/colors, each with its own SKU and stock.</div>
+          {variantRows.map((row, i) => (
+            <div key={i} style={{ display:'flex', flexDirection:'column', gap:6, border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:10 }}>
+              <div style={{ display:'flex', gap:6 }}>
+                <input value={row.size} onChange={e => updateVariantRow(i, 'size', e.target.value)} placeholder="Size" style={{ flex:1, height:36, border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'0 10px', fontFamily:"'Inter',sans-serif", fontSize:13 }} />
+                <input value={row.color} onChange={e => updateVariantRow(i, 'color', e.target.value)} placeholder="Color" style={{ flex:1, height:36, border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'0 10px', fontFamily:"'Inter',sans-serif", fontSize:13 }} />
+              </div>
+              <input value={row.sku} onChange={e => updateVariantRow(i, 'sku', e.target.value)} placeholder="SKU (required for this row to be saved)" style={{ height:36, border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'0 10px', fontFamily:"'JetBrains Mono',monospace", fontSize:12.5 }} />
+              {catAttrs.variant.length > 0 && (
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                  {catAttrs.variant.map(attr => (
+                    <input key={attr.id} value={row.attributes?.[attr.name] || ''} onChange={e => updateVariantAttr(i, attr.name, e.target.value)}
+                      placeholder={attr.label || attr.name} style={{ flex:1, minWidth:80, height:36, border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'0 10px', fontFamily:"'Inter',sans-serif", fontSize:12.5 }} />
+                  ))}
+                </div>
+              )}
+              <div style={{ display:'flex', gap:6 }}>
+                <input type="number" value={row.stock} onChange={e => updateVariantRow(i, 'stock', e.target.value)} placeholder="Stock" style={{ flex:1, height:36, border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'0 10px', fontFamily:"'JetBrains Mono',monospace", fontSize:13 }} />
+                <input type="number" value={row.price_override} onChange={e => updateVariantRow(i, 'price_override', e.target.value)} placeholder="Price (optional)" style={{ flex:1, height:36, border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'0 10px', fontFamily:"'JetBrains Mono',monospace", fontSize:13 }} />
+                <input type="number" value={row.low_stock_threshold} onChange={e => updateVariantRow(i, 'low_stock_threshold', e.target.value)} placeholder="Low-stock alert" style={{ flex:1, height:36, border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'0 10px', fontFamily:"'JetBrains Mono',monospace", fontSize:13 }} />
+              </div>
+              <button onClick={() => removeVariantRow(i)} style={{ border:'none', background:'none', cursor:'pointer', padding:0, textAlign:'left', fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.danger, width:'fit-content' }}>Remove</button>
+            </div>
+          ))}
+        </div>
+
+        {error && (
+          <div role="alert" style={{ background:'#FDEDED', border:`1px solid ${C.danger}`, borderRadius:10, padding:'10px 14px', fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{error}</div>
+        )}
+
+        <div style={{ display:'flex', alignItems:'center', gap:6, justifyContent:'center' }}>
+          <Icon name="lock" size={12} color={C.mute} />
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>New listings are reviewed by our team before they go live</span>
+        </div>
+        <Btn variant="primary" size="lg" wide onClick={handleSubmit} disabled={!canSubmit} style={{ background: canSubmit ? `linear-gradient(135deg, ${C.primary} 0%, #8A6BFF 100%)` : undefined }}>
+          {submitting ? 'Submitting…' : 'Submit for Review'}
+        </Btn>
+      </div>
+      {showBrandRequest && (
+        <SellerBrandRequestModal
+          sellerId={userRef.current}
+          shopId={shopRef.current}
+          onClose={() => setShowBrandRequest(false)}
+          onSubmitted={() => { setShowBrandRequest(false); setBrandRequestSent(true); }}
+        />
+      )}
+    </div>
+  );
+}
+
 Object.assign(window, {
   SellerWelcomeScreen, BecomeSellerScreen,
   KycVerifyIdentityScreen, KycDocScreen, KycSelfieIntroScreen, KycSelfieScreen,
   KycReviewScreen, KycSuccessScreen,
-  SellerDashboardScreen, SellerOrdersScreen,
+  SellerDashboardScreen, SellerOrdersScreen, SellerProductFormScreen,
 });

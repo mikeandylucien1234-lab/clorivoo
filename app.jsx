@@ -32,7 +32,7 @@ function NavProvider({ children }) {
   React.useEffect(() => { window.__navigate = navigate; window.__goBack = goBack; }, [navigate, goBack]);
 
   return (
-    <NavContext.Provider value={{ navigate, goBack, replace, current, stack, direction }}>
+    <NavContext.Provider value={{ navigate, goBack, replace, current, stack, direction, navKey }}>
       {children}
     </NavContext.Provider>
   );
@@ -87,6 +87,7 @@ const SCREENS = {
   'store':          () => window.SellerStoreScreen,
   'seller-home':    () => window.SellerDashboardScreen,
   'seller-orders':  () => window.SellerOrdersScreen,
+  'seller-product-new': () => window.SellerProductFormScreen,
   'shop-customize': () => window.ShopCustomizeScreen,
   // V2 — CJ Import
   'cj-connect':     () => window.CjConnectScreen,
@@ -104,6 +105,7 @@ const SCREENS = {
   'categories':     () => window.CategoriesScreen,
   'search':         () => window.SearchScreen,
   'category':       () => window.CategoryScreen,
+  'shop':           () => window.PublicShopScreen,
   // V2 — Account & Profile
   'personal-info':    () => window.PersonalInfoScreen,
   'edit-profile':     () => window.EditProfileScreen,

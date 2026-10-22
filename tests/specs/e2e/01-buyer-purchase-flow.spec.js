@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures.js';
 import { goto, mockAuth, seedProducts, MOCK_PRODUCTS, MOCK_ORDERS } from '../../helpers/navigate.js';
 
 /**
@@ -11,7 +11,7 @@ test.describe('E2E — Parcours acheteur complet', () => {
     await page.goto('/');
     await mockAuth(page, { role: 'buyer', name: 'Alice Dupont', email: 'alice@test.io' });
     await seedProducts(page, MOCK_PRODUCTS);
-    await page.addInitScript(() => {
+    await page.evaluate(() => {
       window._MOCK_CART  = [];
       window._MOCK_ORDERS = [];
     });
@@ -22,7 +22,7 @@ test.describe('E2E — Parcours acheteur complet', () => {
 
     // 2. Naviguer vers la fiche produit
     await goto(page, 'pdp', { productId: 'p1', product: MOCK_PRODUCTS[0] });
-    await expect(page.locator('text=Lampe Boho Tressée')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Lampe Boho Tressée').first()).toBeVisible({ timeout: 5000 });
     await expect(page.locator('text=49')).toBeVisible();
 
     // 3. Ajouter au panier
@@ -35,10 +35,12 @@ test.describe('E2E — Parcours acheteur complet', () => {
     // Cart may be empty because mock doesn't persist — that's OK, we test the screen loads
     await expect(page.locator('body')).toBeVisible();
 
-    // 5. Checkout
+    // 5. Checkout — 'checkout' routes to CheckoutAddressScreen, titled
+    // "Shipping Address" with a "Street Address" field (screen-checkout.jsx)
+    // — no French copy exists on this screen.
     await goto(page, 'checkout');
     await expect(
-      page.locator('text=Livraison').or(page.locator('text=Adresse')).or(page.locator('text=Paiement')).first()
+      page.getByPlaceholder('14 Roquette Street').or(page.getByText('Shipping Address')).first()
     ).toBeVisible({ timeout: 5000 });
 
     // 6. Tracking
@@ -65,7 +67,7 @@ test.describe('E2E — Parcours acheteur complet', () => {
 
     // Voir un produit
     await goto(page, 'pdp', { productId: 'p2', product: MOCK_PRODUCTS[1] });
-    await expect(page.locator('text=Écouteurs Pro Max')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Écouteurs Pro Max').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('Acheteur : message au vendeur', async ({ page }) => {
@@ -95,11 +97,15 @@ test.describe('E2E — Parcours acheteur complet', () => {
   test('Acheteur : voir ses commandes passées', async ({ page }) => {
     await page.goto('/');
     await mockAuth(page, { role: 'buyer', name: 'Alice Dupont' });
-    await page.addInitScript((orders) => { window._MOCK_ORDERS = orders; }, MOCK_ORDERS);
+    await page.evaluate((orders) => { window._MOCK_ORDERS = orders; }, MOCK_ORDERS);
 
+    // OrdersListScreen's OrderCard (screen-tracking.jsx) shows "Order
+    // #<id>", status, date and item count — it never renders individual
+    // item titles (those only appear on the detail screen) or any
+    // "commande" text (no French copy exists on this screen).
     await goto(page, 'tracking');
     await expect(
-      page.locator('text=Lampe').or(page.locator('text=Écouteurs')).or(page.locator('text=commande')).first()
+      page.getByText('My Orders').or(page.getByText('Order #order-1')).first()
     ).toBeVisible({ timeout: 5000 });
   });
 

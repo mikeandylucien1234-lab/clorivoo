@@ -152,6 +152,9 @@ function CategoryScreen({ params = {} }) {
   const [visibleCount, setVisibleCount] = React.useState(8);
   const [loadingMore, setLoadingMore]   = React.useState(false);
   const [loadingProducts, setLoadingProducts] = React.useState(true);
+  const [userId, setUserId] = React.useState(null);
+  React.useEffect(() => { sbGetUser().then(u => setUserId(u?.id || null)); }, []);
+  const [toast, setToast] = React.useState(null);
 
   const sorts = ['Popular','Price ↑','Price ↓','Newest'];
   const sortParam = ['popular','price_asc','price_desc','newest'][sort];
@@ -188,6 +191,20 @@ function CategoryScreen({ params = {} }) {
   }, [activeSlug, activeSub, sortParam]);
 
   const visibleProducts = products.slice(0, visibleCount);
+
+  // Same rule as Public Shop/Search: a quick "Add to Cart" never picks a
+  // variant on the buyer's behalf. A product with real variants opens
+  // Product Details instead; only a variant-less product is added directly.
+  async function addToCart(p) {
+    const variants = await sbGetProductVariants(p.id);
+    if (variants && variants.length > 0) {
+      navigate('pdp', { product: p });
+      return;
+    }
+    const { error } = await sbAddToCart({ userId, product: p, qty: 1, price: p.price, mode: 'increment' });
+    if (error) { setToast({ type:'error', message: error.message || 'Could not add this to your cart.' }); return; }
+    setToast({ type:'success', message:`${p.title} added to cart` });
+  }
 
   function handleLoadMore() {
     setLoadingMore(true);
@@ -298,7 +315,7 @@ function CategoryScreen({ params = {} }) {
               key={p.id} product={p} size="md" tint={i % 5}
               specs={specsByTint[i % specsByTint.length]}
               onPress={() => navigate('pdp', { product: p })}
-              onAddToCart={() => { window.CART_ITEMS = [...(window.CART_ITEMS || []), { product: p, qty:1, variant: null, seller: p.seller }]; }}
+              onAddToCart={() => addToCart(p)}
             />
           ))}
         </div>
@@ -327,6 +344,8 @@ function CategoryScreen({ params = {} }) {
         else if (i === 3) navigate('tracking');
         else if (i === 4) navigate('profile');
       }} />
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }

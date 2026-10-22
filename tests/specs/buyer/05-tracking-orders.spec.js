@@ -1,17 +1,22 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures.js';
 import { goto, mockAuth, seedOrders, seedShipmentsByOrder, MOCK_ORDERS, MOCK_SHIPMENTS_BY_ORDER } from '../../helpers/navigate.js';
 
-// Opens the order detail screen the way screen-tracking.jsx's own
-// OrderCard actually does: navigate('order-detail', { order }) with the
-// FULL order object, not an orderId string. The previous version of
-// this file navigated to 'tracking' (the LIST screen, per app.jsx's
-// routing table) with an unused `orderId` param — OrderDetailScreen
-// reads `params.order`, so that never rendered the detail screen at
-// all; every one of its assertions was passing (or failing) against
-// whatever the list screen happened to show, not real tracking UI.
+// Opens the order detail screen the way a real user actually would:
+// through the orders list, clicking the OrderCard for this order.
+// screen-tracking.jsx's OrdersListScreen always passes the detail
+// screen an order object already run through normalizeRemoteOrder()
+// (with an `items` array) — navigating straight to 'order-detail' with
+// a raw MOCK_ORDERS row (which only has `order_items`) crashes
+// OrderDetailScreen synchronously on its first render, before its own
+// useEffect ever gets a chance to normalize it: `order.items.reduce(...)`
+// (screen-tracking.jsx:554, "Ordered Products" count) throws on
+// `order.items === undefined` and the whole screen renders blank. Going
+// through the list screen is both more realistic and sidesteps that
+// shape mismatch entirely, since the list always normalizes first.
 async function openOrderDetail(page, orderId) {
-  const order = MOCK_ORDERS.find(o => o.id === orderId);
-  await goto(page, 'order-detail', { order });
+  await goto(page, 'tracking');
+  await page.locator(`text=Order #${orderId}`).click();
+  await page.waitForTimeout(300);
 }
 
 test.describe('Buyer — Suivi & Commandes', () => {
@@ -52,7 +57,7 @@ test.describe('Buyer — Suivi & Commandes', () => {
     // as seller-reported, never implied carrier-verified (no carrier
     // API integration exists).
     await openOrderDetail(page, 'order-1');
-    await expect(page.locator('text=/seller-reported/i')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=/seller-reported/i').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('Expédition annulée — jamais affichée comme "pending"', async ({ page }) => {
@@ -133,11 +138,47 @@ test.describe('Buyer — Suivi & Commandes', () => {
     await expect(page.locator('text=Alice').or(page.locator('text=Dupont')).first()).toBeVisible({ timeout: 5000 });
   });
 
+  // Was a genuine gap — ProfileScreen's menu had no path to seller
+  // onboarding at all. Fixed by adding a role-conditional entry
+  // (screen-account.jsx): "Become a Seller" for a buyer, "Seller
+  // Dashboard" for an existing seller, never both.
   test('Profil — bouton Devenir vendeur visible', async ({ page }) => {
     await goto(page, 'profile');
     await expect(
       page.locator('button, a').filter({ hasText: /vendeur|seller|boutique/i }).first()
     ).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Profil — Devenir vendeur ouvre le flux KYC existant', async ({ page }) => {
+    await page.evaluate(() => { window.sbGetMyKyc = async () => null; });
+    await goto(page, 'profile');
+    await page.getByText('Become a Seller').click();
+    await page.waitForTimeout(400);
+    await expect(
+      page.getByText('Create Seller Account').or(page.getByText('Personal information')).first()
+    ).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Profil — Devenir vendeur respecte une candidature KYC existante', async ({ page }) => {
+    // A buyer with an already-pending application must see its status,
+    // never a second blank application form — this is what "avoid
+    // creating duplicate seller accounts" means in practice here.
+    await page.evaluate(() => { window.sbGetMyKyc = async () => ({ status: 'pending' }); });
+    await goto(page, 'profile');
+    await page.getByText('Become a Seller').click();
+    await page.waitForTimeout(400);
+    await expect(page.getByText('under review', { exact: false })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByPlaceholder('Alex')).toHaveCount(0);
+  });
+
+  test('Profil — vendeur approuvé voit Seller Dashboard, pas Devenir vendeur', async ({ page }) => {
+    await mockAuth(page, { role: 'seller', name: 'Alice Dupont' });
+    await goto(page, 'profile');
+    await expect(page.getByText('Seller Dashboard')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Become a Seller')).toHaveCount(0);
+    await page.getByText('Seller Dashboard').click();
+    await page.waitForTimeout(400);
+    await expect(page.getByText('My shop').or(page.getByText('Welcome,')).first()).toBeVisible({ timeout: 5000 });
   });
 
 });

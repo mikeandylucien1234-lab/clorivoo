@@ -246,11 +246,69 @@ async function sbAdminGetAuditLogs({ page = 1, limit = 30, resourceType = '', se
   return { logs: data ?? [], total: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
 }
 
+// ─── ADMIN: CATALOG BACKUP ──────────────────────────────────────────
+// Real export of the actual catalog in Supabase — replaces the old
+// `window.PRODUCTS` (always empty) that silently produced a backup file
+// with "products": [] every time while the UI claimed it included the
+// catalog. Deliberately selects an explicit column list (not `*`) for
+// products so a sensitive column added later (e.g. a storage path) is
+// never swept into an export file just because it exists on the table —
+// nothing here is a secret, password, token, or private credential.
+// `error` is only set if every one of the three reads failed; a partial
+// result (e.g. categories/brands readable but products blocked by RLS for
+// a lower-privilege staff account) still returns whatever DID come back,
+// so the caller can report real counts instead of claiming completeness.
+async function sbAdminExportCatalog() {
+  if (!_sb) return { products: [], categories: [], brands: [], error: { message: 'Not configured' } };
+  const [productsRes, categoriesRes, brandsRes] = await Promise.all([
+    _sb.from('products').select('id,title,description,price,compare_price,stock,sku,status,approval_status,category_id,brand_id,shop_id,seller_id,images,tags,rating,reviews_count,sold_count,is_featured,is_flash_deal,flash_price,flash_starts_at,flash_ends_at,created_at,updated_at'),
+    _sb.from('categories').select('*'),
+    _sb.from('brands').select('*'),
+  ]);
+  const allFailed = productsRes.error && categoriesRes.error && brandsRes.error;
+  return {
+    products: productsRes.data ?? [],
+    categories: categoriesRes.data ?? [],
+    brands: brandsRes.data ?? [],
+    error: allFailed ? (productsRes.error || categoriesRes.error || brandsRes.error) : null,
+    partial: !!(productsRes.error || categoriesRes.error || brandsRes.error),
+  };
+}
+
+// Routes through the existing send-broadcast Edge Function (supabase/functions/
+// send-broadcast) rather than querying profiles/push tokens and inserting into
+// notifications directly from this client, the way the mobile app's own
+// sendBroadcastNotification() does — that bulk-reads every user's push token
+// client-side and relies entirely on RLS to stop abuse. The notifications
+// table's own insert policy ("Service role can insert notifications") has no
+// actual role restriction in its WITH CHECK clause (`true`), so doing this
+// directly from here, or from any authenticated client, would currently let
+// ANY signed-in user broadcast to the whole user base — a pre-existing gap
+// this function does not attempt to fix (would mean touching RLS/edge
+// function deployment, out of scope here). The Edge Function at least keeps
+// the bulk profile read and the actual push-token fan-out server-side,
+// behind a function invocation that requires a valid session JWT; it does
+// not itself verify the caller is an admin either, so the real boundary
+// today is still just this screen's own can('notifications.broadcast')
+// check — UI-level defense in depth, not a substitute for fixing the RLS
+// policy and adding a role check inside the function itself.
+async function sbAdminSendBroadcast({ segment = 'all', type = 'promo', title, body } = {}) {
+  if (!_sb) return { data: null, error: { message: 'Supabase not configured' } };
+  const { data, error } = await _sb.functions.invoke('send-broadcast', { body: { segment, type, title, body } });
+  if (error) return { data: null, error };
+  return { data, error: null };
+}
+
 // ─── PRODUCTS ────────────────────────────────────────────────────
+// Demo fallback (PRODUCTS) only applies when there is no Supabase client at
+// all (local preview with no backend configured). Once a real connection
+// exists, an empty result or an error is returned as-is — callers must show
+// their own empty/error state instead of silently substituting fictitious
+// products for real (possibly zero) data.
 async function sbGetProducts({ categorySlug, limit = 20, offset = 0, featured } = {}) {
   if (!_sb) return { data: PRODUCTS.map(_prodToSb), error: null };
   let q = _sb.from('products')
-    .select('*, shops(id, name, slug, is_verified, rating), categories(id, name, slug)')
+    .select('*, shops(id, name, slug, is_verified, rating), categories(id, name, slug), brands(id, name, slug, logo_url, risk_level)')
     .eq('status', 'active')
     .eq('approval_status', 'approved')
     .range(offset, offset + limit - 1)
@@ -261,17 +319,175 @@ async function sbGetProducts({ categorySlug, limit = 20, offset = 0, featured } 
     if (cat) q = q.eq('category_id', cat.id);
   }
   const { data, error } = await q;
-  if (error || !data?.length) return { data: PRODUCTS.map(_prodToSb), error };
-  return { data, error };
+  return { data: data ?? [], error };
 }
 
 async function sbGetProduct(id) {
   if (!_sb || !id) return null;
   const { data } = await _sb.from('products')
-    .select('*, shops(id, name, slug, is_verified, rating, followers, description), categories(id, name)')
+    .select('*, shops(id, name, slug, is_verified, rating, followers, description), categories(id, name), brands(id, name, slug, logo_url, risk_level)')
     .eq('id', id)
     .single();
   return data;
+}
+
+// Real buyer-facing search — replaces the fictitious local SEARCH_INDEX that
+// used to live in screen-search.jsx. Text match on title/description; real
+// category_id / brand_id filters against the actual taxonomy (same tables the
+// admin and category pages use), not a hardcoded tab list.
+// Also used as the general "browse all" fetch for the Public Shop catalog —
+// `query` is optional there (blank = no text filter, just category/brand/price/
+// sort), so this one function covers both Search Results and Public Shop
+// without a second, duplicate implementation.
+// Return shape is always { data, error, count }, in every branch — including
+// when no Supabase client exists at all. `count` is only populated (non-null)
+// when `withCount` is requested, since it costs an extra planner pass; it is
+// the true total number of matching rows server-side (not just the page
+// size), what real pagination needs to know whether more pages exist.
+// Never silently turns a real Supabase error into an empty success — `error`
+// is always passed through as-is.
+async function sbSearchProducts({ query = '', categoryId = '', brandId = '', shopId = '', sort = 'popular', limit = 60, offset = 0, maxPrice = null, withCount = false } = {}) {
+  if (!_sb) return { data: [], error: null, count: null };
+  const q = (query || '').trim();
+  let req = _sb.from('products')
+    .select('*, shops(id, name, slug, is_verified, rating), categories(id, name, slug), brands(id, name, slug, logo_url, risk_level)', withCount ? { count: 'exact' } : undefined)
+    .eq('status', 'active').eq('approval_status', 'approved')
+    .range(offset, offset + limit - 1);
+  if (q) req = req.or(`title.ilike.%${q}%,description.ilike.%${q}%`);
+  if (categoryId) req = req.eq('category_id', categoryId);
+  if (brandId) req = req.eq('brand_id', brandId);
+  if (shopId) req = req.eq('shop_id', shopId);
+  if (maxPrice != null) req = req.lte('price', maxPrice);
+  if (sort === 'price_low') req = req.order('price', { ascending: true });
+  else if (sort === 'price_high') req = req.order('price', { ascending: false });
+  else if (sort === 'newest') req = req.order('created_at', { ascending: false });
+  else if (sort === 'rating') req = req.order('rating', { ascending: false });
+  else req = req.order('sold_count', { ascending: false });
+  const { data, error, count } = await req;
+  return { data: data || [], error, count: withCount ? (count ?? 0) : null };
+}
+
+// Real products already belonging to a product the buyer is looking at or
+// has in their cart — "Similar Products"/"You may also like" everywhere they
+// appear. Replaces the fictitious global `PRODUCTS` constant (always empty
+// in production) these sections used to read from. Same catalog rules as
+// every other buyer-facing listing: active + approved only. `excludeId` keeps
+// the current product out of its own "similar" list.
+async function sbGetSimilarProducts({ categoryId = '', excludeId = '', limit = 8 } = {}) {
+  if (!_sb) return { data: [], error: null };
+  let req = _sb.from('products')
+    .select('*, shops(id, name, slug), categories(id, name, slug), brands(id, name, slug)')
+    .eq('status', 'active').eq('approval_status', 'approved')
+    .limit(limit);
+  if (categoryId) req = req.eq('category_id', categoryId);
+  if (excludeId) req = req.neq('id', excludeId);
+  req = req.order('sold_count', { ascending: false });
+  const { data, error } = await req;
+  return { data: data || [], error };
+}
+
+// Real, up-to-date "Flash Deals" row for the Homepage — only products an
+// admin actually flagged `is_flash_deal` AND whose promo window (if any
+// start/end was set) covers right now. Never a fake countdown: the caller
+// decides how/whether to show `flash_ends_at`, which is either a real
+// timestamp or null (no deadline set for this deal).
+async function sbGetActiveFlashDeals(limit = 6) {
+  if (!_sb) return { data: [], error: null };
+  const nowIso = new Date().toISOString();
+  const { data, error } = await _sb.from('products')
+    .select('*, shops(id, name, slug), categories(id, name, slug), brands(id, name, slug)')
+    .eq('status', 'active').eq('approval_status', 'approved')
+    .eq('is_flash_deal', true)
+    .or(`flash_starts_at.is.null,flash_starts_at.lte.${nowIso}`)
+    .or(`flash_ends_at.is.null,flash_ends_at.gte.${nowIso}`)
+    .order('flash_ends_at', { ascending: true, nullsFirst: false })
+    .limit(limit);
+  return { data: data || [], error };
+}
+
+// ─── ADMIN: FLASH DEALS (persisted on products — no new table) ───────────
+// Lists every product currently flagged as a flash deal, regardless of
+// whether its window is active yet/still — the admin needs to see and edit
+// upcoming and expired ones too, not just the live ones sbGetActiveFlashDeals
+// shows to buyers.
+async function sbAdminGetFlashDeals() {
+  if (!_sb) return [];
+  const { data } = await _sb.from('products')
+    .select('id, title, price, compare_price, flash_price, flash_starts_at, flash_ends_at, is_flash_deal, images, shops(name)')
+    .eq('is_flash_deal', true)
+    .order('flash_ends_at', { ascending: true, nullsFirst: false });
+  return data ?? [];
+}
+
+// Lets the admin find any product (any status) to add it to a flash deal —
+// reuses the same `products` table/columns as everywhere else, no second
+// catalog. Deliberately not status-filtered: the "Admins can manage all
+// products" RLS policy already covers reading/writing any product.
+async function sbAdminSearchProductsForFlashDeal(query, limit = 20) {
+  if (!_sb) return [];
+  const q = (query || '').trim();
+  let req = _sb.from('products').select('id, title, price, compare_price, is_flash_deal, shops(name)').limit(limit);
+  if (q) req = req.ilike('title', `%${q}%`);
+  req = req.order('title', { ascending: true });
+  const { data } = await req;
+  return data ?? [];
+}
+
+// Creates/updates a flash deal on a real product. `flashPrice` must be a
+// positive number strictly below the product's current `price` — enforced
+// both here (clear error before any write) and by the `flash_price_valid`
+// CHECK constraint in the database (the real guarantee). `endsAt` before
+// `startsAt` is rejected the same way, backed by `flash_dates_valid`.
+async function sbAdminSetFlashDeal(productId, { flashPrice, startsAt = null, endsAt = null, isActive = true } = {}) {
+  if (!_sb) return { data: null, error: null };
+  const { data: product } = await _sb.from('products').select('price').eq('id', productId).single();
+  if (!product) return { data: null, error: { message: 'Product not found' } };
+  const price = Number(flashPrice);
+  if (!Number.isFinite(price) || price <= 0 || price >= Number(product.price)) {
+    return { data: null, error: { message: `The flash price must be a positive number lower than the current price ($${Number(product.price).toFixed(2)}).` } };
+  }
+  if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) {
+    return { data: null, error: { message: 'The end date must be after the start date.' } };
+  }
+  const { data, error } = await _sb.from('products').update({
+    is_flash_deal: isActive, flash_price: price, flash_starts_at: startsAt || null, flash_ends_at: endsAt || null,
+  }).eq('id', productId).select().single();
+  return { data, error };
+}
+
+// Only ever called after the caller has already confirmed with the admin —
+// this function itself does not ask for confirmation, the UI must.
+async function sbAdminRemoveFlashDeal(productId) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('products').update({
+    is_flash_deal: false, flash_price: null, flash_starts_at: null, flash_ends_at: null,
+  }).eq('id', productId);
+  return { error };
+}
+
+// ─── SHOPS — public store page ────────────────────────────────────────
+// Best-effort lookup by name, for the few call sites (e.g. a conversation
+// thread) that don't yet carry a real shop id. Not a substitute for passing
+// a real shopId where one is available (see sbGetShop) — a name match can be
+// ambiguous or stale if a shop renames itself.
+async function sbGetShopByName(name) {
+  if (!_sb || !name) return null;
+  const { data } = await _sb.from('shops').select('*, shop_banners(*)').ilike('name', name.trim()).limit(1).maybeSingle();
+  return data ?? null;
+}
+
+// Real, published reviews for a seller's whole store (not one product) —
+// used by the public store page's Reviews tab. Empty array (not an error)
+// when the seller genuinely has none yet; `error` is still passed through
+// for a real failure so the caller can tell the two apart.
+async function sbGetShopReviews(sellerId, { limit = 50 } = {}) {
+  if (!_sb || !sellerId) return { data: [], error: null };
+  const { data, error } = await _sb.from('reviews')
+    .select('*')
+    .eq('seller_id', sellerId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return { data: data || [], error };
 }
 
 // ─── CATEGORIES — the one source of truth for the whole marketplace ──────
@@ -355,7 +571,7 @@ function _collectDescendantIds(categoryId, flat) {
   return ids;
 }
 
-async function sbGetProductsByCategory(categoryIdOrSlug, { limit = 24, offset = 0, sort = 'popular' } = {}) {
+async function sbGetProductsByCategory(categoryIdOrSlug, { limit = 24, offset = 0, sort = 'popular', brandId = '' } = {}) {
   if (!_sb || !categoryIdOrSlug) return { data: [], category: null };
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(categoryIdOrSlug);
   const { data: category } = await _sb.from('categories').select('*')
@@ -365,10 +581,11 @@ async function sbGetProductsByCategory(categoryIdOrSlug, { limit = 24, offset = 
   const { data: allCats } = await _sb.from('categories').select('id, parent_id');
   const ids = _collectDescendantIds(category.id, allCats || [category]);
 
-  let q = _sb.from('products').select('*, shops(id, name, slug, is_verified, rating), categories(id, name, slug)')
+  let q = _sb.from('products').select('*, shops(id, name, slug, is_verified, rating), categories(id, name, slug), brands(id, name, slug, logo_url, risk_level)')
     .eq('status', 'active').eq('approval_status', 'approved')
     .in('category_id', ids)
     .range(offset, offset + limit - 1);
+  if (brandId) q = q.eq('brand_id', brandId);
   if (sort === 'price_asc') q = q.order('price', { ascending: true });
   else if (sort === 'price_desc') q = q.order('price', { ascending: false });
   else if (sort === 'newest') q = q.order('created_at', { ascending: false });
@@ -376,6 +593,59 @@ async function sbGetProductsByCategory(categoryIdOrSlug, { limit = 24, offset = 
 
   const { data } = await q;
   return { data: data ?? [], category };
+}
+
+// ─── PRODUCT ATTRIBUTE VALUES — what a given product actually has for each of
+// its category's attribute templates. category_attributes stays the template
+// (admin-managed); this is the per-product value storage the templates were
+// missing. Kept distinct from product_variants.attributes (Étape 2 variants —
+// commercial options with their own SKU/stock), per is_variant_option on the
+// template row.
+async function sbGetProductAttributeValues(productId) {
+  if (!_sb || !productId) return [];
+  const { data } = await _sb.from('product_attribute_values')
+    .select('*, category_attributes(id, name, label, type, unit, is_variant_option, display_order)')
+    .eq('product_id', productId);
+  return (data || []).sort((a, b) => (a.category_attributes?.display_order ?? 0) - (b.category_attributes?.display_order ?? 0));
+}
+
+// `values` is { [category_attribute_id]: stringValue }. Empty/blank values are
+// removed rather than stored. Additive upserts — never touches product_variants.
+async function sbSetProductAttributeValues(productId, values) {
+  if (!_sb || !productId) return { error: null };
+  const entries = Object.entries(values || {});
+  const toUpsert = entries.filter(([, v]) => v !== '' && v != null)
+    .map(([category_attribute_id, value]) => ({ product_id: productId, category_attribute_id, value: String(value) }));
+  const toClear = entries.filter(([, v]) => v === '' || v == null).map(([id]) => id);
+  if (toClear.length) {
+    await _sb.from('product_attribute_values').delete().eq('product_id', productId).in('category_attribute_id', toClear);
+  }
+  if (toUpsert.length) {
+    const { error } = await _sb.from('product_attribute_values').upsert(toUpsert, { onConflict: 'product_id,category_attribute_id' });
+    if (error) return { error };
+  }
+  return { error: null };
+}
+
+// ─── SMART CATEGORY SUGGESTION (Phase 5) — rule-based keyword matching, no
+// external AI call exists in this project, so none is claimed. Scores every
+// leaf-ish category by how many of its own name's words appear in the
+// product's title/description and returns the best match above a minimum
+// score. The seller must still confirm — this never assigns a category by
+// itself.
+function sbSuggestCategory(title, description, flatCategories) {
+  const text = `${title || ''} ${description || ''}`.toLowerCase();
+  const words = new Set(text.split(/[^a-z0-9]+/).filter(w => w.length > 2));
+  if (!words.size || !flatCategories?.length) return null;
+  let best = null, bestScore = 0;
+  for (const c of flatCategories) {
+    const catWords = (c.name || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    if (!catWords.length) continue;
+    const hits = catWords.filter(w => words.has(w)).length;
+    const score = hits / catWords.length;
+    if (hits > 0 && score > bestScore) { bestScore = score; best = c; }
+  }
+  return best && bestScore >= 0.5 ? best : null;
 }
 
 // ─── CATEGORIES — ADMIN ────────────────────────────────────────────
@@ -537,6 +807,8 @@ async function sbAdminSaveCategoryAttribute(attr) {
     category_id: attr.category_id, name: attr.name, type: attr.type || 'text',
     options: attr.options || [], is_required: !!attr.is_required, is_filterable: attr.is_filterable !== false,
     is_searchable: !!attr.is_searchable, is_sortable: !!attr.is_sortable, display_order: attr.display_order ?? 0,
+    label: attr.label || null, unit: attr.unit || null, default_value: attr.default_value || null,
+    is_active: attr.is_active !== false, is_variant_option: !!attr.is_variant_option,
   };
   if (attr.id) {
     const { data, error } = await _sb.from('category_attributes').update(payload).eq('id', attr.id).select().single();
@@ -582,7 +854,7 @@ function sbSubscribeAdminCategories(callback) {
 // surface whatever the database already enforces.
 function _brandPayload(form) {
   const payload = {};
-  const fields = ['name','slug','logo_url','description','website_url','status'];
+  const fields = ['name','slug','logo_url','description','website_url','status','risk_level'];
   fields.forEach(f => { if (form[f] !== undefined) payload[f] = form[f] === '' && f !== 'name' && f !== 'slug' ? null : form[f]; });
   return payload;
 }
@@ -593,7 +865,7 @@ function _brandPayload(form) {
 async function sbGetActiveBrands() {
   if (!_sb) return [];
   return _withTimeout((async () => {
-    const { data } = await _sb.from('brands').select('id, name, slug, logo_url').eq('status', 'active').order('name', { ascending: true });
+    const { data } = await _sb.from('brands').select('id, name, slug, logo_url, risk_level').eq('status', 'active').order('name', { ascending: true });
     return data ?? [];
   })(), 10000, []);
 }
@@ -674,6 +946,69 @@ function sbSubscribeAdminBrands(callback) {
   return () => _sb.removeChannel(channel);
 }
 
+// ─── BRAND REQUESTS (Step 1) ────────────────────────────────────────
+// A seller can never create/activate a brand directly — this is the only
+// path from "my brand isn't in the list" to a usable brands row, and it
+// always goes through admin_decide_brand_request() (brands.approve).
+async function sbRequestBrand(sellerId, shopId, requestedName, reason) {
+  if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
+  const payload = { seller_id: sellerId, shop_id: shopId || null, requested_name: (requestedName || '').trim(), reason: (reason || '').trim() || null };
+  if (!payload.requested_name) return { data: null, error: { message: 'A brand name is required' } };
+  const { data, error } = await _sb.from('brand_requests').insert(payload).select().single();
+  return { data, error };
+}
+
+async function sbGetMyBrandRequests(sellerId) {
+  if (!_sb || !sellerId) return [];
+  const { data } = await _sb.from('brand_requests').select('*').eq('seller_id', sellerId).order('created_at', { ascending: false });
+  return data ?? [];
+}
+
+async function sbAdminGetBrandRequests(opts = {}) {
+  const emptyResult = { requests: [], totalRequests: 0, totalPages: 0, currentPage: opts.page || 1 };
+  if (!_sb) return emptyResult;
+  return _withTimeout(_sbAdminGetBrandRequestsImpl(opts), 10000, { ...emptyResult, timedOut: true });
+}
+async function _sbAdminGetBrandRequestsImpl({ page = 1, limit = 20, status = 'pending' } = {}) {
+  let query = _sb.from('brand_requests').select('*, profiles(full_name, email), shops(name)', { count: 'exact' });
+  if (status !== 'ALL') query = query.eq('status', status);
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
+  if (error) return { requests: [], totalRequests: 0, totalPages: 0, currentPage: page };
+  return { requests: data ?? [], totalRequests: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
+async function sbAdminDecideBrandRequest(requestId, decision, rejectionReason = '') {
+  if (!_sb) return { data: null, error: null };
+  const { data, error } = await _sb.rpc('admin_decide_brand_request', {
+    p_request_id: requestId, p_decision: decision, p_rejection_reason: decision === 'rejected' ? (rejectionReason || null) : null,
+  });
+  return { data, error };
+}
+
+// Authenticity proof documents — private bucket, same random-path-under-
+// own-folder pattern as _sbUploadKycDoc, so RLS (storage.foldername(name))[1])
+// is what actually keeps one seller's documents from another's, not just the UI.
+async function sbUploadAuthenticityProof(userId, file) {
+  if (!_sb || !file) return null;
+  const ext = (file.name || '').split('.').pop() || 'pdf';
+  const rand = (window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const path = `${userId}/${rand}-authenticity-proof.${ext}`;
+  const { error } = await _sb.storage.from('authenticity-proofs').upload(path, file, { upsert: false });
+  if (error) return null;
+  return path;
+}
+
+// Admin-only reveal — the bucket's own RLS (products.approve or the
+// uploader's own folder) is the real guarantee, this signed URL is just
+// how a permitted viewer actually sees the file for 60 seconds.
+async function sbAdminGetAuthenticityProofUrl(path) {
+  if (!_sb || !path) return null;
+  const { data, error } = await _sb.storage.from('authenticity-proofs').createSignedUrl(path, 60);
+  if (error) return null;
+  return data?.signedUrl ?? null;
+}
+
 // ─── SHOPS ───────────────────────────────────────────────────────
 async function sbGetShops({ limit = 10 } = {}) {
   if (!_sb) return { data: _DEMO_SHOPS, error: null };
@@ -740,12 +1075,23 @@ async function sbGetCart(userId) {
   return { data: data ?? [], error };
 }
 
-async function sbUpsertCartItem(userId, productId, variant, quantity, price) {
+// variantId is optional (null for legacy no-variant products). When set,
+// this re-reads the variant's own stock/reserved before adding to cart —
+// a real check, not a guarantee (the only hard guarantee is create_order's
+// row-locked check at checkout), just so the cart doesn't silently accept
+// more than is realistically available.
+async function sbUpsertCartItem(userId, productId, variant, quantity, price, variantId = null) {
   if (!_sb || !userId) {
     // fallback: update window.CART_ITEMS
     const idx = window.CART_ITEMS.findIndex(i => i.product.id == productId);
     if (idx >= 0) window.CART_ITEMS[idx].qty = quantity;
     return { error: null };
+  }
+  if (variantId && quantity > 0) {
+    const { data: v } = await _sb.from('product_variants').select('stock, reserved').eq('id', variantId).single();
+    if (v && (v.stock - v.reserved) < quantity) {
+      return { error: { message: `Only ${Math.max(0, v.stock - v.reserved)} unit(s) available for this variant.` } };
+    }
   }
   // Ensure cart exists
   let { data: cart } = await _sb.from('carts').select('id').eq('user_id', userId).single();
@@ -761,9 +1107,218 @@ async function sbUpsertCartItem(userId, productId, variant, quantity, price) {
     return { error: null };
   }
   const { error } = await _sb.from('cart_items').upsert({
-    cart_id: cart.id, product_id: productId, variant, quantity, unit_price: price,
+    cart_id: cart.id, product_id: productId, variant, variant_id: variantId, quantity, unit_price: price,
   }, { onConflict: 'cart_id,product_id,variant' });
   return { error };
+}
+
+// ─── CENTRALIZED ADD-TO-CART ──────────────────────────────────────────
+// The single add-to-cart entry point for Product Details, Public Shop,
+// Search Results and Category Pages — all four call this instead of each
+// keeping its own copy of the logged-in/guest branching logic.
+//
+// Logged-in: persists to the real Supabase cart (the same `carts`/`cart_items`
+// tables create_order() reads at checkout) via the existing sbUpsertCartItem —
+// unchanged, so this never touches product/variant stock or reservations,
+// only ever reads a variant's availability (read-only check, already there).
+// mode:'increment' (the quick "Add to Cart" buttons on a grid) adds `qty` on
+// top of whatever is already in the cart for that exact product+variant,
+// read first so a second click doesn't overwrite the existing quantity —
+// avoids the "incorrect duplicate" failure mode. mode:'set' (Product
+// Details' own quantity stepper) replaces it.
+//
+// Guest: the existing local window.CART_ITEMS fallback, same shape every
+// other screen already reads, also increment- or set-aware.
+async function sbAddToCart({ userId, product, variant = null, variantId = null, qty = 1, price, mode = 'increment' }) {
+  const unitPrice = price != null ? price : Number(product.price);
+  if (!_sb || !userId) {
+    const list = window.CART_ITEMS || (window.CART_ITEMS = []);
+    const variantLabel = variant?.size || variant?.color || null;
+    const idx = list.findIndex(ci => ci.product?.id === product.id && (ci.variant || null) === variantLabel);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], qty: mode === 'set' ? qty : list[idx].qty + qty };
+    } else {
+      list.push({ product, qty, variant: variantLabel, seller: product.shops?.name || product.seller || null });
+    }
+    window.CART_ITEMS = [...list];
+    return { error: null };
+  }
+  if (mode === 'set') {
+    return sbUpsertCartItem(userId, product.id, variant || {}, qty, unitPrice, variantId);
+  }
+
+  // mode:'increment' — optimistic-concurrency (compare-and-swap) retry loop,
+  // built entirely out of the existing cart_items table/columns: no new SQL
+  // function and no migration. The earlier version read the current quantity
+  // then wrote current+qty as two separate round trips; two near-simultaneous
+  // calls (a double-click, two tabs) could both read the same starting
+  // quantity and the second plain upsert would silently overwrite the first's
+  // result, losing one increment. Here the write is conditioned on the
+  // quantity still being what we just read (`.eq('quantity', existing.quantity)`
+  // on the UPDATE); if another call changed it first, zero rows match, we
+  // re-read the fresh quantity and try again. This closes the lost-update
+  // race without touching create_order()/stock/reservations — those remain
+  // the only hard, row-locked guarantee at checkout time; this is a
+  // best-effort correctness improvement for the cart stage only.
+  let { data: cart } = await _sb.from('carts').select('id').eq('user_id', userId).single();
+  if (!cart) {
+    const { data, error: cartErr } = await _sb.from('carts').insert({ user_id: userId }).select('id').single();
+    if (cartErr) return { error: cartErr };
+    cart = data;
+  }
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let existingQ = _sb.from('cart_items').select('id, quantity').eq('cart_id', cart.id).eq('product_id', product.id);
+    existingQ = variantId ? existingQ.eq('variant_id', variantId) : existingQ.is('variant_id', null);
+    const { data: existing } = await existingQ.maybeSingle();
+    const targetQty = (existing?.quantity || 0) + qty;
+
+    // Same stock check sbUpsertCartItem already does — unchanged logic,
+    // just evaluated against the real post-increment total.
+    if (variantId) {
+      const { data: v } = await _sb.from('product_variants').select('stock, reserved').eq('id', variantId).single();
+      if (v && (v.stock - v.reserved) < targetQty) {
+        return { error: { message: `Only ${Math.max(0, v.stock - v.reserved)} unit(s) available for this variant.` } };
+      }
+    }
+
+    if (!existing) {
+      const { error: insErr } = await _sb.from('cart_items').insert({
+        cart_id: cart.id, product_id: product.id, variant: variant || {}, variant_id: variantId, quantity: qty, unit_price: unitPrice,
+      });
+      if (!insErr) return { error: null };
+      if (insErr.code !== '23505') return { error: insErr }; // real error, not a concurrent-insert race
+      continue; // someone else just inserted this exact row — retry as an update below
+    }
+
+    const { data: updated, error: updErr } = await _sb.from('cart_items')
+      .update({ quantity: targetQty, unit_price: unitPrice })
+      .eq('id', existing.id)
+      .eq('quantity', existing.quantity) // CAS: only applies if nobody else changed it since our read above
+      .select('id');
+    if (updErr) return { error: updErr };
+    if (updated && updated.length > 0) return { error: null };
+    // 0 rows affected — another concurrent write updated this row first; loop and retry with a fresh read.
+  }
+  return { error: { message: "Couldn't update your cart — please try again." } };
+}
+
+// Called once right after a successful sign-in or sign-up (screen-auth.jsx),
+// always from a point where the caller has just confirmed a real
+// authenticated session (sbSignIn's returned session, or sbGetUser() for the
+// social/OAuth path) — this function itself takes no part in deciding
+// whether the user is authenticated, it only ever runs after that is true.
+// Folds whatever was added to the local guest cart into the account's real
+// Supabase cart, one existing sbAddToCart({mode:'increment'}) call per item —
+// never overwrites an existing persisted quantity, just adds to it, and the
+// same CAS-based sbAddToCart handles the "no duplicate row" guarantee.
+// Any item that fails to merge (e.g. a stock refusal) is kept in the guest
+// cart instead of being silently dropped, so a partial failure never loses
+// data — only the items that actually persisted are cleared.
+// No-op (and safe to call) when there is nothing to merge.
+async function sbMergeGuestCartIntoAccount(userId) {
+  const guestItems = window.CART_ITEMS || [];
+  if (!_sb || !userId || guestItems.length === 0) return { error: null };
+  const remaining = [];
+  let firstError = null;
+  for (const ci of guestItems) {
+    if (!ci?.product?.id) continue;
+    const { error } = await sbAddToCart({
+      userId, product: ci.product, variant: ci.variant ? { size: ci.variant } : null,
+      variantId: ci.variantId || null, qty: ci.qty || 1, price: ci.product.price, mode: 'increment',
+    });
+    if (error) { firstError = firstError || error; remaining.push(ci); }
+  }
+  window.CART_ITEMS = remaining;
+  return { error: firstError };
+}
+
+// ─── PRODUCT VARIANTS (Step 2) ───────────────────────────────────────
+// Public, active-product-only — what the PDP and cart are allowed to
+// offer a shopper. RLS independently enforces the same "active product"
+// boundary, this just avoids a wasted round trip to a draft/rejected one.
+async function sbGetProductVariants(productId) {
+  if (!_sb || !productId) return [];
+  const { data } = await _sb.from('product_variants').select('*').eq('product_id', productId).order('size', { ascending: true });
+  return data ?? [];
+}
+
+// Seller (own shop only, enforced by RLS) or admin. sku must be globally
+// unique — the database constraint is the real guarantee, this surfaces
+// a readable error instead of a raw Postgres one.
+async function sbUpsertProductVariant(variant) {
+  if (!_sb) return { data: null, error: null };
+  const payload = {
+    product_id: variant.product_id, sku: variant.sku, size: variant.size || null, color: variant.color || null,
+    price_override: variant.price_override === '' || variant.price_override == null ? null : variant.price_override,
+    stock: variant.stock ?? 0, low_stock_threshold: variant.low_stock_threshold === '' || variant.low_stock_threshold == null ? null : variant.low_stock_threshold,
+  };
+  // Generalized variant options beyond size/color (e.g. RAM/Storage as purchase
+  // options with their own SKU/stock) — additive, never touches the fixed
+  // columns above (Étape 2).
+  if (variant.attributes !== undefined) payload.attributes = variant.attributes || {};
+  const { data, error } = variant.id
+    ? await _sb.from('product_variants').update(payload).eq('id', variant.id).select().single()
+    : await _sb.from('product_variants').insert(payload).select().single();
+  if (error?.code === '23505') return { data: null, error: { message: 'This SKU is already used by another variant' } };
+  return { data, error };
+}
+
+async function sbDeleteProductVariant(id) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('product_variants').delete().eq('id', id);
+  return { error };
+}
+
+// ─── INVENTORY (Step 2 — real Supabase-backed admin view) ──────────
+async function sbAdminGetInventory(opts = {}) {
+  const emptyResult = { rows: [], totalRows: 0, totalPages: 0, currentPage: opts.page || 1 };
+  if (!_sb) return emptyResult;
+  return _withTimeout(_sbAdminGetInventoryImpl(opts), 10000, { ...emptyResult, timedOut: true });
+}
+async function _sbAdminGetInventoryImpl({ page = 1, limit = 20, search = '', filter = 'ALL' } = {}) {
+  let query = _sb.from('products').select('id, title, sku, stock, status, approval_status, product_variants(id, sku, size, color, stock, reserved, low_stock_threshold)', { count: 'exact' });
+  const q = (search || '').trim();
+  if (q) query = query.or(`title.ilike.%${q}%,sku.ilike.%${q}%`);
+  const from = (page - 1) * limit;
+  const { data, count, error } = await query.order('title', { ascending: true }).range(from, from + limit - 1);
+  if (error) return { rows: [], totalRows: 0, totalPages: 0, currentPage: page };
+  let rows = data ?? [];
+  if (filter === 'OUT_OF_STOCK') rows = rows.filter(p => (p.stock ?? 0) === 0);
+  else if (filter === 'LOW_STOCK') rows = rows.filter(p => {
+    if (p.product_variants?.length) return p.product_variants.some(v => v.low_stock_threshold != null && (v.stock - v.reserved) > 0 && (v.stock - v.reserved) < v.low_stock_threshold);
+    return (p.stock ?? 0) > 0 && (p.stock ?? 0) < 10;
+  });
+  return { rows, totalRows: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+}
+
+async function sbAdminGetInventorySettings() {
+  if (!_sb) return { reservation_expiry_minutes: 30 };
+  const { data } = await _sb.from('platform_settings').select('value').eq('key', 'inventory').single();
+  return data?.value ?? { reservation_expiry_minutes: 30 };
+}
+
+async function sbAdminUpdateInventorySettings(settings) {
+  if (!_sb) return { error: null };
+  const user = await sbGetUser();
+  const { error } = await _sb.from('platform_settings')
+    .update({ value: settings, updated_at: new Date().toISOString(), updated_by: user?.id ?? null })
+    .eq('key', 'inventory');
+  return { error };
+}
+
+async function sbAdminReleaseExpiredReservations() {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.rpc('release_expired_variant_reservations');
+  return { error };
+}
+
+async function sbAdminValidateReturnAndRestock(orderItemId, quantityReturned, notes) {
+  if (!_sb) return { data: null, error: null };
+  const { data, error } = await _sb.rpc('admin_validate_return_and_restock', {
+    p_order_item_id: orderItemId, p_quantity_returned: quantityReturned, p_notes: notes || null,
+  });
+  return { data, error };
 }
 
 async function sbClearCart(userId) {
@@ -964,25 +1519,25 @@ function computeOrderFulfillmentStatus(shipments) {
   return 'pending';
 }
 
+// Routed through cancel_order() (SECURITY DEFINER) rather than a raw
+// client UPDATE: it is the only place that releases this order's
+// reservations (variant.reserved, or legacy products.stock) and it
+// refuses once the order has shipped or been paid — a paid order goes
+// through the existing refund workflow instead.
 async function sbCancelOrder(orderId) {
   if (!_sb || !orderId) return { data: { id: orderId, status: 'cancelled' }, error: null };
-  const { data, error } = await _sb.from('orders')
-    .update({ status: 'cancelled' })
-    .eq('id', orderId)
-    .select()
-    .single();
+  const { data, error } = await _sb.rpc('cancel_order', { p_order_id: orderId });
   return { data, error };
 }
 
 // ─── MESSAGES ────────────────────────────────────────────────────
 async function sbGetConversations(userId) {
-  if (!_sb || !userId) return { data: _DEMO_CONVERSATIONS, error: null };
+  if (!_sb || !userId) return { data: [], error: null };
   const { data, error } = await _sb.from('conversations')
-    .select('*, shops(id, name, brand_color, is_verified), buyer:profiles!buyer_id(id, full_name, avatar_url), seller:profiles!seller_id(id, full_name, avatar_url)')
+    .select('*, shops(id, name, logo_url, brand_color, is_verified), products(id, title, price, images), buyer:profiles!buyer_id(id, full_name, avatar_url), seller:profiles!seller_id(id, full_name, avatar_url)')
     .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
     .order('last_message_at', { ascending: false });
-  if (error || !data?.length) return { data: _DEMO_CONVERSATIONS, error };
-  return { data, error };
+  return { data: data ?? [], error };
 }
 
 async function sbGetMessages(conversationId) {
@@ -994,16 +1549,24 @@ async function sbGetMessages(conversationId) {
   return { data: data ?? [], error };
 }
 
+// The ONLY way a message can ever be sent — routes through send_chat_message()
+// (SECURITY DEFINER), which authenticates, verifies participant membership,
+// checks the recipient hasn't blocked the sender, and runs the server-side
+// anti-scam filter BEFORE any insert. Direct INSERT on `messages` is closed
+// at the RLS level (see migration) — there is no other path, client-side or
+// otherwise, that can place a row in that table.
+// Returns { data: {ok:true, message} | {ok:false, blockedCategory}, error }.
+// `error` is only set for a genuine failure (auth/participant/validation) —
+// a blocked message is NOT an error, it's a normal, successful refusal the
+// caller must check `data.ok` for.
 async function sbSendMessage(conversationId, senderId, content) {
   if (!_sb) {
     const msg = { id: Date.now(), sender_id: senderId, content, created_at: new Date().toISOString(), conversation_id: conversationId };
-    return { data: msg, error: null };
+    return { data: { ok: true, message: msg }, error: null };
   }
-  const { data, error } = await _sb.from('messages')
-    .insert({ conversation_id: conversationId, sender_id: senderId, content })
-    .select('*, sender:profiles(id, full_name)')
-    .single();
-  return { data, error };
+  const { data, error } = await _sb.rpc('send_chat_message', { p_conversation_id: conversationId, p_content: content });
+  if (error) return { data: null, error };
+  return { data: { ok: data.ok, message: data.message ?? null, blockedCategory: data.blocked_category ?? null }, error: null };
 }
 
 function sbSubscribeToMessages(conversationId, callback) {
@@ -1023,6 +1586,19 @@ async function sbMarkConversationRead(conversationId, role) {
   if (!_sb) return;
   const field = role === 'buyer' ? 'buyer_unread' : 'seller_unread';
   await _sb.from('conversations').update({ [field]: 0 }).eq('id', conversationId);
+  // Also sets a real read_at on the other party's messages (for sent/
+  // delivered/read ticks) — a participant-scoped RPC since there is no
+  // direct UPDATE policy on `messages`.
+  await _sb.rpc('mark_messages_read', { p_conversation_id: conversationId });
+}
+
+async function sbGetConversation(conversationId) {
+  if (!_sb || !conversationId) return null;
+  const { data } = await _sb.from('conversations')
+    .select('*, shops(id, name, logo_url, brand_color, is_verified), products(id, title, price, images), buyer:profiles!buyer_id(id, full_name, avatar_url), seller:profiles!seller_id(id, full_name, avatar_url)')
+    .eq('id', conversationId)
+    .maybeSingle();
+  return data ?? null;
 }
 
 async function sbGetOrCreateConversation(buyerId, sellerId, shopId, productId) {
@@ -1040,6 +1616,134 @@ async function sbGetOrCreateConversation(buyerId, sellerId, shopId, productId) {
       .single());
   }
   return { data, error };
+}
+
+// ─── OFFERS ──────────────────────────────────────────────────────────
+// Reads the real `offers` table (RLS: participants only). Every write
+// (create/accept/decline/counter/cancel) goes through the RPCs below —
+// there is no direct INSERT/UPDATE policy on this table at all.
+async function sbGetOffersForConversation(conversationId) {
+  if (!_sb || !conversationId) return { data: [], error: null };
+  const { data, error } = await _sb.from('offers')
+    .select('*')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true });
+  return { data: data ?? [], error };
+}
+
+async function sbCreatePriceOffer(conversationId, productId, offeredPrice, quantity = 1) {
+  if (!_sb) return { data: null, error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('create_price_offer', {
+    p_conversation_id: conversationId, p_product_id: productId, p_offered_price: offeredPrice, p_quantity: quantity,
+  });
+  if (error) return { data: null, error };
+  return { data: data.offer, error: null };
+}
+
+// decision: 'accept' | 'decline' | 'counter' | 'cancel'
+async function sbRespondToOffer(offerId, decision, counterPrice = null, counterQuantity = null) {
+  if (!_sb) return { data: null, error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('respond_to_offer', {
+    p_offer_id: offerId, p_decision: decision, p_counter_price: counterPrice, p_counter_quantity: counterQuantity,
+  });
+  if (error) return { data: null, error };
+  return { data: data.offer, error: null };
+}
+
+function sbSubscribeToOffers(conversationId, callback) {
+  if (!_sb) return () => {};
+  const channel = _sb.channel('offers:' + conversationId)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'offers', filter: `conversation_id=eq.${conversationId}`,
+    }, payload => callback(payload.new ?? payload.old, payload.eventType))
+    .subscribe();
+  return () => _sb.removeChannel(channel);
+}
+
+// Live updates to the conversation list itself (new last_message/unread
+// counts) — lets the inbox refresh without a manual reload.
+function sbSubscribeToConversations(userId, callback) {
+  if (!_sb || !userId) return () => {};
+  const channel = _sb.channel('conversations:' + userId)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations', filter: `buyer_id=eq.${userId}` }, payload => callback(payload.new))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations', filter: `seller_id=eq.${userId}` }, payload => callback(payload.new))
+    .subscribe();
+  return () => _sb.removeChannel(channel);
+}
+
+// ─── REPORTS & BLOCKS (Trust & Safety) ────────────────────────────────
+async function sbReportUser(reportedId, conversationId, reason, details = null) {
+  if (!_sb) return { data: null, error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('report_user', {
+    p_reported_id: reportedId, p_conversation_id: conversationId, p_reason: reason, p_details: details,
+  });
+  return { data, error };
+}
+
+// user_blocks RLS already scopes all access to blocker_id = auth.uid(), so
+// a direct table call is safe here — no server-side validation beyond
+// ownership is needed for a user managing their own block list.
+async function sbBlockUser(blockerId, blockedId) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('user_blocks').insert({ blocker_id: blockerId, blocked_id: blockedId });
+  return { error };
+}
+async function sbUnblockUser(blockerId, blockedId) {
+  if (!_sb) return { error: null };
+  const { error } = await _sb.from('user_blocks').delete().eq('blocker_id', blockerId).eq('blocked_id', blockedId);
+  return { error };
+}
+async function sbGetMyBlockedUsers(blockerId) {
+  if (!_sb || !blockerId) return [];
+  const { data } = await _sb.from('user_blocks').select('blocked_id').eq('blocker_id', blockerId);
+  return (data || []).map(r => r.blocked_id);
+}
+
+// ─── ADMIN — TRUST & SAFETY CENTER ─────────────────────────────────────
+async function sbAdminGetTrustSafetyStats() {
+  if (!_sb) return null;
+  const { data, error } = await _sb.rpc('admin_get_trust_safety_stats');
+  if (error) return null;
+  return data;
+}
+
+async function sbAdminGetReports({ status = 'ALL', limit = 50 } = {}) {
+  if (!_sb) return [];
+  let q = _sb.from('user_reports')
+    .select('*, reporter:profiles!reporter_id(id, full_name, email), reported:profiles!reported_id(id, full_name, email)')
+    .order('created_at', { ascending: false }).limit(limit);
+  if (status !== 'ALL') q = q.eq('status', status);
+  const { data } = await q;
+  return data ?? [];
+}
+
+async function sbAdminReviewReport(reportId, decision, notes = null) {
+  if (!_sb) return { data: null, error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('admin_review_report', { p_report_id: reportId, p_decision: decision, p_notes: notes });
+  return { data, error };
+}
+
+async function sbAdminGetUserViolations(userId) {
+  if (!_sb || !userId) return [];
+  const { data } = await _sb.from('user_violations').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+  return data ?? [];
+}
+
+async function sbAdminApplyViolation(userId, violationType, severity, action, relatedReportId = null, notes = null) {
+  if (!_sb) return { data: null, error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('admin_apply_violation', {
+    p_user_id: userId, p_violation_type: violationType, p_severity: severity, p_action: action,
+    p_related_report_id: relatedReportId, p_notes: notes,
+  });
+  return { data, error };
+}
+
+async function sbAdminGetModerationLog({ limit = 50 } = {}) {
+  if (!_sb) return [];
+  const { data } = await _sb.from('message_moderation_log')
+    .select('*, sender:profiles(id, full_name, email)')
+    .order('created_at', { ascending: false }).limit(limit);
+  return data ?? [];
 }
 
 // ─── NOTIFICATIONS ───────────────────────────────────────────────
@@ -1242,7 +1946,10 @@ function sbSubscribeAdminOrders(callback) {
   return () => _sb.removeChannel(channel);
 }
 
-const ORDER_STATUSES = ['pending','confirmed','processing','shipped','delivered','cancelled','refunded'];
+// 'refunded' is deliberately excluded: it is a payment_status outcome, never
+// a fulfillment status, and no backend RPC ever sets orders.status to it —
+// see sbAdminUpdateOrderStatus above.
+const ORDER_STATUSES = ['pending','confirmed','processing','shipped','delivered','cancelled'];
 
 // Paginated, filterable, searchable order list for the admin Orders table.
 // Search matches order id, buyer name/email, or shop name — PostgREST can't ilike across
@@ -1319,8 +2026,11 @@ async function sbAdminGetShipments(opts = {}) {
   return _withTimeout(_sbAdminGetShipmentsImpl(opts), 10000, { ...emptyResult, timedOut: true });
 }
 async function _sbAdminGetShipmentsImpl({ page = 1, limit = 15, status = 'ALL', search = '', sellerId = '', carrier = '', exceptionsOnly = false } = {}) {
+  // shipment_status_history embedded here too (not just on the buyer-facing
+  // sbGetOrderShipments) so the admin panel can show the real audit trail —
+  // same immutable table, same rows, read-only from this side.
   let query = _sb.from('shipments').select(
-    '*, orders(id, buyer_id, profiles(full_name, email)), profiles!shipments_seller_id_fkey(full_name, email), shops(name), order_items(id, title, quantity, unit_price)',
+    '*, orders(id, buyer_id, profiles(full_name, email)), profiles!shipments_seller_id_fkey(full_name, email), shops(name), order_items(id, title, quantity, unit_price), shipment_status_history(id, status, source, note, created_at)',
     { count: 'exact' }
   );
 
@@ -1338,7 +2048,11 @@ async function _sbAdminGetShipmentsImpl({ page = 1, limit = 15, status = 'ALL', 
   const from = (page - 1) * limit;
   const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, from + limit - 1);
   if (error) return { shipments: [], totalShipments: 0, totalPages: 0, currentPage: page };
-  return { shipments: data ?? [], totalShipments: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
+  const shipments = (data ?? []).map(s => ({
+    ...s,
+    shipment_status_history: (s.shipment_status_history ?? []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)),
+  }));
+  return { shipments, totalShipments: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit), currentPage: page };
 }
 
 async function sbAdminGetCarriersList() {
@@ -1351,12 +2065,13 @@ async function sbAdminGetCarriersList() {
 // shipping.manage, and the server rejects the call outright without a
 // note explaining the correction (enforced again here client-side only
 // to fail fast; the real guarantee is the RPC's own check).
-async function sbAdminOverrideShipment(shipmentId, { status = null, carrier = null, trackingNumber = null, trackingUrl = null, estimatedDelivery = null } = {}, note) {
+async function sbAdminOverrideShipment(shipmentId, { status = null, carrier = null, trackingNumber = null, trackingUrl = null, estimatedDelivery = null, failureReason = null } = {}, note) {
   if (!_sb) return { data: null, error: { message: 'Not available in demo mode' } };
   const { data, error } = await _sb.rpc('admin_override_shipment', {
     p_shipment_id: shipmentId, p_status: status, p_carrier: carrier,
     p_tracking_number: trackingNumber, p_tracking_url: trackingUrl,
     p_estimated_delivery: estimatedDelivery, p_note: note,
+    p_failure_reason: failureReason,
   });
   return { data, error };
 }
@@ -1372,12 +2087,22 @@ async function sbAdminGetOrderDetail(orderId) {
   })(), 10000, null);
 }
 
+// Fulfillment status ONLY — this must never touch payment_status. 'refunded'
+// is a payment outcome, not a fulfillment step, and is reachable exclusively
+// through the admin_initiate_refund → admin_decide_refund →
+// admin_record_refund_result workflow (sbAdminInitiateRefund /
+// sbAdminDecideRefund / sbAdminRecordRefundResult) — the only path that also
+// writes refund_requests/refunds and reverses commission_ledger. A direct
+// UPDATE here used to also force payment_status to 'paid' or 'refunded',
+// which could mark an order paid/refunded with no payment_intents,
+// refund_requests or commission_ledger trail at all. Fixed: this function
+// now writes `status` only, and refuses 'refunded' outright.
 async function sbAdminUpdateOrderStatus(orderId, status) {
   if (!_sb) return { error: null };
-  const patch = { status, updated_at: new Date().toISOString() };
-  if (status === 'refunded') patch.payment_status = 'refunded';
-  if (status === 'delivered' || status === 'confirmed' || status === 'processing' || status === 'shipped') patch.payment_status = 'paid';
-  const { error } = await _sb.from('orders').update(patch).eq('id', orderId);
+  if (status === 'refunded') {
+    return { error: { message: 'Use the Refunds workflow on the order to refund it — status cannot be set to "refunded" directly.' } };
+  }
+  const { error } = await _sb.from('orders').update({ status, updated_at: new Date().toISOString() }).eq('id', orderId);
   return { error };
 }
 
@@ -1530,12 +2255,42 @@ function _productFormToSb(form) {
   if (form.brand_id !== undefined) payload.brand_id = form.brand_id || null;
   if (form.sku !== undefined) payload.sku = form.sku || null;
   if (form.image_url !== undefined) payload.images = form.image_url ? [form.image_url] : [];
+  if (form.condition !== undefined) payload.condition = form.condition || null;
+  if (form.authenticity_statement !== undefined) payload.authenticity_statement = form.authenticity_statement || null;
+  if (form.authenticity_proof_paths !== undefined) payload.authenticity_proof_paths = form.authenticity_proof_paths || [];
   return payload;
 }
 
 async function sbAdminCreateProduct(product) {
   if (!_sb) return { data: null, error: null };
   const payload = { ..._productFormToSb(product), status: 'active', approval_status: 'approved' };
+  const { data, error } = await _sb.from('products').insert(payload).select().single();
+  return { data, error };
+}
+
+// The seller's own shop — created server-side by admin_review_kyc() the
+// moment their KYC is approved (seller_id = the approved applicant), so
+// any profile with role 'seller' is guaranteed to have exactly one. Read
+// directly from shops rather than profiles.shop_id, which nothing in the
+// schema keeps populated.
+async function sbGetMyShop(sellerId) {
+  if (!_sb || !sellerId) return null;
+  const { data } = await _sb.from('shops').select('*').eq('seller_id', sellerId).single();
+  return data ?? null;
+}
+
+// Seller-submitted products start exactly where the admin moderation
+// queue (AdminProductsSection / sbAdminModerateProduct) expects an
+// unreviewed listing to start — draft + pending — never auto-published
+// like sbAdminCreateProduct's own (admin-authored) products above.
+// shop_id/seller_id are set from the caller's own shop; RLS ("Sellers
+// can manage their products": shop_id in (select id from shops where
+// seller_id = auth.uid())) independently rejects any other shop_id for
+// a non-admin session regardless of what's passed here.
+async function sbSellerCreateProduct(shopId, sellerId, product) {
+  if (!_sb) return { data: null, error: { message: 'Supabase not configured' } };
+  if (!shopId) return { data: null, error: { message: 'No shop found for this seller.' } };
+  const payload = { ..._productFormToSb(product), shop_id: shopId, seller_id: sellerId, status: 'draft', approval_status: 'pending' };
   const { data, error } = await _sb.from('products').insert(payload).select().single();
   return { data, error };
 }
@@ -1569,7 +2324,7 @@ async function _sbAdminGetProductsImpl({ page = 1, limit = 12, status = 'ALL', s
     shopIdsFromSearch = (data || []).map(s => s.id);
   }
 
-  let query = _sb.from('products').select('*, shops(name), categories(name)', { count: 'exact' });
+  let query = _sb.from('products').select('*, shops(name), categories(name), brands(name)', { count: 'exact' });
   if (status === 'PENDING') query = query.eq('approval_status', 'pending');
   else if (status === 'REJECTED') query = query.eq('approval_status', 'rejected');
   else if (status === 'PUBLISHED') query = query.eq('status', 'active').eq('approval_status', 'approved');
@@ -1600,15 +2355,21 @@ async function sbAdminModerateProduct(id, decision, reason = '') {
     ? { approval_status: 'approved', status: 'active', rejection_reason: null }
     : { approval_status: 'rejected', status: 'draft', rejection_reason: reason || null };
   const { data, error } = await _sb.from('products').update(patch).eq('id', id).select().single();
+  // PHASE 6: notifications has no direct client insert policy anymore
+  // (see phase6_notifications_security_migration.sql) — this moderating
+  // admin's own session calls the same permission-checked RPC the
+  // broadcast/individual-send UI uses. role='admin' auto-passes
+  // has_permission() for any key, so this keeps working unchanged for
+  // every admin account; a non-admin can never reach this code path at
+  // all (AdminProductsSection is admin-console-only).
   if (!error && data?.seller_id) {
-    await _sb.from('notifications').insert({
-      user_id: data.seller_id,
-      type: decision === 'approved' ? 'product_approved' : 'product_rejected',
-      title: decision === 'approved' ? 'Product approved' : 'Product rejected',
-      body: decision === 'approved'
+    await _sb.rpc('admin_send_notification', {
+      p_user_id: data.seller_id,
+      p_type: decision === 'approved' ? 'product_approved' : 'product_rejected',
+      p_title: decision === 'approved' ? 'Product approved' : 'Product rejected',
+      p_body: decision === 'approved'
         ? `"${data.title}" was approved and is now live.`
         : `"${data.title}" was rejected.${reason ? ' Reason: ' + reason : ''}`,
-      data: { product_id: id },
     });
   }
   return { data, error };
@@ -1690,18 +2451,29 @@ const _DEMO_KYC_REQUESTS = [];
 Object.assign(window, {
   sbSignUp, sbSignIn, sbSignOut, sbGetSession, sbGetUser, sbGetProfile, sbUpdateProfile,
   sbResetPasswordForEmail, sbVerifyRecoveryOtp, sbUpdatePassword,
-  sbGetProducts, sbGetProduct,
-  sbGetShops, sbGetShop,
+  sbGetProducts, sbGetProduct, sbSearchProducts, sbGetSimilarProducts,
+  sbGetProductAttributeValues, sbSetProductAttributeValues, sbSuggestCategory,
+  sbGetShops, sbGetShop, sbGetShopByName, sbGetShopReviews,
+  sbGetActiveFlashDeals, sbAdminGetFlashDeals, sbAdminSearchProductsForFlashDeal,
+  sbAdminSetFlashDeal, sbAdminRemoveFlashDeal,
   sbGetBanners, sbUpsertBanner, sbDeleteBanner, sbGetSignupBanner,
-  sbGetCart, sbUpsertCartItem, sbClearCart,
+  sbGetCart, sbUpsertCartItem, sbClearCart, sbAddToCart, sbMergeGuestCartIntoAccount,
+  sbGetProductVariants, sbUpsertProductVariant, sbDeleteProductVariant,
+  sbAdminGetInventory, sbAdminGetInventorySettings, sbAdminUpdateInventorySettings,
+  sbAdminReleaseExpiredReservations, sbAdminValidateReturnAndRestock,
   sbCreateOrder, sbGetOrder, sbGetOrders, sbCancelOrder,
   sbGetOrderShipments, computeOrderFulfillmentStatus,
   sbRecordPaymentAttempt, sbRequestRefund, sbGetMyRefundRequests,
   sbAdminGetPaymentIntents, sbAdminConfirmPayment,
   sbAdminGetRefundRequests, sbAdminInitiateRefund, sbAdminDecideRefund, sbAdminRecordRefundResult,
   sbAdminGetCommissionLedger,
-  sbGetConversations, sbGetMessages, sbSendMessage,
+  sbGetConversations, sbGetConversation, sbGetMessages, sbSendMessage,
   sbSubscribeToMessages, sbMarkConversationRead, sbGetOrCreateConversation,
+  sbSubscribeToConversations,
+  sbGetOffersForConversation, sbCreatePriceOffer, sbRespondToOffer, sbSubscribeToOffers,
+  sbReportUser, sbBlockUser, sbUnblockUser, sbGetMyBlockedUsers,
+  sbAdminGetTrustSafetyStats, sbAdminGetReports, sbAdminReviewReport,
+  sbAdminGetUserViolations, sbAdminApplyViolation, sbAdminGetModerationLog,
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
   sbGetSellerShipments, sbSellerCreateShipment, sbSellerUpdateShipment, sbSellerReportDeliveryFailure,
@@ -1713,11 +2485,12 @@ Object.assign(window, {
   sbAdminGetUsers, sbAdminUpdateUser,
   sbAdminCreateProduct, sbAdminUpdateProduct, sbAdminDeleteProduct,
   sbAdminGetProducts, sbAdminModerateProduct, sbAdminTogglePublish, sbSubscribeAdminProducts,
+  sbGetMyShop, sbSellerCreateProduct,
   sbGetCategoriesList,
   sbGetMyAccessContext, sbHasPermission, sbGetPermissionsCatalog,
   sbAdminGetStaffRoles, sbAdminCreateStaffRole, sbAdminUpdateStaffRole, sbAdminDeleteStaffRole, sbAdminSetRolePermissions,
   sbAdminGetStaffMembers, sbAdminFindUserByEmail, sbAdminAddStaffMember, sbAdminUpdateStaffMember, sbAdminRemoveStaffMember,
-  sbAdminSetAccountStatus, sbLogAudit, sbAdminGetAuditLogs,
+  sbAdminSetAccountStatus, sbLogAudit, sbAdminGetAuditLogs, sbAdminExportCatalog, sbAdminSendBroadcast,
   sbGetCategoryTree, sbGetCategoryBySlug, sbGetCategoryBreadcrumb, sbGetFeaturedCategories,
   sbGetCategoryAttributes, sbGetProductsByCategory,
   sbAdminGetCategories, sbAdminGetCategory, sbAdminCreateCategory, sbAdminUpdateCategory,
@@ -1726,6 +2499,8 @@ Object.assign(window, {
   sbGetProductCategories, sbSetProductCategories, sbSubscribeAdminCategories,
   sbGetActiveBrands, sbAdminGetBrands, sbAdminGetBrand, sbAdminCreateBrand, sbAdminUpdateBrand,
   sbAdminSetBrandStatus, sbAdminDeleteBrand, sbSubscribeAdminBrands,
+  sbRequestBrand, sbGetMyBrandRequests, sbAdminGetBrandRequests, sbAdminDecideBrandRequest,
+  sbUploadAuthenticityProof, sbAdminGetAuthenticityProofUrl,
   sbUploadFile,
   _isConfigured,
 });

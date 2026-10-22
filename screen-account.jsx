@@ -14,10 +14,24 @@ function ProfileScreen() {
   const isDesktop = useIsDesktop();
   const [profile, setProfile] = React.useState(window._PROFILE);
   const [confirmLogout, setConfirmLogout] = React.useState(false);
+  // Real backend role/permission context — never window._PROFILE.role, which
+  // is a display-only legacy demo global written only by the Edit Profile
+  // form and the admin self-edit action in screen-admin.jsx, never by an
+  // actual session/profile fetch. sbGetMyAccessContext() (same call
+  // AdminShellScreen itself gates on) is the one source of truth here for
+  // both the Seller Dashboard entry and the Admin Console entry below.
+  // Starts null (unknown) so neither entry shows until the real role is
+  // confirmed — a buyer never briefly sees "Seller Dashboard" or "Admin
+  // Console" during the fetch.
+  const [accessCtx, setAccessCtx] = React.useState(null);
 
   React.useEffect(() => {
     const id = setInterval(() => setProfile({ ...window._PROFILE }), 500);
     return () => clearInterval(id);
+  }, []);
+
+  React.useEffect(() => {
+    sbGetMyAccessContext().then(ctx => setAccessCtx(ctx));
   }, []);
 
   const orders = window.MOCK_ORDERS || [];
@@ -45,15 +59,38 @@ function ProfileScreen() {
     { icon:'package',    label:'Delivered', count: orderCounts.delivered,  tab:'delivered' },
     { icon:'xCircle',    label:'Cancelled', count: orderCounts.cancelled,  tab:'cancelled' },
   ];
+  // Routes into the SAME seller-onboarding flow (BecomeSellerScreen)
+  // either way — that screen already does its own sbGetMyKyc() check on
+  // mount and renders the right thing for every KYC state (pending,
+  // under_review, needs_changes, rejected, approved, suspended) via
+  // KycStatusBanner, so nothing here needs to re-derive that. The only
+  // thing this entry decides is whether an already-approved seller sees
+  // "Become a Seller" at all — they don't, so there's no path from here
+  // back into the application form once already seller; swapping in
+  // "Seller Dashboard" instead is what keeps a second seller account
+  // (or a second KYC submission) from ever being reachable from Profile.
+  // Both this check and the Admin Console one below read accessCtx.role/
+  // isAdmin/isStaff (sbGetMyAccessContext(), real backend data) — never
+  // profile.role, which is window._PROFILE and not an authority on
+  // anything (see the accessCtx comment above).
   const services = [
     { icon:'user',       label:'Personal Information', action: () => navigate('personal-info') },
+    accessCtx?.role === 'seller'
+      ? { icon:'store', label:'Seller Dashboard', action: () => navigate('seller-home') }
+      : { icon:'store', label:'Become a Seller',  action: () => navigate('become-seller') },
     { icon:'mapPin',     label:'Shipping Addresses',   action: () => navigate('addresses') },
     { icon:'creditCard', label:'Payment Methods',      action: () => navigate('payment-methods') },
     { icon:'star',       label:'My Reviews',           action: () => setReviewsToast() },
     { icon:'lifeBuoy',   label:'Support Tickets',      action: () => navigate('support') },
     { icon:'settings',   label:'Settings',             action: () => navigate('settings') },
     { icon:'users',      label:'Invite Friends',       detail:'Earn $10', action: () => navigate('invite') },
-    { icon:'lock',       label:'Admin Console',        action: () => navigate('admin') },
+    // Admin/staff only — mirrors AdminShellScreen's own gate exactly
+    // (isAdmin || isStaff); RLS/has_permission() server-side remain the
+    // real barrier regardless, this just stops the entry from being
+    // shown to an account that will only ever be denied behind it.
+    ...(accessCtx?.isAdmin || accessCtx?.isStaff
+      ? [{ icon:'lock', label:'Admin Console', action: () => navigate('admin') }]
+      : []),
   ];
   const [toast, setToast] = React.useState(null);
   function setReviewsToast() { setToast({ type:'success', message:'You have no pending reviews' }); }

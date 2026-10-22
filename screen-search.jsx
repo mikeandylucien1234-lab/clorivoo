@@ -1,19 +1,30 @@
 // screen-search.jsx — Search Results Page
-
-const SEARCH_INDEX = PRODUCTS.map((p, i) => ({
-  ...p, variant:'', brand: p.seller || 'CLORIVO', color: ['Purple','Gold','Silver','Black','Blue'][i % 5],
-  inStock: true, freeDelivery: p.price > 15, condition:'New', tint: i % 5,
-}));
+//
+// Results, category tabs and brand filters all come from the real Supabase
+// products/categories/brands tables (sbSearchProducts / sbGetCategoryTree /
+// sbGetActiveBrands) — there is no local fictitious product index here
+// anymore. A real DB row doesn't carry the cosmetic fields the card UI wants
+// (a color tint, a "N sold" string, a discount %), so _toCard derives them
+// from real columns (sold_count, compare_price, stock) instead of inventing
+// them.
+function _toCard(row, idx) {
+  const compare = row.compare_price ? Number(row.compare_price) : null;
+  const discount = compare && compare > row.price ? Math.round((1 - row.price / compare) * 100) : null;
+  return {
+    id: row.id, title: row.title, price: Number(row.price), oldPrice: compare,
+    discount, rating: row.rating || null, reviews: row.reviews_count || null,
+    sold: row.sold_count ? `${row.sold_count} sold` : '',
+    image_url: row.image_url || row.images?.[0] || null,
+    stock: row.stock, sku: row.sku,
+    tint: idx % 5, inStock: (row.stock ?? 1) > 0,
+    category: row.categories?.name || '', categoryId: row.category_id || '',
+    brand: row.brands?.name || '', brandId: row.brand_id || '',
+    seller: row.shops?.name || '', variant:'',
+  };
+}
 
 window._RECENT_SEARCHES = window._RECENT_SEARCHES || [];
 const POPULAR_SEARCHES = [];
-const CAT_TABS = [
-  { key:'all',        label:'All',         icon:'grid' },
-  { key:'electronics',label:'Phones',      icon:'smartphone' },
-  { key:'accessories',label:'Accessories', icon:'headphones' },
-  { key:'home',       label:'Home',        icon:'home' },
-  { key:'fashion',    label:'Fashion',     icon:'shoppingBag' },
-];
 const SORTS = [
   { key:'popular',    label:'Popularity' },
   { key:'newest',     label:'Latest' },
@@ -21,14 +32,6 @@ const SORTS = [
   { key:'price_high', label:'Highest Price' },
   { key:'rating',     label:'Best Rating' },
 ];
-function sortSearch(items, key) {
-  const arr = [...items];
-  if (key === 'price_low')  arr.sort((a,b) => a.price - b.price);
-  if (key === 'price_high') arr.sort((a,b) => b.price - a.price);
-  if (key === 'rating')     arr.sort((a,b) => (b.rating||0) - (a.rating||0));
-  if (key === 'newest')     arr.sort((a,b) => b.id - a.id);
-  return arr;
-}
 
 // ─── QUICK VIEW SHEET ──────────────────────────────────────────
 function QuickViewSheet({ product, onClose, onAddToCart, onViewDetails }) {
@@ -140,27 +143,47 @@ function SearchScreen({ params = {} }) {
   const [loading, setLoading] = React.useState(false);
   const [recents, setRecents] = React.useState(window._RECENT_SEARCHES);
   const [view, setView] = React.useState('list');
-  const [catTab, setCatTab] = React.useState('all');
+  const [catTab, setCatTab] = React.useState('all'); // 'all' or a real category id
+  const [topCategories, setTopCategories] = React.useState([]);
+  const [realBrands, setRealBrands] = React.useState([]);
+  const [rawResults, setRawResults] = React.useState([]);
+  const [featured, setFeatured] = React.useState([]);
   const [sortKey, setSortKey] = React.useState('popular');
   const [sortOpen, setSortOpen] = React.useState(false);
   const [filterOpen, setFilterOpen] = React.useState(false);
-  const [filters, setFilters] = React.useState({ brand:'all', color:'all', maxPrice:1500, inStockOnly:false, discountOnly:false, minRating:0 });
+  const [filters, setFilters] = React.useState({ brand:'all', maxPrice:1500, inStockOnly:false, discountOnly:false, minRating:0 });
   const [visibleCount, setVisibleCount] = React.useState(6);
   const [loadingMore, setLoadingMore] = React.useState(false);
   const [wishlist, setWishlist] = React.useState((window._WISHLIST || []).map(w => w.id));
   const [toast, setToast] = React.useState(null);
   const [quickViewProduct, setQuickViewProduct] = React.useState(null);
+  const [userId, setUserId] = React.useState(null);
+  React.useEffect(() => { sbGetUser().then(u => setUserId(u?.id || null)); }, []);
 
   React.useEffect(() => { window._RECENT_SEARCHES = recents; }, [recents]);
   React.useEffect(() => { inputRef.current?.focus(); }, []);
-
-  // Debounced live search
   React.useEffect(() => {
-    if (!query.trim()) { setLoading(false); return; }
+    sbGetCategoryTree().then(tree => setTopCategories((tree || []).filter(c => c.show_in_menu !== false)));
+    sbGetActiveBrands().then(setRealBrands);
+    sbGetProducts({ limit: 4, featured: true }).then(r => setFeatured((r?.data || []).map(_toCard)));
+  }, []);
+
+  // Debounced live search against the real products table — replaces the
+  // fictitious local SEARCH_INDEX filter.
+  React.useEffect(() => {
+    const q = query.trim();
+    if (!q) { setRawResults([]); setLoading(false); return; }
     setLoading(true);
-    const t = setTimeout(() => setLoading(false), 450);
+    const t = setTimeout(() => {
+      sbSearchProducts({
+        query: q,
+        categoryId: catTab !== 'all' ? catTab : '',
+        brandId: filters.brand !== 'all' ? filters.brand : '',
+        sort: sortKey,
+      }).then(({ data }) => { setRawResults((data || []).map(_toCard)); setLoading(false); });
+    }, 450);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [query, catTab, filters.brand, sortKey]);
 
   function commitSearch(q) {
     const value = (q ?? query).trim();
@@ -190,34 +213,35 @@ function SearchScreen({ params = {} }) {
       setToast({ type:'success', message:'Added to wishlist' });
     }
   }
-  function addToCart(p) {
+  // Same rule as Public Shop/Category: never pick a variant for the buyer.
+  // A real-variant product opens Product Details for proper selection
+  // instead of being added with an arbitrary/no variant.
+  async function addToCart(p) {
     if (!p.inStock) return;
-    (window.CART_ITEMS || (window.CART_ITEMS = [])).push({ product:{ id:p.id, title:p.title, price:p.price }, qty:1, variant:p.variant||'', seller:p.brand });
+    const variants = await sbGetProductVariants(p.id);
+    if (variants && variants.length > 0) {
+      navigate('pdp', { product: p });
+      return;
+    }
+    const { error } = await sbAddToCart({ userId, product: { id: p.id, title: p.title, price: p.price, seller: p.brand }, qty: 1, price: p.price, mode: 'increment' });
+    if (error) { setToast({ type:'error', message: error.message || 'Could not add this to your cart.' }); return; }
     setToast({ type:'success', message:`${p.title} added to cart` });
   }
   function openProduct(p) { navigate('pdp', { product:p }); }
   function handleLoadMore() { setLoadingMore(true); setTimeout(() => { setVisibleCount(v => v + 6); setLoadingMore(false); }, 500); }
 
-  const q = query.trim().toLowerCase();
-  let results = q ? SEARCH_INDEX.filter(p =>
-    p.title.toLowerCase().includes(q) || (p.category||'').includes(q) || (p.brand||'').toLowerCase().includes(q)
-  ) : [];
-  if (catTab !== 'all') results = results.filter(p => p.category === catTab);
-  results = results.filter(p =>
-    (filters.brand === 'all' || p.brand === filters.brand) &&
-    (filters.color === 'all' || p.color === filters.color) &&
+  // catTab / brand filters were already applied server-side (sbSearchProducts);
+  // price/stock/discount/rating are plain numeric filters on real columns.
+  let results = rawResults.filter(p =>
     p.price <= filters.maxPrice &&
     (!filters.inStockOnly || p.inStock) &&
     (!filters.discountOnly || p.discount) &&
     (p.rating || 0) >= filters.minRating
   );
-  results = sortSearch(results, sortKey);
   const visibleResults = results.slice(0, visibleCount);
 
-  const suggestions = q && !committed ? SEARCH_INDEX.filter(p => p.title.toLowerCase().includes(q)).slice(0, 5) : [];
-  const brands = ['all', ...new Set(SEARCH_INDEX.map(p => p.brand))];
-  const colors = ['all', ...new Set(SEARCH_INDEX.map(p => p.color))];
-  const recentlyViewed = PRODUCTS.slice(0, 4);
+  const suggestions = query.trim() && !committed ? rawResults.slice(0, 5) : [];
+  const recentlyViewed = featured;
 
   return (
     <div style={{ position:'absolute', inset:0, background:C.paper, display:'flex', flexDirection:'column' }}>
@@ -306,7 +330,7 @@ function SearchScreen({ params = {} }) {
 
               {recentlyViewed.length > 0 && (
               <div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:10 }}>Recently Viewed</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink, marginBottom:10 }}>Featured</div>
                 <div style={{ display:'grid', gridTemplateColumns: isDesktop ? 'repeat(4, 1fr)' : '1fr 1fr', gap:12 }}>
                   {recentlyViewed.map((p, i) => (
                     <ProductCard key={p.id} product={p} size="md" tint={i % 5} onPress={() => navigate('pdp', { product:p })} />
@@ -329,10 +353,10 @@ function SearchScreen({ params = {} }) {
               </div>
 
               <div style={{ display:'flex', gap:8, overflowX:'auto', padding:'12px 0' }}>
-                {CAT_TABS.map(c => (
-                  <button key={c.key} onClick={() => setCatTab(c.key)} style={{ flexShrink:0, display:'inline-flex', alignItems:'center', gap:6, border:'none', cursor:'pointer', borderRadius:9999, padding:'8px 14px', background: catTab===c.key ? C.primary : C.white, color: catTab===c.key ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, boxShadow: catTab===c.key ? 'none' : '0 1px 4px rgba(14,11,31,0.06)' }}>
-                    <Icon name={c.icon} size={13} color={catTab===c.key ? '#fff' : C.mute} />
-                    {c.label}
+                <button onClick={() => setCatTab('all')} style={{ flexShrink:0, border:'none', cursor:'pointer', borderRadius:9999, padding:'8px 14px', background: catTab==='all' ? C.primary : C.white, color: catTab==='all' ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, boxShadow: catTab==='all' ? 'none' : '0 1px 4px rgba(14,11,31,0.06)' }}>All</button>
+                {topCategories.map(c => (
+                  <button key={c.id} onClick={() => setCatTab(c.id)} style={{ flexShrink:0, border:'none', cursor:'pointer', borderRadius:9999, padding:'8px 14px', background: catTab===c.id ? C.primary : C.white, color: catTab===c.id ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, boxShadow: catTab===c.id ? 'none' : '0 1px 4px rgba(14,11,31,0.06)' }}>
+                    {c.name}
                   </button>
                 ))}
               </div>
@@ -434,13 +458,8 @@ function SearchScreen({ params = {} }) {
           <div>
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink, marginBottom:8 }}>Brand</div>
             <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-              {brands.map(b => <Chip key={b} active={filters.brand === b} onClick={() => setFilters(f => ({ ...f, brand:b }))}>{b === 'all' ? 'All' : b}</Chip>)}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink, marginBottom:8 }}>Color</div>
-            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-              {colors.map(c => <Chip key={c} active={filters.color === c} onClick={() => setFilters(f => ({ ...f, color:c }))}>{c === 'all' ? 'All' : c}</Chip>)}
+              <Chip active={filters.brand === 'all'} onClick={() => setFilters(f => ({ ...f, brand:'all' }))}>All</Chip>
+              {realBrands.map(b => <Chip key={b.id} active={filters.brand === b.id} onClick={() => setFilters(f => ({ ...f, brand:b.id }))}>{b.name}</Chip>)}
             </div>
           </div>
           <div>
@@ -467,7 +486,7 @@ function SearchScreen({ params = {} }) {
             <Switch checked={filters.discountOnly} onChange={v => setFilters(f => ({ ...f, discountOnly:v }))} />
           </div>
           <div style={{ display:'flex', gap:10, marginTop:4 }}>
-            <Btn variant="secondary" size="md" style={{ flex:1 }} onClick={() => setFilters({ brand:'all', color:'all', maxPrice:1500, inStockOnly:false, discountOnly:false, minRating:0 })}>Reset</Btn>
+            <Btn variant="secondary" size="md" style={{ flex:1 }} onClick={() => setFilters({ brand:'all', maxPrice:1500, inStockOnly:false, discountOnly:false, minRating:0 })}>Reset</Btn>
             <Btn variant="primary" size="md" style={{ flex:1 }} onClick={() => setFilterOpen(false)}>Apply</Btn>
           </div>
         </div>

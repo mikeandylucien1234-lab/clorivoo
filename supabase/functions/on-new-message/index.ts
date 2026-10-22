@@ -68,7 +68,11 @@ Deno.serve(async (req) => {
   );
 
   const { record: message } = await req.json();
-  const authHeader = { 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`, 'Content-Type': 'application/json' };
+  const authHeader = {
+    'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+    'Content-Type': 'application/json',
+    'x-internal-secret': Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '',
+  };
 
   // Get conversation participants
   const { data: conv } = await supabase

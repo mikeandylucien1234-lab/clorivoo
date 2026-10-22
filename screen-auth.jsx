@@ -459,6 +459,7 @@ function LoginScreen() {
     const { data, error } = await sbSignIn(identifier.trim(), pass);
     if (error) { setLoading(false); setErrorMsg(error.message || 'Unable to sign in. Please check your credentials.'); return; }
     const profile = data?.user ? await sbGetProfile(data.user.id) : null;
+    if (data?.user) await sbMergeGuestCartIntoAccount(data.user.id);
     setLoading(false);
     const dest = decidePostAuthDestination(profile);
     navigate(dest.screen, dest.params);
@@ -520,6 +521,7 @@ function LoginScreen() {
         <SocialAuthBlock onDone={async () => {
           const u = await sbGetUser();
           const profile = u ? await sbGetProfile(u.id) : null;
+          if (u) await sbMergeGuestCartIntoAccount(u.id);
           const dest = decidePostAuthDestination(profile);
           navigate(dest.screen, dest.params);
         }} />
@@ -629,6 +631,13 @@ function RegisterScreen() {
     // the account and profile (role=buyer, status=active) already exist at this
     // point via the on_auth_user_created trigger, but the user can't sign in
     // until they confirm, so the two cases need visibly different copy.
+    // Only merge the guest cart when a real session actually exists here
+    // (email confirmation not required) — never before the identity is
+    // genuinely authenticated. When confirmation IS required, there is no
+    // session yet, so the guest cart is correctly left alone; it will be
+    // merged on the user's next Login (same existing mechanism) once they
+    // confirm and sign in.
+    if (data?.session && data?.user) await sbMergeGuestCartIntoAccount(data.user.id);
     navigate('auth-success', { kind: data?.session ? 'signup' : 'signup-confirm' });
   }
 
@@ -724,7 +733,14 @@ function RegisterScreen() {
           </Btn>
         </div>
 
-        <SocialAuthBlock onDone={() => navigate('auth-success', { kind:'signup' })} />
+        <SocialAuthBlock onDone={async () => {
+          // Same pattern as the Login screen's SocialAuthBlock: confirm the
+          // real authenticated identity via sbGetUser() first, then merge —
+          // never the other way around.
+          const u = await sbGetUser();
+          if (u) await sbMergeGuestCartIntoAccount(u.id);
+          navigate('auth-success', { kind:'signup' });
+        }} />
 
         <div style={{ textAlign:'center', marginTop:20, fontFamily:"'Inter',sans-serif", fontSize:14, color:C.mute }}>
           Already have an account?{' '}

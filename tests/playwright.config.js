@@ -72,7 +72,14 @@ export default defineConfig({
   projects: [
     { name: 'buyer',  testMatch: '**/buyer/**' },
     { name: 'seller', testMatch: '**/seller/**' },
-    { name: 'admin',  testMatch: '**/admin/**' },
+    // The admin console is a desktop back-office surface: tokens.jsx's own
+    // DESKTOP_BP is 900px, and AdminSidebarFull (screen-admin.jsx) returns
+    // null below that width by design — there is no mobile sidebar to find
+    // at all. Running these specs at the shared 390px phone viewport made
+    // every sidebar-dependent assertion fail for a reason that has nothing
+    // to do with the test or the app being broken; it was asking a mobile
+    // viewport for a screen the app itself only renders at desktop width.
+    { name: 'admin',  testMatch: '**/admin/**', use: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 } },
     { name: 'e2e',    testMatch: '**/e2e/**' },
   ],
 });

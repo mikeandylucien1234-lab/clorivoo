@@ -58,6 +58,7 @@ const ADMIN_NAV = [
   ]},
   { group:'System', items:[
     { key:'notifications',  label:'Notifications',  icon:'bell' },
+    { key:'trustsafety',    label:'Trust & Safety', icon:'shield' },
     { key:'roles',          label:'Roles',          icon:'shield' },
     { key:'staff',          label:'Staff',          icon:'users' },
     { key:'security',       label:'Security',       icon:'lock' },
@@ -199,19 +200,83 @@ function AdminUserDetail({ user, onBack, onSave }) {
 }
 
 // ─── ADMIN — Product Detail ─────────────────────────────────────
+const PRODUCT_CONDITIONS = [
+  { value:'new', label:'New' },
+  { value:'open_box', label:'Open Box' },
+  { value:'refurbished', label:'Refurbished' },
+  { value:'used_like_new', label:'Used – Like New' },
+  { value:'used_good', label:'Used – Good' },
+  { value:'used_fair', label:'Used – Fair' },
+];
+
 function AdminProductDetail({ product, onBack, onSave, onDelete }) {
   const [form, setForm] = React.useState({
     id: product.id, title: product.title || '', price: String(product.price ?? ''),
     oldPrice: product.oldPrice != null ? String(product.oldPrice) : '',
     category_id: product.category_id || '', brand_id: product.brand_id || '', sku: product.sku || '', image_url: product.image_url || null,
     stock: product.stock != null ? String(product.stock) : '50',
+    condition: product.condition || '',
+    authenticity_statement: product.authenticity_statement || '',
+    authenticity_proof_paths: product.authenticity_proof_paths || [],
   });
   const [categories, setCategories] = React.useState([]);
   const [brands, setBrands] = React.useState([]);
   const [uploading, setUploading] = React.useState(false);
+  const [proofUrls, setProofUrls] = React.useState({}); // path -> signed url | null (loading)
   const fileRef = React.useRef(null);
   const isNew = !product.id;
-  const canSave = form.title.trim() && parseFloat(form.price) > 0;
+  const selectedBrand = brands.find(b => b.id === form.brand_id) || null;
+  const riskLevel = selectedBrand?.risk_level || 'low';
+  const needsAuthenticityStatement = riskLevel === 'medium' || riskLevel === 'high';
+  // Condition is required for brand-new products (mirrors the DB trigger,
+  // which only enforces it on INSERT) but never blocks saving an edit to
+  // an existing product that predates this field — that would "break" old
+  // listings exactly as the spec says not to.
+  const canSave = form.title.trim() && parseFloat(form.price) > 0 && (isNew ? !!form.condition : true)
+    && (!needsAuthenticityStatement || form.authenticity_statement.trim());
+
+  async function revealProof(path) {
+    setProofUrls(u => ({ ...u, [path]: null }));
+    const url = await sbAdminGetAuthenticityProofUrl(path);
+    setProofUrls(u => ({ ...u, [path]: url }));
+  }
+
+  // Variants only manageable once the product actually exists (has an
+  // id) — same reasoning as the seller form, just without the batching:
+  // every change here is its own immediate, persisted write.
+  const [variants, setVariants] = React.useState([]);
+  const [newVariant, setNewVariant] = React.useState({ size:'', color:'', sku:'', stock:'0', price_override:'', low_stock_threshold:'' });
+  const [variantError, setVariantError] = React.useState('');
+  const loadVariants = React.useCallback(() => {
+    if (!product.id) return;
+    sbGetProductVariants(product.id).then(setVariants);
+  }, [product.id]);
+  React.useEffect(() => { loadVariants(); }, [loadVariants]);
+
+  async function saveVariantField(variant, field, value) {
+    const payload = { ...variant, [field]: value };
+    const { error } = await sbUpsertProductVariant(payload);
+    if (error) { setVariantError(error.message); return; }
+    setVariantError('');
+    loadVariants();
+  }
+  async function addVariant() {
+    if (!newVariant.sku.trim()) { setVariantError('SKU is required.'); return; }
+    if (!newVariant.size.trim() && !newVariant.color.trim()) { setVariantError('Enter at least a size or a color.'); return; }
+    const { error } = await sbUpsertProductVariant({
+      product_id: product.id, sku: newVariant.sku.trim(), size: newVariant.size.trim() || null, color: newVariant.color.trim() || null,
+      stock: parseInt(newVariant.stock) || 0, price_override: newVariant.price_override ? parseFloat(newVariant.price_override) : null,
+      low_stock_threshold: newVariant.low_stock_threshold ? parseInt(newVariant.low_stock_threshold) : null,
+    });
+    if (error) { setVariantError(error.message); return; }
+    setVariantError('');
+    setNewVariant({ size:'', color:'', sku:'', stock:'0', price_override:'', low_stock_threshold:'' });
+    loadVariants();
+  }
+  async function deleteVariant(id) {
+    await sbDeleteProductVariant(id);
+    loadVariants();
+  }
 
   React.useEffect(() => { sbGetCategoryTree().then(tree => setCategories(_flattenCategories(tree))); }, []);
   // Only active brands are offered as new choices here. If this product is
@@ -285,9 +350,84 @@ function AdminProductDetail({ product, onBack, onSave, onDelete }) {
         <select value={form.brand_id} onChange={e => setForm(f => ({ ...f, brand_id:e.target.value }))} aria-label="Brand"
           style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
           <option value="">— No brand —</option>
-          {brands.map(b => <option key={b.id} value={b.id}>{b.name}{b.inactive ? ' (inactive)' : ''}</option>)}
+          {brands.map(b => <option key={b.id} value={b.id}>{b.name}{b.inactive ? ' (inactive)' : ''} {b.risk_level && b.risk_level !== 'low' ? `· ${b.risk_level} risk` : ''}</option>)}
+        </select>
+        {selectedBrand && riskLevel !== 'low' && (
+          <div style={{ marginTop:6, display:'flex', alignItems:'center', gap:6 }}>
+            <Icon name="alertTriangle" size={12} color={riskLevel === 'high' ? C.danger : C.warning} />
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color: riskLevel === 'high' ? C.danger : C.warning }}>{riskLevel === 'high' ? 'High' : 'Medium'} risk brand — authenticity required</span>
+          </div>
+        )}
+      </AdminField>
+
+      <AdminField label={isNew ? 'Condition (required)' : 'Condition'}>
+        <select value={form.condition} onChange={e => setForm(f => ({ ...f, condition:e.target.value }))} aria-label="Condition"
+          style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+          <option value="">— Select condition —</option>
+          {PRODUCT_CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
       </AdminField>
+
+      {needsAuthenticityStatement && (
+        <AdminField label="Authenticity statement (required)">
+          <textarea value={form.authenticity_statement} onChange={e => setForm(f => ({ ...f, authenticity_statement:e.target.value }))} rows={3} aria-label="Authenticity statement"
+            style={{ border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'10px 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink, resize:'vertical' }} />
+        </AdminField>
+      )}
+
+      {form.authenticity_proof_paths.length > 0 && (
+        <AdminField label="Authenticity proof documents">
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {form.authenticity_proof_paths.map(path => (
+              <div key={path} style={{ display:'flex', alignItems:'center', gap:8, fontFamily:"'Inter',sans-serif", fontSize:12 }}>
+                <Icon name="lock" size={12} color={C.mute} />
+                {proofUrls[path] ? (
+                  <a href={proofUrls[path]} target="_blank" rel="noopener noreferrer" style={{ color:C.primary }}>View document (60s link)</a>
+                ) : (
+                  <button onClick={() => revealProof(path)} style={{ border:'none', background:'none', cursor:'pointer', padding:0, color:C.primary }}>
+                    {proofUrls[path] === null ? 'Loading…' : 'Reveal document'}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </AdminField>
+      )}
+
+      {!isNew && (
+        <AdminField label="Variants">
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {variants.length === 0 && (
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>No variants — this product uses the single Stock field above.</div>
+            )}
+            {variants.map(v => (
+              <div key={v.id} style={{ display:'flex', alignItems:'center', gap:6, border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:8 }}>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:C.ink, minWidth:90 }}>{[v.size, v.color].filter(Boolean).join(' / ') || '—'}</span>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:C.mute, minWidth:70 }}>{v.sku}</span>
+                <input type="number" defaultValue={v.stock} onBlur={e => saveVariantField(v, 'stock', parseInt(e.target.value) || 0)}
+                  style={{ width:60, height:30, border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'0 6px', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }} title="Stock" />
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>reserved: {v.reserved}</span>
+                <StatusPill tone={(v.stock - v.reserved) <= 0 ? 'danger' : (v.low_stock_threshold != null && (v.stock - v.reserved) < v.low_stock_threshold) ? 'warning' : 'success'}>
+                  {(v.stock - v.reserved) <= 0 ? 'out of stock' : (v.low_stock_threshold != null && (v.stock - v.reserved) < v.low_stock_threshold) ? 'low stock' : 'in stock'}
+                </StatusPill>
+                <button onClick={() => deleteVariant(v.id)} title="Delete variant" style={{ marginLeft:'auto', border:'none', background:'none', cursor:'pointer', display:'flex' }}>
+                  <Icon name="trash" size={13} color={C.danger} />
+                </button>
+              </div>
+            ))}
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              <input value={newVariant.size} onChange={e => setNewVariant(v => ({ ...v, size:e.target.value }))} placeholder="Size" style={{ width:70, height:32, border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'0 8px', fontFamily:"'Inter',sans-serif", fontSize:12.5 }} />
+              <input value={newVariant.color} onChange={e => setNewVariant(v => ({ ...v, color:e.target.value }))} placeholder="Color" style={{ width:80, height:32, border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'0 8px', fontFamily:"'Inter',sans-serif", fontSize:12.5 }} />
+              <input value={newVariant.sku} onChange={e => setNewVariant(v => ({ ...v, sku:e.target.value }))} placeholder="SKU" style={{ width:90, height:32, border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'0 8px', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }} />
+              <input type="number" value={newVariant.stock} onChange={e => setNewVariant(v => ({ ...v, stock:e.target.value }))} placeholder="Stock" style={{ width:60, height:32, border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'0 8px', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }} />
+              <input type="number" value={newVariant.price_override} onChange={e => setNewVariant(v => ({ ...v, price_override:e.target.value }))} placeholder="Price (opt.)" style={{ width:85, height:32, border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'0 8px', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }} />
+              <input type="number" value={newVariant.low_stock_threshold} onChange={e => setNewVariant(v => ({ ...v, low_stock_threshold:e.target.value }))} placeholder="Low alert" style={{ width:75, height:32, border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'0 8px', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }} />
+              <Btn size="sm" onClick={addVariant}>+ Add</Btn>
+            </div>
+            {variantError && <div role="alert" style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.danger }}>{variantError}</div>}
+          </div>
+        </AdminField>
+      )}
 
       <div style={{ display:'flex', gap:8, marginTop:4 }}>
         {!isNew && (
@@ -1526,8 +1666,8 @@ function AdminCategoryAttributesEditor({ attributes, onSave, onDelete }) {
   const [draft, setDraft] = React.useState(null);
   const ATTR_TYPES = ['text','number','boolean','select','multiselect','color','size','range'];
 
-  function openNew() { setDraft({ name:'', type:'text', options:'', is_required:false, is_filterable:true, is_searchable:false, is_sortable:false, display_order: attributes.length }); }
-  function openEdit(a) { setDraft({ ...a, options: (a.options||[]).join(', ') }); }
+  function openNew() { setDraft({ name:'', label:'', unit:'', default_value:'', type:'text', options:'', is_required:false, is_filterable:true, is_searchable:false, is_sortable:false, is_active:true, is_variant_option:false, display_order: attributes.length }); }
+  function openEdit(a) { setDraft({ ...a, label: a.label || '', unit: a.unit || '', default_value: a.default_value || '', is_active: a.is_active !== false, is_variant_option: !!a.is_variant_option, options: (a.options||[]).join(', ') }); }
   async function save() {
     await onSave({ ...draft, options: draft.options.split(',').map(s => s.trim()).filter(Boolean) });
     setDraft(null);
@@ -1554,6 +1694,7 @@ function AdminCategoryAttributesEditor({ attributes, onSave, onDelete }) {
       {draft ? (
         <AdminCard style={{ display:'flex', flexDirection:'column', gap:12 }}>
           <AdminField label="Attribute Name"><AdminTextInput value={draft.name} onChange={v => setDraft(d => ({ ...d, name:v }))} placeholder="e.g. Size" /></AdminField>
+          <AdminField label="Display Label (optional)"><AdminTextInput value={draft.label} onChange={v => setDraft(d => ({ ...d, label:v }))} placeholder="Shown to sellers/buyers — defaults to the name above" /></AdminField>
           <AdminField label="Type">
             <select value={draft.type} onChange={e => setDraft(d => ({ ...d, type:e.target.value }))} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
               {ATTR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -1563,7 +1704,11 @@ function AdminCategoryAttributesEditor({ attributes, onSave, onDelete }) {
             <AdminField label="Options (comma-separated)"><AdminTextInput value={draft.options} onChange={v => setDraft(d => ({ ...d, options:v }))} placeholder="S, M, L, XL" /></AdminField>
           )}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            {[['is_required','Required'],['is_filterable','Filterable'],['is_searchable','Searchable'],['is_sortable','Sortable']].map(([f,label]) => (
+            <AdminField label="Unit (optional)"><AdminTextInput value={draft.unit} onChange={v => setDraft(d => ({ ...d, unit:v }))} placeholder="GB, cm, kg…" /></AdminField>
+            <AdminField label="Default value (optional)"><AdminTextInput value={draft.default_value} onChange={v => setDraft(d => ({ ...d, default_value:v }))} /></AdminField>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            {[['is_required','Required'],['is_filterable','Filterable'],['is_searchable','Searchable'],['is_sortable','Sortable'],['is_active','Active'],['is_variant_option','Variant option (SKU/stock)']].map(([f,label]) => (
               <div key={f} style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                 <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.ink }}>{label}</span>
                 <Switch checked={draft[f]} onChange={v => setDraft(d => ({ ...d, [f]:v }))} />
@@ -1648,7 +1793,9 @@ function AdminCategoryDeleteModal({ category, allCategoriesFlat, onClose, onDone
 // ─── ADMIN — Brands (real backend: brands table, RLS-gated via brands.* permissions) ──
 const BRAND_PAGE_SIZE = 20;
 
-function AdminBrandsSection() {
+function AdminBrandsSection({ accessCtx }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const [tab, setTab] = React.useState('brands'); // 'brands' | 'requests'
   const [result, setResult] = React.useState({ brands:[], totalBrands:0, totalPages:0, currentPage:1 });
   const [loading, setLoading] = React.useState(true);
   const [page, setPage] = React.useState(1);
@@ -1657,6 +1804,11 @@ function AdminBrandsSection() {
   const [search, setSearch] = React.useState('');
   const [editing, setEditing] = React.useState(null); // { id } or {} for new, or null
   const [deleting, setDeleting] = React.useState(null); // brand row
+  const [pendingRequestCount, setPendingRequestCount] = React.useState(null);
+
+  React.useEffect(() => {
+    sbAdminGetBrandRequests({ page:1, limit:1, status:'pending' }).then(r => setPendingRequestCount(r.totalRequests ?? 0));
+  }, [tab]);
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -1693,6 +1845,17 @@ function AdminBrandsSection() {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <div style={{ display:'flex', gap:6 }} role="tablist" aria-label="Brands or Brand Requests">
+        <button onClick={() => setTab('brands')} aria-pressed={tab === 'brands'} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: tab === 'brands' ? C.ink : C.paper, color: tab === 'brands' ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600 }}>Brands</button>
+        <button onClick={() => setTab('requests')} aria-pressed={tab === 'requests'} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: tab === 'requests' ? C.ink : C.paper, color: tab === 'requests' ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, display:'flex', alignItems:'center', gap:6 }}>
+          Brand Requests {pendingRequestCount ? <span style={{ background: tab === 'requests' ? 'rgba(255,255,255,0.25)' : C.warning, color: tab === 'requests' ? '#fff' : '#fff', borderRadius:9999, padding:'1px 7px', fontSize:11 }}>{pendingRequestCount}</span> : null}
+        </button>
+      </div>
+
+      {tab === 'requests' ? (
+        <AdminBrandRequestsPanel can={can} onDecided={() => sbAdminGetBrandRequests({ page:1, limit:1, status:'pending' }).then(r => setPendingRequestCount(r.totalRequests ?? 0))} />
+      ) : (
+      <>
       <SectionTitle title="Brands" sub={`${totalBrands} brand${totalBrands === 1 ? '' : 's'} · ${activeCount} active on this page`}
         action={<Btn variant="primary" size="sm" onClick={() => setEditing({})}>+ New brand</Btn>} />
 
@@ -1770,6 +1933,105 @@ function AdminBrandsSection() {
           <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Next</button>
         </div>
       )}
+      </>
+      )}
+    </div>
+  );
+}
+
+// Approve/reject brand requests — gated by brands.approve, same permission
+// the admin_decide_brand_request() RPC itself checks server-side. Hiding
+// the decide buttons here is defense-in-depth, not the real boundary.
+function AdminBrandRequestsPanel({ can, onDecided }) {
+  const [result, setResult] = React.useState({ requests:[], totalRequests:0, totalPages:0, currentPage:1 });
+  const [loading, setLoading] = React.useState(true);
+  const [page, setPage] = React.useState(1);
+  const [status, setStatus] = React.useState('pending');
+  const [rejecting, setRejecting] = React.useState(null); // request row
+  const [rejectReason, setRejectReason] = React.useState('');
+  const [busyId, setBusyId] = React.useState(null);
+  const [error, setError] = React.useState('');
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    sbAdminGetBrandRequests({ page, limit:20, status }).then(r => { setResult(r); setLoading(false); });
+  }, [page, status]);
+  React.useEffect(() => { load(); }, [load]);
+
+  const canDecide = can('brands.approve');
+
+  async function decide(request, decision, reason = '') {
+    setBusyId(request.id); setError('');
+    const { error: err } = await sbAdminDecideBrandRequest(request.id, decision, reason);
+    setBusyId(null);
+    if (err) { setError(err.message || 'Could not record this decision.'); return; }
+    logAdminAction(decision === 'approved' ? 'Approved brand request' : 'Rejected brand request', request.requested_name);
+    setRejecting(null); setRejectReason('');
+    load();
+    onDecided?.();
+  }
+
+  const { requests, totalRequests, totalPages } = result;
+  const STATUS_FILTERS = ['pending','approved','rejected','ALL'];
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Brand Requests" sub={`${totalRequests} request${totalRequests === 1 ? '' : 's'}`} />
+
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }} role="tablist" aria-label="Filter brand requests by status">
+        {STATUS_FILTERS.map(s => (
+          <button key={s} onClick={() => { setStatus(s); setPage(1); }} aria-pressed={status === s} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: status === s ? C.ink : C.paper, color: status === s ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, textTransform:'capitalize' }}>{s === 'ALL' ? 'All' : s}</button>
+        ))}
+      </div>
+
+      {error && <div role="alert" style={{ background:'#FDEDED', border:`1px solid ${C.danger}`, borderRadius:10, padding:'10px 14px', fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{error}</div>}
+
+      <AdminCard padded={false}>
+        {loading ? <AdminEmptyRow text="Loading…" /> : requests.length === 0 ? (
+          <AdminEmptyRow text="No brand requests match this filter." />
+        ) : requests.map((r, i) => (
+          <div key={r.id} style={{ padding:'14px 16px', borderTop: i > 0 ? `1px solid ${C.hairline}` : 'none', display:'flex', flexDirection:'column', gap:8 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink }}>{r.requested_name}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>
+                  {r.profiles?.full_name || r.profiles?.email || 'Unknown seller'}{r.shops?.name ? ` · ${r.shops.name}` : ''} · {new Date(r.created_at).toLocaleDateString()}
+                </div>
+                {r.reason && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.ink, marginTop:6 }}>"{r.reason}"</div>}
+                {r.status === 'rejected' && r.rejection_reason && (
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.danger, marginTop:4 }}>Rejected: {r.rejection_reason}</div>
+                )}
+              </div>
+              <StatusPill tone={r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'danger' : 'warning'}>{r.status}</StatusPill>
+            </div>
+
+            {r.status === 'pending' && canDecide && (
+              rejecting === r.id ? (
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  <AdminTextInput value={rejectReason} onChange={setRejectReason} placeholder="Reason for rejection (required)" />
+                  <div style={{ display:'flex', gap:8 }}>
+                    <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => { setRejecting(null); setRejectReason(''); }} disabled={busyId === r.id}>Cancel</Btn>
+                    <Btn size="sm" style={{ flex:1, color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} onClick={() => { if (!rejectReason.trim()) { setError('A rejection reason is required.'); return; } decide(r, 'rejected', rejectReason); }} disabled={busyId === r.id}>Confirm rejection</Btn>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display:'flex', gap:8 }}>
+                  <Btn size="sm" variant="primary" style={{ flex:1 }} onClick={() => decide(r, 'approved')} disabled={busyId === r.id}>{busyId === r.id ? 'Working…' : 'Approve → create brand'}</Btn>
+                  <Btn size="sm" style={{ flex:1, color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} onClick={() => setRejecting(r.id)} disabled={busyId === r.id}>Reject</Btn>
+                </div>
+              )
+            )}
+          </div>
+        ))}
+      </AdminCard>
+
+      {totalPages > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:10 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Previous</button>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Next</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1782,7 +2044,7 @@ function AdminBrandDetail({ brand, onBack }) {
   const [slugTouched, setSlugTouched] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
   const fileRef = React.useRef(null);
-  const [form, setForm] = React.useState({ name:'', slug:'', logo_url:null, description:'', website_url:'', status:'active' });
+  const [form, setForm] = React.useState({ name:'', slug:'', logo_url:null, description:'', website_url:'', status:'active', risk_level:'low' });
 
   React.useEffect(() => {
     if (isNew) return;
@@ -1791,6 +2053,7 @@ function AdminBrandDetail({ brand, onBack }) {
         setForm({
           name: data.name || '', slug: data.slug || '', logo_url: data.logo_url || null,
           description: data.description || '', website_url: data.website_url || '', status: data.status || 'active',
+          risk_level: data.risk_level || 'low',
         });
         setSlugTouched(true);
       }
@@ -1874,6 +2137,15 @@ function AdminBrandDetail({ brand, onBack }) {
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
+        </AdminField>
+        <AdminField label="Risk level">
+          <select value={form.risk_level} onChange={e => set('risk_level', e.target.value)} aria-label="Brand risk level"
+            style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', background:C.white, color:C.ink, fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+            <option value="low">Low — no extra checks</option>
+            <option value="medium">Medium — authenticity statement required</option>
+            <option value="high">High — authenticity statement + proof required</option>
+          </select>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, marginTop:6 }}>Controls what sellers must provide when listing a product under this brand. Never treat "active" as legal authorization to sell every item under this brand.</div>
         </AdminField>
       </AdminCard>
 
@@ -2201,6 +2473,630 @@ function AdminAuditLogSection() {
   );
 }
 
+// ─── ADMIN — Backup (real Supabase export — replaces the old
+// window.PRODUCTS-backed export, which always produced "products": []
+// while telling the admin it included the catalog). Exports catalog data
+// only — products, categories, brands — never credentials, tokens, or any
+// other secret; the export query itself never selects such columns.
+function AdminBackupSection() {
+  const [exporting, setExporting] = React.useState(false);
+  const [lastResult, setLastResult] = React.useState(null); // { counts, partial, error } of the last attempt
+  const [toast, setToast] = React.useState(null);
+
+  async function runExport() {
+    setExporting(true);
+    const { products, categories, brands, error, partial } = await sbAdminExportCatalog();
+    setExporting(false);
+    if (error) {
+      setLastResult({ error });
+      setToast({ type:'error', message: 'Backup failed — nothing was downloaded.' });
+      return;
+    }
+    const payload = { products, categories, brands, exportedAt: new Date().toISOString(), counts: { products: products.length, categories: categories.length, brands: brands.length } };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `clorivo-backup-${Date.now()}.json`; a.click();
+    URL.revokeObjectURL(url);
+    setLastResult({ counts: payload.counts, partial });
+    logAdminAction('Exported backup', `${products.length} products, ${categories.length} categories, ${brands.length} brands${partial ? ' (partial — some reads failed)' : ''}`);
+    setToast({ type: partial ? 'error' : 'success', message: partial ? 'Backup downloaded, but some data could not be read — see counts below.' : `Backup downloaded: ${products.length} products, ${categories.length} categories, ${brands.length} brands.` });
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Backup" sub="Export the real current catalog as JSON" />
+      <AdminCard style={{ maxWidth:480, display:'flex', flexDirection:'column', gap:10 }}>
+        <Btn variant="primary" onClick={runExport} disabled={exporting}>{exporting ? 'Exporting…' : 'Download backup (.json)'}</Btn>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>Includes products, categories, and brands currently in Supabase. Never includes credentials, tokens, or other secrets.</span>
+        {lastResult?.error && (
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.danger }}>Export failed: {lastResult.error.message || 'Unknown error.'}</span>
+        )}
+        {lastResult?.counts && (
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color: lastResult.partial ? C.warning : C.success }}>
+            Last export: {lastResult.counts.products} products, {lastResult.counts.categories} categories, {lastResult.counts.brands} brands.
+            {lastResult.partial ? ' Some data could not be read with your current permissions — this export is not guaranteed complete.' : ''}
+          </span>
+        )}
+      </AdminCard>
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
+  );
+}
+
+// ─── ADMIN — Trust & Safety Center (messaging anti-scam filter,
+// buyer/seller reports, blocks, and progressive violation history —
+// all backed by scam_filter_patterns / message_moderation_log /
+// user_reports / user_blocks / user_violations). ────────────────────
+const TRUST_SAFETY_REASON_LABELS = {
+  external_payment_request: 'External payment request', contact_sharing_attempt: 'Contact-sharing attempt',
+  suspected_fraud: 'Suspected fraud', fake_payment: 'Fake payment', harassment: 'Harassment', threats: 'Threats',
+  misleading_product: 'Misleading product', confidential_info_request: 'Confidential info request', other: 'Other',
+};
+const TRUST_SAFETY_CATEGORY_LABELS = {
+  phone: 'Phone number', email: 'Email address', social_messaging: 'Social / messaging app',
+  link: 'Link', off_platform_payment: 'Off-platform payment', personal_confidential: 'Personal / confidential info',
+  platform_bypass: 'Platform-bypass attempt',
+};
+function AdminTrustSafetySection({ accessCtx }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const canModerate = can('trust_safety.moderate');
+  const canView = canModerate || can('trust_safety.view');
+
+  const [tab, setTab] = React.useState('overview'); // overview | reports | log
+  const [stats, setStats] = React.useState(null);
+  const [reports, setReports] = React.useState(null);
+  const [statusFilter, setStatusFilter] = React.useState('OPEN');
+  const [modLog, setModLog] = React.useState(null);
+  const [toast, setToast] = React.useState(null);
+  const [reviewing, setReviewing] = React.useState(null);
+  const [reviewDecision, setReviewDecision] = React.useState('REVIEWED');
+  const [reviewNotes, setReviewNotes] = React.useState('');
+  const [applyViolation, setApplyViolation] = React.useState(false);
+  const [violType, setViolType] = React.useState('scam_filter_evasion');
+  const [violSeverity, setViolSeverity] = React.useState('warning');
+  const [violAction, setViolAction] = React.useState('Warning issued to user');
+  const [history, setHistory] = React.useState(null); // violations of the reported user, shown inside the review modal
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => { if (canView) sbAdminGetTrustSafetyStats().then(setStats); }, [canView]);
+  React.useEffect(() => {
+    if (!canView || tab !== 'reports') return;
+    setReports(null);
+    sbAdminGetReports({ status: statusFilter }).then(setReports);
+  }, [canView, tab, statusFilter]);
+  React.useEffect(() => {
+    if (!canView || tab !== 'log') return;
+    setModLog(null);
+    sbAdminGetModerationLog({}).then(setModLog);
+  }, [canView, tab]);
+
+  function openReview(report) {
+    setReviewing(report); setReviewDecision('REVIEWED'); setReviewNotes('');
+    setApplyViolation(false); setViolType('scam_filter_evasion'); setViolSeverity('warning');
+    setViolAction('Warning issued to user'); setHistory(null);
+    sbAdminGetUserViolations(report.reported_id).then(setHistory);
+  }
+
+  async function submitReview() {
+    if (!reviewing) return;
+    setSaving(true);
+    const { error } = await sbAdminReviewReport(reviewing.id, reviewDecision, reviewNotes || null);
+    if (error) {
+      setSaving(false);
+      setToast({ type:'error', message: error.message || 'Could not save this decision.' });
+      return;
+    }
+    if (applyViolation) {
+      const { error: vErr } = await sbAdminApplyViolation(reviewing.reported_id, violType, violSeverity, violAction, reviewing.id, reviewNotes || null);
+      if (vErr) {
+        setSaving(false);
+        setToast({ type:'error', message: `Decision saved, but the violation could not be applied: ${vErr.message || 'unknown error'}` });
+        return;
+      }
+    }
+    setSaving(false);
+    logAdminAction('Reviewed Trust & Safety report', `${reviewDecision}${applyViolation ? ` + ${violSeverity} violation` : ''} — report ${reviewing.id.slice(0,8)}`);
+    setToast({ type:'success', message: 'Report decision saved.' });
+    setReviewing(null);
+    sbAdminGetReports({ status: statusFilter }).then(setReports);
+    sbAdminGetTrustSafetyStats().then(setStats);
+  }
+
+  if (!canView) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+        <SectionTitle title="Trust & Safety" />
+        <AdminCard><AdminEmptyRow text="You don't have permission to view Trust & Safety data." /></AdminCard>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Trust & Safety" sub="Messaging anti-scam filter, user reports, and moderation history" />
+
+      <div style={{ display:'flex', gap:6 }}>
+        {[['overview','Overview'], ['reports','Reports'], ['log','Blocked Messages']].map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)} style={{
+            padding:'7px 14px', borderRadius:9, border:`1.5px solid ${tab === k ? C.primary : C.hairline}`,
+            background: tab === k ? C.primarySoft : C.white, cursor:'pointer',
+            fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, color: tab === k ? C.primaryDeep : C.mute,
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'overview' && (
+        stats === null ? <AdminCard><AdminEmptyRow text="Loading…" /></AdminCard> : (
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+              {[
+                { label:'Blocked messages', value: stats.blocked_messages_total ?? 0 },
+                { label:'Open reports', value: stats.reports_open ?? 0 },
+                { label:'Total reports', value: stats.reports_total ?? 0 },
+                { label:'Violations applied', value: stats.violations_total ?? 0 },
+              ].map((s, i) => (
+                <AdminCard key={i} style={{ flex:'1 1 160px', minWidth:150 }}>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:22, fontWeight:800, color:C.ink }}>{s.value}</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:2 }}>{s.label}</div>
+                </AdminCard>
+              ))}
+            </div>
+            <AdminCard>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:10 }}>Blocked messages by category</div>
+              {Object.keys(stats.blocked_by_category || {}).length === 0 ? (
+                <AdminEmptyRow text="No blocked messages yet." />
+              ) : Object.entries(stats.blocked_by_category).sort((a,b) => b[1]-a[1]).map(([cat, count]) => (
+                <div key={cat} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:`1px solid ${C.hairline}` }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink }}>{TRUST_SAFETY_CATEGORY_LABELS[cat] || cat}</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.mute }}>{count}</span>
+                </div>
+              ))}
+            </AdminCard>
+          </div>
+        )
+      )}
+
+      {tab === 'reports' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            {['OPEN','REVIEWED','DISMISSED','ACTIONED','ALL'].map(s => (
+              <button key={s} onClick={() => setStatusFilter(s)} style={{
+                padding:'5px 11px', borderRadius:7, border:`1px solid ${statusFilter === s ? C.primary : C.hairline}`,
+                background: statusFilter === s ? C.primarySoft : C.white, cursor:'pointer',
+                fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:600, color: statusFilter === s ? C.primaryDeep : C.mute,
+              }}>{s}</button>
+            ))}
+          </div>
+          {reports === null ? <AdminCard><AdminEmptyRow text="Loading…" /></AdminCard> : reports.length === 0 ? (
+            <AdminCard><AdminEmptyRow text="No reports in this status." /></AdminCard>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {reports.map(r => (
+                <AdminCard key={r.id}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13.5, fontWeight:700, color:C.ink }}>
+                        {r.reporter?.full_name || 'Unknown'} reported {r.reported?.full_name || 'Unknown'}
+                      </span>
+                      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>{TRUST_SAFETY_REASON_LABELS[r.reason] || r.reason}</span>
+                      {r.details && <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, fontStyle:'italic' }}>"{r.details}"</span>}
+                      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{new Date(r.created_at).toLocaleString()}</span>
+                    </div>
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
+                      <StatusPill tone={r.status === 'OPEN' ? 'warning' : r.status === 'ACTIONED' ? 'danger' : r.status === 'DISMISSED' ? 'mute' : 'success'}>{r.status}</StatusPill>
+                      {canModerate && r.status === 'OPEN' && (
+                        <Btn variant="secondary" size="sm" onClick={() => openReview(r)}>Review</Btn>
+                      )}
+                    </div>
+                  </div>
+                </AdminCard>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'log' && (
+        modLog === null ? <AdminCard><AdminEmptyRow text="Loading…" /></AdminCard> : modLog.length === 0 ? (
+          <AdminCard><AdminEmptyRow text="No blocked messages yet." /></AdminCard>
+        ) : (
+          <AdminCard padded={false}>
+            {modLog.map((m, i) => (
+              <div key={m.id} style={{ padding:'12px 16px', borderBottom: i < modLog.length - 1 ? `1px solid ${C.hairline}` : 'none', display:'flex', justifyContent:'space-between', gap:10 }}>
+                <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{m.sender?.full_name || 'Unknown'}</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{TRUST_SAFETY_CATEGORY_LABELS[m.category] || m.category}{m.content_excerpt ? ` — "${m.content_excerpt}"` : ''}</span>
+                </div>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute, flexShrink:0 }}>{new Date(m.created_at).toLocaleString()}</span>
+              </div>
+            ))}
+          </AdminCard>
+        )
+      )}
+
+      <Modal open={!!reviewing} title="Review report" onClose={() => !saving && setReviewing(null)}>
+        {reviewing && (
+          <div style={{ display:'flex', flexDirection:'column', gap:14, minWidth:320 }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>
+              {reviewing.reporter?.full_name || 'Unknown'} reported {reviewing.reported?.full_name || 'Unknown'} — {TRUST_SAFETY_REASON_LABELS[reviewing.reason] || reviewing.reason}
+            </div>
+            {history && history.length > 0 && (
+              <AdminCard style={{ background:C.paper }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:C.ink, marginBottom:6 }}>Prior violations ({history.length})</div>
+                {history.slice(0,5).map(v => (
+                  <div key={v.id} style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, padding:'3px 0' }}>
+                    {v.severity} — {v.violation_type} ({new Date(v.created_at).toLocaleDateString()})
+                  </div>
+                ))}
+              </AdminCard>
+            )}
+            <AdminField label="Decision">
+              <select value={reviewDecision} onChange={e => setReviewDecision(e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+                <option value="REVIEWED">Reviewed (no action)</option>
+                <option value="DISMISSED">Dismissed</option>
+                <option value="ACTIONED">Actioned</option>
+              </select>
+            </AdminField>
+            <AdminField label="Notes">
+              <textarea value={reviewNotes} onChange={e => setReviewNotes(e.target.value)} rows={3} style={{ border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'10px 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5, resize:'vertical' }} />
+            </AdminField>
+            {canModerate && (
+              <label style={{ display:'flex', alignItems:'center', gap:8, fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, cursor:'pointer' }}>
+                <input type="checkbox" checked={applyViolation} onChange={e => setApplyViolation(e.target.checked)} />
+                Also apply a violation to the reported user
+              </label>
+            )}
+            {applyViolation && (
+              <div style={{ display:'flex', flexDirection:'column', gap:10, paddingLeft:4, borderLeft:`2px solid ${C.hairline}` }}>
+                <AdminField label="Violation type">
+                  <AdminTextInput value={violType} onChange={setViolType} placeholder="e.g. scam_filter_evasion" />
+                </AdminField>
+                <AdminField label="Severity">
+                  <select value={violSeverity} onChange={e => setViolSeverity(e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
+                    <option value="warning">Warning</option>
+                    <option value="restriction">Temporary restriction</option>
+                    <option value="review">Admin review</option>
+                    <option value="suspension">Suspension</option>
+                  </select>
+                </AdminField>
+                <AdminField label="Action taken">
+                  <AdminTextInput value={violAction} onChange={setViolAction} placeholder="e.g. Warning issued to user" />
+                </AdminField>
+              </div>
+            )}
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <Btn variant="secondary" onClick={() => setReviewing(null)} disabled={saving}>Cancel</Btn>
+              <Btn variant="primary" onClick={submitReview} disabled={saving}>{saving ? 'Saving…' : 'Save decision'}</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
+  );
+}
+
+// ─── ADMIN — Flash Deals (real Supabase data on products.is_flash_deal/
+// flash_price/flash_starts_at/flash_ends_at — replaces the old
+// window.PRODUCTS-backed mock, which was never connected to any real
+// product and never persisted anything). ────────────────────────────
+function AdminFlashDealsSection({ accessCtx }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const canEdit = can('products.edit') || can('products.approve');
+
+  const [deals, setDeals] = React.useState(null); // null = loading
+  const [toast, setToast] = React.useState(null);
+  const [editing, setEditing] = React.useState(null); // form state for add/edit, or null
+  const [saving, setSaving] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [searchResults, setSearchResults] = React.useState([]);
+  const [confirmRemove, setConfirmRemove] = React.useState(null); // the deal row pending removal confirmation
+
+  const load = React.useCallback(() => { sbAdminGetFlashDeals().then(setDeals); }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  React.useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) { setSearchResults([]); return; }
+    const t = setTimeout(() => { sbAdminSearchProductsForFlashDeal(q).then(setSearchResults); }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  function openForm(product) {
+    setEditing({
+      id: product.id, title: product.title, price: Number(product.price),
+      flashPrice: product.flash_price != null ? String(product.flash_price) : '',
+      startsAt: product.flash_starts_at ? product.flash_starts_at.slice(0, 16) : '',
+      endsAt: product.flash_ends_at ? product.flash_ends_at.slice(0, 16) : '',
+      isActive: product.is_flash_deal ?? true,
+    });
+    setSearchQuery(''); setSearchResults([]);
+  }
+
+  async function saveDeal() {
+    if (!editing) return;
+    setSaving(true);
+    const { error } = await sbAdminSetFlashDeal(editing.id, {
+      flashPrice: editing.flashPrice,
+      startsAt: editing.startsAt ? new Date(editing.startsAt).toISOString() : null,
+      endsAt: editing.endsAt ? new Date(editing.endsAt).toISOString() : null,
+      isActive: editing.isActive,
+    });
+    setSaving(false);
+    if (error) { setToast({ type:'error', message: error.message }); return; }
+    logAdminAction('Saved flash deal', editing.title, 'products', editing.id);
+    setToast({ type:'success', message:'Flash deal saved.' });
+    setEditing(null);
+    load();
+  }
+
+  async function toggleActive(deal) {
+    const { error } = await sbAdminSetFlashDeal(deal.id, {
+      flashPrice: deal.flash_price, startsAt: deal.flash_starts_at, endsAt: deal.flash_ends_at, isActive: !deal.is_flash_deal,
+    });
+    if (error) { setToast({ type:'error', message: error.message }); return; }
+    logAdminAction(deal.is_flash_deal ? 'Deactivated flash deal' : 'Reactivated flash deal', deal.title, 'products', deal.id);
+    load();
+  }
+
+  async function doRemove() {
+    if (!confirmRemove) return;
+    await sbAdminRemoveFlashDeal(confirmRemove.id);
+    logAdminAction('Removed flash deal', confirmRemove.title, 'products', confirmRemove.id);
+    setToast({ type:'success', message:'Flash deal removed.' });
+    setConfirmRemove(null);
+    load();
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Flash Deals" sub={deals ? `${deals.length} promotion${deals.length === 1 ? '' : 's'} · live Supabase data` : 'Loading…'} />
+
+      {canEdit && (
+        <AdminCard>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:10 }}>Add a product to Flash Deals</div>
+          <Input placeholder="Search products by name…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+          {searchResults.length > 0 && (
+            <div style={{ marginTop:8, border:`1px solid ${C.hairline}`, borderRadius:10, overflow:'hidden' }}>
+              {searchResults.map((p, i) => (
+                <button key={p.id} onClick={() => openForm(p)} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'10px 12px', border:'none', borderTop: i > 0 ? `1px solid ${C.hairline}` : 'none', background:'none', cursor:'pointer', textAlign:'left' }}>
+                  <span style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink }}>{p.title}{p.is_flash_deal ? ' · already a flash deal' : ''}</span>
+                  <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:C.mute }}>${Number(p.price).toFixed(2)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </AdminCard>
+      )}
+
+      <AdminCard padded={false}>
+        {deals === null ? (
+          <div style={{ padding:16, fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Loading…</div>
+        ) : deals.length === 0 ? (
+          <div style={{ padding:16, fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No flash deals yet. Search above to add one.</div>
+        ) : deals.map((p, i) => {
+          const price = Number(p.price), flashPrice = Number(p.flash_price);
+          const discountPct = flashPrice > 0 && price > 0 ? Math.round((1 - flashPrice / price) * 100) : 0;
+          return (
+            <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderTop: i > 0 ? `1px solid ${C.hairline}` : 'none', flexWrap:'wrap' }}>
+              <div style={{ flex:'1 1 160px', minWidth:0 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.title}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{p.shops?.name || '—'}</div>
+              </div>
+              <div style={{ textAlign:'right', flexShrink:0 }}>
+                <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:700, color:C.danger }}>${flashPrice.toFixed(2)}</div>
+                <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:C.mute, textDecoration:'line-through' }}>${price.toFixed(2)}</div>
+              </div>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, color:C.danger, background:'#FDEDED', borderRadius:9999, padding:'2px 8px', flexShrink:0 }}>-{discountPct}%</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute, flexShrink:0 }}>
+                {p.flash_starts_at ? new Date(p.flash_starts_at).toLocaleDateString() : 'Any time'} → {p.flash_ends_at ? new Date(p.flash_ends_at).toLocaleDateString() : 'No end date'}
+              </span>
+              {canEdit ? <Switch checked={!!p.is_flash_deal} onChange={() => toggleActive(p)} /> : (
+                <StatusPill tone={p.is_flash_deal ? 'success' : 'default'}>{p.is_flash_deal ? 'active' : 'inactive'}</StatusPill>
+              )}
+              {canEdit && (
+                <button onClick={() => openForm(p)} title="Edit" style={{ border:'none', background:'none', cursor:'pointer', display:'flex' }}>
+                  <Icon name="edit" size={16} color={C.primary} />
+                </button>
+              )}
+              {canEdit && (
+                <button onClick={() => setConfirmRemove(p)} title="Remove" style={{ border:'none', background:'none', cursor:'pointer', display:'flex' }}>
+                  <Icon name="trash" size={16} color={C.danger} />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </AdminCard>
+
+      {editing && (
+        <Modal open title={`Flash Deal — ${editing.title}`} onClose={() => setEditing(null)}>
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Current price: ${editing.price.toFixed(2)} — the flash price must be lower than this.</div>
+            <Input label="Flash price" type="number" step="0.01" value={editing.flashPrice} onChange={e => setEditing(s => ({ ...s, flashPrice: e.target.value }))} />
+            <Input label="Starts at (optional)" type="datetime-local" value={editing.startsAt} onChange={e => setEditing(s => ({ ...s, startsAt: e.target.value }))} />
+            <Input label="Ends at (optional)" type="datetime-local" value={editing.endsAt} onChange={e => setEditing(s => ({ ...s, endsAt: e.target.value }))} />
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>Active</span>
+              <Switch checked={editing.isActive} onChange={v => setEditing(s => ({ ...s, isActive: v }))} />
+            </div>
+            <Btn variant="primary" size="md" wide onClick={saveDeal} disabled={saving}>{saving ? 'Saving…' : 'Save Flash Deal'}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* Destructive — only ever removed after this explicit confirmation step. */}
+      <Modal open={!!confirmRemove} title="Remove this flash deal?" onClose={() => setConfirmRemove(null)}>
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.mute }}>
+            This removes the promotion from <strong>{confirmRemove?.title}</strong>. The product itself is not deleted or affected otherwise.
+          </div>
+          <div style={{ display:'flex', gap:10 }}>
+            <Btn variant="secondary" size="md" style={{ flex:1 }} onClick={() => setConfirmRemove(null)}>Cancel</Btn>
+            <Btn size="md" style={{ flex:1, color:'#fff', background:C.danger }} onClick={doRemove}>Remove</Btn>
+          </div>
+        </div>
+      </Modal>
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
+  );
+}
+
+// ─── ADMIN — Inventory (Step 2 — real Supabase data, replaces the old
+// window.PRODUCTS-backed mock) ──────────────────────────────────────
+function AdminInventorySection({ accessCtx }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const [result, setResult] = React.useState({ rows:[], totalRows:0, totalPages:0, currentPage:1 });
+  const [loading, setLoading] = React.useState(true);
+  const [page, setPage] = React.useState(1);
+  const [filter, setFilter] = React.useState('ALL');
+  const [searchInput, setSearchInput] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [settings, setSettings] = React.useState(null);
+  const [savingSettings, setSavingSettings] = React.useState(false);
+  const [releasing, setReleasing] = React.useState(false);
+  const [toast, setToast] = React.useState(null);
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    sbAdminGetInventory({ page, limit:20, search, filter }).then(r => { setResult(r); setLoading(false); });
+  }, [page, search, filter]);
+  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => { sbAdminGetInventorySettings().then(setSettings); }, []);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setSearch(searchInput); }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  async function saveStock(variantOrRow, isVariant, value) {
+    const stock = parseInt(value);
+    if (isNaN(stock) || stock < 0) return;
+    if (isVariant) await sbUpsertProductVariant({ ...variantOrRow, stock });
+    else await sbAdminUpdateProduct(variantOrRow.id, { stock });
+    load();
+  }
+
+  async function saveExpiry() {
+    if (!settings) return;
+    setSavingSettings(true);
+    await sbAdminUpdateInventorySettings(settings);
+    setSavingSettings(false);
+    setToast({ type:'success', message:'Inventory settings saved.' });
+  }
+
+  async function releaseExpired() {
+    setReleasing(true);
+    await sbAdminReleaseExpiredReservations();
+    setReleasing(false);
+    setToast({ type:'success', message:'Expired reservations released.' });
+    load();
+  }
+
+  const { rows, totalRows, totalPages } = result;
+  const canEdit = can('products.edit') || can('products.approve');
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Inventory" sub={`${totalRows} product${totalRows === 1 ? '' : 's'} · live Supabase data`} />
+
+      {canEdit && settings && (
+        <AdminCard style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Unpaid reservations auto-release after</span>
+          <input type="number" value={settings.reservation_expiry_minutes}
+            onChange={e => setSettings(s => ({ ...s, reservation_expiry_minutes: parseInt(e.target.value) || 0 }))}
+            style={{ width:70, height:32, border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'0 8px', fontFamily:"'JetBrains Mono',monospace", fontSize:12.5 }} />
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>minutes</span>
+          <Btn size="sm" onClick={saveExpiry} disabled={savingSettings}>{savingSettings ? 'Saving…' : 'Save'}</Btn>
+          <Btn size="sm" style={{ marginLeft:'auto', color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={releaseExpired} disabled={releasing}>{releasing ? 'Releasing…' : 'Release expired holds now'}</Btn>
+        </AdminCard>
+      )}
+
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ flex:'1 1 220px', position:'relative' }}>
+          <Icon name="search" size={15} color={C.mute} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)' }} />
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Product title or SKU…" aria-label="Search inventory"
+            style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px 9px 34px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        </div>
+      </div>
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }} role="tablist" aria-label="Filter inventory">
+        {['ALL','OUT_OF_STOCK','LOW_STOCK'].map(f => (
+          <button key={f} onClick={() => { setFilter(f); setPage(1); }} aria-pressed={filter === f} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: filter === f ? C.ink : C.paper, color: filter === f ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600 }}>
+            {f === 'ALL' ? 'All' : f === 'OUT_OF_STOCK' ? 'Out of stock' : 'Low stock'}
+          </button>
+        ))}
+      </div>
+
+      <AdminCard padded={false} style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead><tr><Th>Product</Th><Th>Variant / SKU</Th><Th align="right">Stock</Th><Th align="right">Reserved</Th><Th align="right">Available</Th><Th>Status</Th></tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={6}><AdminEmptyRow text="Loading inventory…" /></td></tr>
+            ) : result.timedOut ? (
+              <tr><td colSpan={6}><AdminEmptyRow text="Couldn't reach the server — check your connection and try again." /></td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={6}><AdminEmptyRow text="No products match these filters." /></td></tr>
+            ) : rows.map(p => {
+              const hasVariants = (p.product_variants?.length ?? 0) > 0;
+              if (!hasVariants) {
+                const available = p.stock ?? 0;
+                const status = available === 0 ? 'out of stock' : available < 10 ? 'low stock' : 'in stock';
+                return (
+                  <tr key={p.id}>
+                    <Td>{p.title}</Td>
+                    <Td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11.5 }}>{p.sku || '—'}</Td>
+                    <Td align="right">
+                      {canEdit ? (
+                        <input type="number" defaultValue={available} onBlur={e => saveStock(p, false, e.target.value)}
+                          style={{ width:70, textAlign:'right', border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'4px 8px', fontFamily:"'JetBrains Mono',monospace", fontSize:12.5 }} />
+                      ) : available}
+                    </Td>
+                    <Td align="right">—</Td>
+                    <Td align="right">{available}</Td>
+                    <Td><StatusPill tone={status === 'out of stock' ? 'danger' : status === 'low stock' ? 'warning' : 'success'}>{status}</StatusPill></Td>
+                  </tr>
+                );
+              }
+              return p.product_variants.map((v, i) => {
+                const available = Math.max(0, v.stock - v.reserved);
+                const status = available === 0 ? 'out of stock' : (v.low_stock_threshold != null && available < v.low_stock_threshold) ? 'low stock' : 'in stock';
+                return (
+                  <tr key={v.id}>
+                    <Td>{i === 0 ? p.title : ''}</Td>
+                    <Td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11.5 }}>{[v.size, v.color].filter(Boolean).join(' / ')} · {v.sku}</Td>
+                    <Td align="right">
+                      {canEdit ? (
+                        <input type="number" defaultValue={v.stock} onBlur={e => saveStock(v, true, e.target.value)}
+                          style={{ width:70, textAlign:'right', border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'4px 8px', fontFamily:"'JetBrains Mono',monospace", fontSize:12.5 }} />
+                      ) : v.stock}
+                    </Td>
+                    <Td align="right">{v.reserved}</Td>
+                    <Td align="right">{available}</Td>
+                    <Td><StatusPill tone={status === 'out of stock' ? 'danger' : status === 'low stock' ? 'warning' : 'success'}>{status}</StatusPill></Td>
+                  </tr>
+                );
+              });
+            })}
+          </tbody>
+        </table>
+      </AdminCard>
+
+      {totalPages > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:10 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Previous</button>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'6px 12px', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontFamily:"'Inter',sans-serif", fontSize:12.5 }}>Next</button>
+        </div>
+      )}
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
+  );
+}
+
 // ─── ADMIN — Products (moderation, publish toggle, search/filter, pagination) ──
 const PRODUCT_PAGE_SIZE = 12;
 
@@ -2266,6 +3162,9 @@ function AdminProductsSection() {
       oldPrice: form.oldPrice ? parseFloat(form.oldPrice) : null,
       stock: parseInt(form.stock) || 0, category_id: form.category_id || null, brand_id: form.brand_id || null, sku: form.sku || null,
       image_url: form.image_url,
+      condition: form.condition || null,
+      authenticity_statement: form.authenticity_statement || null,
+      authenticity_proof_paths: form.authenticity_proof_paths || [],
     };
     if (form.id) {
       await sbAdminUpdateProduct(form.id, payload);
@@ -2413,7 +3312,9 @@ function AdminProductsSection() {
 const ORDER_STATUS_TONE = { pending:'warning', confirmed:'info', processing:'info', shipped:'primary', delivered:'success', cancelled:'danger', refunded:'mute' };
 const PAGE_SIZE = 10;
 
-function AdminOrdersSection({ accessCtx }) {
+function AdminOrdersSection({ accessCtx, initialDetailId = null, onConsumeInitialDetailId }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const canEditStatus = can('orders.edit') || can('orders.cancel');
   const [result, setResult] = React.useState({ orders:[], totalOrders:0, totalPages:0, currentPage:1 });
   const [loading, setLoading] = React.useState(true);
   const [page, setPage] = React.useState(1);
@@ -2422,8 +3323,16 @@ function AdminOrdersSection({ accessCtx }) {
   const [search, setSearch] = React.useState('');
   const [dateFrom, setDateFrom] = React.useState('');
   const [dateTo, setDateTo] = React.useState('');
-  const [detailId, setDetailId] = React.useState(null);
+  // Opens straight into a specific order's detail when arriving from another
+  // section's deep link (e.g. Shipping's "#orderId" link) — a plain visit to
+  // Orders still starts on the list exactly as before (initialDetailId is
+  // null by default, so this is a no-op then).
+  const [detailId, setDetailId] = React.useState(initialDetailId);
+  React.useEffect(() => { if (initialDetailId && onConsumeInitialDetailId) onConsumeInitialDetailId(); }, []);
   const [newOrderFlash, setNewOrderFlash] = React.useState(false);
+  const [pendingStatus, setPendingStatus] = React.useState(null); // { orderId, from, to }
+  const [statusBusy, setStatusBusy] = React.useState(false);
+  const [statusError, setStatusError] = React.useState('');
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -2448,10 +3357,29 @@ function AdminOrdersSection({ accessCtx }) {
     return unsubscribe;
   }, [load]);
 
+  // Applies only after the admin explicitly confirms via the bar below —
+  // never on the raw select change — and surfaces a real server error
+  // instead of silently swallowing it (e.g. a 'refunded' attempt, now
+  // rejected by sbAdminUpdateOrderStatus; see that function for why).
+  async function applyStatusChange() {
+    if (!pendingStatus) return;
+    setStatusBusy(true); setStatusError('');
+    const { error } = await sbAdminUpdateOrderStatus(pendingStatus.orderId, pendingStatus.to);
+    setStatusBusy(false);
+    if (error) { setStatusError(error.message || 'Could not update this order.'); return; }
+    logAdminAction('Updated order status', `#${pendingStatus.orderId.slice(0,8)} → ${pendingStatus.to}`);
+    setPendingStatus(null);
+    load();
+  }
+
+  // Used by AdminOrderDetail's own status selector — same confirm-before-apply
+  // contract, just driven from that screen instead of this list's row.
   async function handleStatusChange(orderId, newStatus) {
-    await sbAdminUpdateOrderStatus(orderId, newStatus);
+    const { error } = await sbAdminUpdateOrderStatus(orderId, newStatus);
+    if (error) return { error };
     logAdminAction('Updated order status', `#${orderId.slice(0,8)} → ${newStatus}`);
     load();
+    return { error: null };
   }
 
   if (detailId) return <AdminOrderDetail orderId={detailId} accessCtx={accessCtx} onBack={() => { setDetailId(null); load(); }} onStatusChange={handleStatusChange} />;
@@ -2483,10 +3411,23 @@ function AdminOrdersSection({ accessCtx }) {
       </div>
 
       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-        {['ALL','pending','processing','shipped','delivered','cancelled','refunded'].map(s => (
+        {/* 'refunded' is not a fulfillment status — see sbAdminUpdateOrderStatus — so it is not offered as a filter. Refund progress is shown via the Payment column/pill instead. */}
+        {['ALL', ...ORDER_STATUSES].map(s => (
           <button key={s} onClick={() => { setStatus(s); setPage(1); }} style={{ border:'none', borderRadius:9999, padding:'7px 14px', cursor:'pointer', background: status === s ? C.ink : C.paper, color: status === s ? '#fff' : C.mute, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, textTransform:'capitalize' }}>{s === 'ALL' ? 'All' : s}</button>
         ))}
       </div>
+
+      {pendingStatus && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', background:'#FFF6E5', border:`1px solid ${C.warning}`, borderRadius:12, padding:'10px 14px' }}>
+          <Icon name="alertTriangle" size={15} color={C.warning} />
+          <span style={{ flex:1, minWidth:200, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.ink }}>
+            Change order #{pendingStatus.orderId.slice(0,8)} from <strong style={{ textTransform:'capitalize' }}>{pendingStatus.from}</strong> to <strong style={{ textTransform:'capitalize' }}>{pendingStatus.to}</strong>?
+          </span>
+          <Btn size="sm" style={{ color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => setPendingStatus(null)} disabled={statusBusy}>Cancel</Btn>
+          <Btn size="sm" variant="primary" onClick={applyStatusChange} disabled={statusBusy}>{statusBusy ? 'Applying…' : 'Confirm'}</Btn>
+        </div>
+      )}
+      {statusError && <div role="alert" style={{ background:'#FDEDED', borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{statusError}</div>}
 
       <AdminCard padded={false} style={{ overflowX:'auto' }}>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
@@ -2510,8 +3451,11 @@ function AdminOrdersSection({ accessCtx }) {
                 <Td align="right" style={{ fontFamily:"'JetBrains Mono',monospace" }}>${(o.total_amount ?? 0).toFixed(2)}</Td>
                 <Td><StatusPill tone={o.payment_status === 'paid' ? 'success' : o.payment_status === 'failed' ? 'danger' : o.payment_status === 'refunded' || o.payment_status === 'partially_refunded' ? 'mute' : 'warning'}>{o.payment_status || 'pending'}</StatusPill></Td>
                 <Td>
-                  <select value={o.status} onChange={e => handleStatusChange(o.id, e.target.value)}
-                    style={{ border:'none', borderRadius:9999, padding:'4px 10px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, textTransform:'capitalize', ...(() => { const t = { success:{bg:'#EFF9F4',fg:C.success}, danger:{bg:'#FDEDED',fg:C.danger}, warning:{bg:'#FFF6E5',fg:C.warning}, mute:{bg:C.paper,fg:C.mute}, primary:{bg:C.primarySoft,fg:C.primaryDeep}, info:{bg:'#EBF2FF',fg:'#2563EB'} }[ORDER_STATUS_TONE[o.status] || 'mute']; return { background:t.bg, color:t.fg }; })() }}>
+                  <select value={o.status} disabled={!canEditStatus}
+                    onChange={e => { if (e.target.value !== o.status) setPendingStatus({ orderId:o.id, from:o.status, to:e.target.value }); }}
+                    title={canEditStatus ? undefined : 'You do not have permission to change order status (orders.edit or orders.cancel required).'}
+                    style={{ border:'none', borderRadius:9999, padding:'4px 10px', cursor: canEditStatus ? 'pointer' : 'not-allowed', opacity: canEditStatus ? 1 : 0.6, fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, textTransform:'capitalize', ...(() => { const t = { success:{bg:'#EFF9F4',fg:C.success}, danger:{bg:'#FDEDED',fg:C.danger}, warning:{bg:'#FFF6E5',fg:C.warning}, mute:{bg:C.paper,fg:C.mute}, primary:{bg:C.primarySoft,fg:C.primaryDeep}, info:{bg:'#EBF2FF',fg:'#2563EB'} }[ORDER_STATUS_TONE[o.status] || 'mute']; return { background:t.bg, color:t.fg }; })() }}>
+                    {o.status === 'refunded' && <option value="refunded">refunded</option>}
                     {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </Td>
@@ -2546,6 +3490,7 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
   const [fetching, setFetching] = React.useState(true);
   const [intents, setIntents] = React.useState([]);
   const [refunds, setRefunds] = React.useState([]);
+  const [commissions, setCommissions] = React.useState([]);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
   const [startingRefund, setStartingRefund] = React.useState(false);
@@ -2553,8 +3498,15 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
   const [recordingRefundId, setRecordingRefundId] = React.useState(null);
   const [recordAmount, setRecordAmount] = React.useState('');
   const [recordRef, setRecordRef] = React.useState('');
+  const [pendingAction, setPendingAction] = React.useState(null); // { message, run, danger }
+  const [rejectingId, setRejectingId] = React.useState(null);
+  const [rejectReason, setRejectReason] = React.useState('');
+  const [restockingItemId, setRestockingItemId] = React.useState(null);
+  const [restockQty, setRestockQty] = React.useState('');
+  const [restockNotes, setRestockNotes] = React.useState('');
 
   const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const canEditStatus = can('orders.edit') || can('orders.cancel');
 
   const refresh = React.useCallback(() => {
     setFetching(true);
@@ -2562,8 +3514,9 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
       sbAdminGetOrderDetail(orderId),
       sbAdminGetPaymentIntents({ orderId }),
       sbAdminGetRefundRequests({ orderId, limit: 50 }),
-    ]).then(([o, ints, refundsRes]) => {
-      setOrder(o); setIntents(ints); setRefunds(refundsRes.requests || []); setFetching(false);
+      sbAdminGetCommissionLedger({ orderId }),
+    ]).then(([o, ints, refundsRes, ledger]) => {
+      setOrder(o); setIntents(ints); setRefunds(refundsRes.requests || []); setCommissions(ledger || []); setFetching(false);
     });
   }, [orderId]);
   React.useEffect(() => { refresh(); }, [refresh]);
@@ -2581,6 +3534,22 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
 
   const items = order.order_items || [];
   const tone = ORDER_STATUS_TONE[order.status] || 'mute';
+
+  // Separate from the refund workflow on purpose — money (refund) and
+  // physical goods (return) are different facts. This never fires
+  // automatically from a refund decision; an admin with orders.refund
+  // must explicitly confirm the returned quantity here, and only that
+  // validated quantity is restocked (admin_validate_return_and_restock).
+  async function submitRestock(item) {
+    const qty = parseInt(restockQty);
+    if (!qty || qty <= 0) { setErr('Enter how many units were actually returned.'); return; }
+    setBusy(true); setErr('');
+    const { error } = await sbAdminValidateReturnAndRestock(item.id, qty, restockNotes.trim() || null);
+    setBusy(false);
+    if (error) { setErr(error.message || 'Could not record this return.'); return; }
+    setRestockingItemId(null); setRestockQty(''); setRestockNotes('');
+    refresh();
+  }
   const alreadyRefunded = refunds.reduce((s, r) => s + (r.refunds || []).filter(x => x.status === 'succeeded').reduce((s2, x) => s2 + (x.amount || 0), 0), 0);
   const pendingRequestAmount = refunds.filter(r => ['requested','under_review','approved','processing'].includes(r.status)).reduce((s, r) => s + (r.amount_requested || 0), 0);
   const remaining = (order.total_amount ?? 0) - alreadyRefunded - pendingRequestAmount;
@@ -2593,6 +3562,17 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
     if (error) { setErr(error.message || 'This action was rejected by the server.'); return false; }
     refresh();
     return true;
+  }
+
+  // Every sensitive action on this page (status change, payment confirm/fail,
+  // refund approve) routes through this bar instead of firing on click —
+  // nothing here mutates local state optimistically; the UI only reflects
+  // what the server actually confirmed, via refresh() inside runAction.
+  function confirmThen(message, run, danger) { setPendingAction({ message, run, danger }); }
+  async function runPendingAction() {
+    if (!pendingAction) return;
+    const ok = await runAction(pendingAction.run);
+    if (ok) setPendingAction(null);
   }
 
   return (
@@ -2623,12 +3603,36 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
         <div style={{ padding:'12px 16px', borderBottom:`1px solid ${C.hairline}`, fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Items</div>
         {items.length === 0 && <AdminEmptyRow text="No items on this order." />}
         {items.map((it, i) => (
-          <div key={it.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+          <div key={it.id} style={{ borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px' }}>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{it.title}</div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{it.shops?.name || '—'} · Qty {it.quantity} · <span style={{ textTransform:'capitalize' }}>{it.fulfillment_status || 'pending'}</span></div>
             </div>
             <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:700, color:C.ink }}>${(it.unit_price ?? 0).toFixed(2)}</span>
+          </div>
+          {can('orders.refund') && ['paid','partially_refunded','refunded'].includes(order.payment_status) && (
+            restockingItemId === it.id ? (
+              <div style={{ display:'flex', flexDirection:'column', gap:6, padding:'0 16px 12px' }}>
+                <div style={{ display:'flex', gap:6 }}>
+                  <input type="number" value={restockQty} onChange={e => setRestockQty(e.target.value)} placeholder={`Units returned (max ${it.quantity})`} max={it.quantity} min={1}
+                    style={{ flex:1, height:34, border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'0 10px', fontFamily:"'JetBrains Mono',monospace", fontSize:12.5 }} />
+                </div>
+                <input value={restockNotes} onChange={e => setRestockNotes(e.target.value)} placeholder="Notes (optional)"
+                  style={{ height:34, border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'0 10px', fontFamily:"'Inter',sans-serif", fontSize:12.5 }} />
+                <div style={{ display:'flex', gap:6 }}>
+                  <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => { setRestockingItemId(null); setRestockQty(''); setRestockNotes(''); }} disabled={busy}>Cancel</Btn>
+                  <Btn size="sm" variant="primary" style={{ flex:1 }} onClick={() => submitRestock(it)} disabled={busy}>{busy ? 'Saving…' : 'Confirm return & restock'}</Btn>
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding:'0 16px 10px' }}>
+                <button onClick={() => { setRestockingItemId(it.id); setRestockQty(''); setRestockNotes(''); }} style={{ border:'none', background:'none', cursor:'pointer', padding:0, fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.primary, fontWeight:600 }}>
+                  Validate physical return &amp; restock this item
+                </button>
+              </div>
+            )
+          )}
           </div>
         ))}
         <div style={{ display:'flex', justifyContent:'space-between', padding:'12px 16px', borderTop:`1px solid ${C.hairline}` }}>
@@ -2637,16 +3641,34 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
         </div>
       </AdminCard>
 
+      {pendingAction && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', background: pendingAction.danger ? '#FDEDED' : '#FFF6E5', border:`1px solid ${pendingAction.danger ? C.danger : C.warning}`, borderRadius:12, padding:'10px 14px' }}>
+          <Icon name="alertTriangle" size={15} color={pendingAction.danger ? C.danger : C.warning} />
+          <span style={{ flex:1, minWidth:200, fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.ink }}>{pendingAction.message}</span>
+          <Btn size="sm" style={{ color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => setPendingAction(null)} disabled={busy}>Cancel</Btn>
+          <Btn size="sm" variant={pendingAction.danger ? 'danger' : 'primary'} onClick={runPendingAction} disabled={busy}>{busy ? 'Applying…' : 'Confirm'}</Btn>
+        </div>
+      )}
+      {err && <div role="alert" style={{ background:'#FDEDED', borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{err}</div>}
+
       <AdminCard>
         <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:10 }}>Fulfillment status</div>
-        <select value={order.status} onChange={e => { onStatusChange(order.id, e.target.value); setOrder(o => ({ ...o, status:e.target.value })); }}
-          disabled={!can('orders.edit') && !can('orders.cancel')}
-          style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }}>
+        <select value={order.status} disabled={!canEditStatus}
+          onChange={e => {
+            const to = e.target.value;
+            if (to === order.status) return;
+            confirmThen(
+              <>Change this order's status from <strong style={{ textTransform:'capitalize' }}>{order.status}</strong> to <strong style={{ textTransform:'capitalize' }}>{to}</strong>?</>,
+              () => onStatusChange(order.id, to),
+              to === 'cancelled'
+            );
+          }}
+          title={canEditStatus ? undefined : 'You do not have permission to change order status (orders.edit or orders.cancel required).'}
+          style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white, cursor: canEditStatus ? 'pointer' : 'not-allowed', opacity: canEditStatus ? 1 : 0.6 }}>
+          {order.status === 'refunded' && <option value="refunded">refunded</option>}
           {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
       </AdminCard>
-
-      {err && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{err}</div>}
 
       <div>
         <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:8 }}>Payment attempts</div>
@@ -2660,10 +3682,12 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
               <StatusPill tone={it.status === 'succeeded' ? 'success' : it.status === 'failed' ? 'danger' : 'warning'}>{it.status}</StatusPill>
               {it.status === 'pending' && can('payments.confirm') && (
                 <div style={{ display:'flex', gap:6 }}>
-                  <button disabled={busy} onClick={() => runAction(() => sbAdminConfirmPayment(it.id, 'failed'))} title="Mark failed" style={{ border:`1px solid ${C.danger}`, background:'#FDEDED', borderRadius:8, width:30, height:30, cursor:'pointer' }}>
+                  <button disabled={busy} title="Mark failed" style={{ border:`1px solid ${C.danger}`, background:'#FDEDED', borderRadius:8, width:30, height:30, cursor:'pointer' }}
+                    onClick={() => confirmThen(<>Mark this {it.provider} payment attempt of ${Number(it.amount).toFixed(2)} as <strong>failed</strong>?</>, () => sbAdminConfirmPayment(it.id, 'failed'), true)}>
                     <Icon name="x" size={14} color={C.danger} />
                   </button>
-                  <button disabled={busy} onClick={() => runAction(() => sbAdminConfirmPayment(it.id, 'succeeded'))} title="Confirm paid" style={{ border:`1px solid ${C.success}`, background:'#EFF9F4', borderRadius:8, width:30, height:30, cursor:'pointer' }}>
+                  <button disabled={busy} title="Confirm paid" style={{ border:`1px solid ${C.success}`, background:'#EFF9F4', borderRadius:8, width:30, height:30, cursor:'pointer' }}
+                    onClick={() => confirmThen(<>Confirm this {it.provider} payment of ${Number(it.amount).toFixed(2)} as <strong>succeeded</strong>? This marks the order paid and records seller commission.</>, () => sbAdminConfirmPayment(it.id, 'succeeded'), false)}>
                     <Icon name="check" size={14} color={C.success} />
                   </button>
                 </div>
@@ -2706,12 +3730,26 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
                 <StatusPill tone={r.status === 'succeeded' ? 'success' : r.status === 'rejected' || r.status === 'failed' ? 'danger' : 'warning'}>{r.status}</StatusPill>
               </div>
               {r.status === 'requested' && can('orders.refund') && (
-                <div style={{ display:'flex', gap:6, marginTop:8 }}>
-                  <Btn size="sm" style={{ flex:1, color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} disabled={busy}
-                    onClick={() => runAction(() => sbAdminDecideRefund(r.id, 'rejected', 'Not eligible'))}>Reject</Btn>
-                  <Btn size="sm" variant="primary" style={{ flex:1 }} disabled={busy}
-                    onClick={() => runAction(() => sbAdminDecideRefund(r.id, 'approved'))}>Approve</Btn>
-                </div>
+                rejectingId === r.id ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:8 }}>
+                    <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Reason for rejecting — recorded on this refund request." rows={2}
+                      style={{ border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'9px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, resize:'vertical' }} />
+                    <div style={{ display:'flex', gap:8 }}>
+                      <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => { setRejectingId(null); setRejectReason(''); }} disabled={busy}>Cancel</Btn>
+                      <Btn size="sm" variant="danger" style={{ flex:1 }} disabled={busy || !rejectReason.trim()}
+                        onClick={async () => { const ok = await runAction(() => sbAdminDecideRefund(r.id, 'rejected', rejectReason.trim())); if (ok) { setRejectingId(null); setRejectReason(''); } }}>
+                        Confirm rejection
+                      </Btn>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display:'flex', gap:6, marginTop:8 }}>
+                    <Btn size="sm" style={{ flex:1, color:C.danger, border:`1.5px solid ${C.danger}`, background:'transparent' }} disabled={busy}
+                      onClick={() => setRejectingId(r.id)}>Reject</Btn>
+                    <Btn size="sm" variant="primary" style={{ flex:1 }} disabled={busy}
+                      onClick={() => confirmThen(<>Approve this ${Number(r.amount_requested).toFixed(2)} refund request?</>, () => sbAdminDecideRefund(r.id, 'approved'), false)}>Approve</Btn>
+                  </div>
+                )
               )}
               {['approved','processing'].includes(r.status) && can('payments.confirm') && (
                 recordingRefundId === r.id ? (
@@ -2740,6 +3778,25 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
           ))}
         </AdminCard>
       </div>
+
+      <div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, marginBottom:8 }}>Seller commission</div>
+        <AdminCard padded={false}>
+          {commissions.length === 0 ? <AdminEmptyRow text="No commission entries yet — created automatically once a payment is confirmed." /> : commissions.map((c, i) => (
+            <div key={c.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:600, color:C.ink }}>{c.shops?.name || 'Seller'} · {c.entry_type === 'refund_reversal' ? 'Refund reversal' : 'Charge'}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Gross ${Number(c.gross_amount).toFixed(2)} · Rate {(Number(c.commission_rate) * 100).toFixed(0)}% · {new Date(c.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</div>
+              </div>
+              <div style={{ textAlign:'right' }}>
+                <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:700, color: Number(c.commission_amount) < 0 ? C.danger : C.ink }}>{Number(c.commission_amount) < 0 ? '-' : ''}${Math.abs(Number(c.commission_amount)).toFixed(2)}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>commission</div>
+              </div>
+              <StatusPill tone={c.status === 'confirmed' ? 'success' : 'warning'}>{c.status}</StatusPill>
+            </div>
+          ))}
+        </AdminCard>
+      </div>
     </div>
   );
 }
@@ -2753,8 +3810,9 @@ function AdminOrderDetail({ orderId, accessCtx, onBack, onStatusChange }) {
 const SHIPMENT_STATUS_TONE = { pending:'mute', processing:'primary', shipped:'info', in_transit:'info', delivered:'success', failed:'danger', returned:'danger', cancelled:'mute' };
 const SHIPMENT_STATUSES = ['pending','processing','shipped','in_transit','delivered','failed','returned','cancelled'];
 
-function AdminShippingSection({ accessCtx }) {
+function AdminShippingSection({ accessCtx, onViewOrder }) {
   const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const canView = can('shipping.view') || can('shipping.manage');
   const [result, setResult] = React.useState({ shipments:[], totalShipments:0, totalPages:0, currentPage:1 });
   const [loading, setLoading] = React.useState(true);
   const [page, setPage] = React.useState(1);
@@ -2764,15 +3822,25 @@ function AdminShippingSection({ accessCtx }) {
   const [carrierInput, setCarrierInput] = React.useState('');
   const [carrier, setCarrier] = React.useState('');
   const [exceptionsOnly, setExceptionsOnly] = React.useState(false);
+  const [carriers, setCarriers] = React.useState([]);
+  const [detailShipment, setDetailShipment] = React.useState(null);
   const [overrideShipment, setOverrideShipment] = React.useState(null);
   const [toast, setToast] = React.useState(null);
 
   const load = React.useCallback(() => {
+    if (!canView) { setLoading(false); return; }
     setLoading(true);
     sbAdminGetShipments({ page, limit:PAGE_SIZE, status, search, carrier, exceptionsOnly }).then(r => { setResult(r); setLoading(false); });
-  }, [page, status, search, carrier, exceptionsOnly]);
+  }, [page, status, search, carrier, exceptionsOnly, canView]);
 
   React.useEffect(() => { load(); }, [load]);
+
+  // Real carrier catalog (shipping_carriers) instead of free text, so the
+  // filter and the override form can never drift into inconsistent spellings
+  // of the same carrier. If the table has no rows yet, both fall back to a
+  // plain text field rather than rendering a dropdown with nothing in it —
+  // never fabricated carrier names.
+  React.useEffect(() => { if (canView) sbAdminGetCarriersList().then(setCarriers); }, [canView]);
 
   React.useEffect(() => {
     const t = setTimeout(() => { setPage(1); setSearch(searchInput); }, 350);
@@ -2782,6 +3850,19 @@ function AdminShippingSection({ accessCtx }) {
     const t = setTimeout(() => { setPage(1); setCarrier(carrierInput); }, 350);
     return () => clearTimeout(t);
   }, [carrierInput]);
+
+  if (!canView) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+        <SectionTitle title="Shipping" />
+        <AdminCard style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:'32px 20px', textAlign:'center' }}>
+          <Icon name="lock" size={22} color={C.mute} />
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink }}>You don't have access to Shipping</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute, maxWidth:360 }}>This section requires the <strong>shipping.view</strong> or <strong>shipping.manage</strong> permission. Ask an admin to grant it under Staff → Roles.</div>
+        </AdminCard>
+      </div>
+    );
+  }
 
   const { shipments, totalShipments, totalPages } = result;
 
@@ -2795,8 +3876,16 @@ function AdminShippingSection({ accessCtx }) {
           <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Order ID, shipment ID or tracking number…"
             style={{ width:'100%', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px 9px 34px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
         </div>
-        <input value={carrierInput} onChange={e => setCarrierInput(e.target.value)} placeholder="Carrier…"
-          style={{ flex:'0 1 160px', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        {carriers.length > 0 ? (
+          <select value={carrier} onChange={e => { setCarrier(e.target.value); setCarrierInput(e.target.value); setPage(1); }}
+            style={{ flex:'0 1 170px', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }}>
+            <option value="">All carriers</option>
+            {carriers.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        ) : (
+          <input value={carrierInput} onChange={e => setCarrierInput(e.target.value)} placeholder="Carrier…"
+            style={{ flex:'0 1 160px', border:`1.5px solid ${C.hairline}`, borderRadius:10, padding:'9px 12px', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, background:C.white }} />
+        )}
         <button onClick={() => { setExceptionsOnly(v => !v); setPage(1); }} style={{
           border: exceptionsOnly ? 'none' : `1.5px solid ${C.hairline}`, borderRadius:9999, padding:'8px 14px', cursor:'pointer',
           background: exceptionsOnly ? C.danger : C.white, color: exceptionsOnly ? '#fff' : C.ink,
@@ -2824,7 +3913,16 @@ function AdminShippingSection({ accessCtx }) {
               <tr><td colSpan={7}><AdminEmptyRow text="No shipments match these filters" /></td></tr>
             ) : shipments.map(s => (
               <tr key={s.id}>
-                <Td style={{ fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>#{s.order_id.slice(0,8)}</Td>
+                <Td>
+                  {onViewOrder ? (
+                    <button onClick={() => onViewOrder(s.order_id)} title="Open this order in Orders"
+                      style={{ border:'none', background:'none', cursor:'pointer', padding:0, fontWeight:700, fontFamily:"'JetBrains Mono',monospace", fontSize:13, color:C.primary, textDecoration:'underline' }}>
+                      #{s.order_id.slice(0,8)}
+                    </button>
+                  ) : (
+                    <span style={{ fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>#{s.order_id.slice(0,8)}</span>
+                  )}
+                </Td>
                 <Td>
                   <div style={{ fontWeight:600 }}>{s.profiles?.full_name || 'Seller'}</div>
                   <div style={{ fontSize:11, color:C.mute }}>{s.shops?.name || ''}</div>
@@ -2841,11 +3939,16 @@ function AdminShippingSection({ accessCtx }) {
                 <Td><StatusPill tone={SHIPMENT_STATUS_TONE[s.status] || 'mute'}>{s.status.replace('_',' ')}</StatusPill></Td>
                 <Td align="right" style={{ fontFamily:"'JetBrains Mono',monospace" }}>${(s.shipping_fee ?? 0).toFixed(2)}</Td>
                 <Td align="right">
-                  {can('shipping.manage') && (
-                    <button onClick={() => setOverrideShipment(s)} title="Override" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                      <Icon name="edit" size={14} color={C.mute} />
+                  <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
+                    <button onClick={() => setDetailShipment(s)} title="View details" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Icon name="eye" size={14} color={C.mute} />
                     </button>
-                  )}
+                    {can('shipping.manage') && (
+                      <button onClick={() => setOverrideShipment(s)} title="Correct this shipment" style={{ border:`1px solid ${C.hairline}`, background:C.white, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        <Icon name="edit" size={14} color={C.mute} />
+                      </button>
+                    )}
+                  </div>
                 </Td>
               </tr>
             ))}
@@ -2861,11 +3964,22 @@ function AdminShippingSection({ accessCtx }) {
         </div>
       )}
 
+      {detailShipment && (
+        <AdminShipmentDetail
+          shipment={detailShipment}
+          canManage={can('shipping.manage')}
+          onClose={() => setDetailShipment(null)}
+          onViewOrder={onViewOrder}
+          onCorrect={() => { setOverrideShipment(detailShipment); setDetailShipment(null); }}
+        />
+      )}
+
       {overrideShipment && (
         <AdminShipmentOverrideModal
           shipment={overrideShipment}
+          carriers={carriers}
           onClose={() => setOverrideShipment(null)}
-          onDone={() => { setOverrideShipment(null); load(); }}
+          onDone={() => { setOverrideShipment(null); setToast({ type:'success', message:'Shipment updated.' }); load(); }}
           onLog={(detail) => logAdminAction('Overrode shipment', detail, 'shipments', overrideShipment.id)}
         />
       )}
@@ -2874,29 +3988,131 @@ function AdminShippingSection({ accessCtx }) {
   );
 }
 
-function AdminShipmentOverrideModal({ shipment, onClose, onDone, onLog }) {
+// Read-only: lets the admin inspect a shipment (items, tracking, full
+// shipment_status_history timeline) without entering the correction form —
+// "Correct this shipment" is one explicit extra click away, never implicit.
+function AdminShipmentDetail({ shipment, canManage, onClose, onViewOrder, onCorrect }) {
+  const s = shipment;
+  const history = s.shipment_status_history ?? [];
+  const HISTORY_SOURCE_LABEL = { seller:'Seller update', admin_override:'Admin correction', system:'System', carrier_api:'Carrier' };
+
+  return (
+    <Modal open title="Shipment details" onClose={onClose}>
+      <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+          <div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>Order</div>
+            {onViewOrder ? (
+              <button onClick={() => { onViewOrder(s.order_id); onClose(); }} style={{ border:'none', background:'none', cursor:'pointer', padding:0, fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700, color:C.primary, textDecoration:'underline' }}>
+                #{s.order_id.slice(0,8)}
+              </button>
+            ) : (
+              <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700, color:C.ink }}>#{s.order_id.slice(0,8)}</div>
+            )}
+          </div>
+          <StatusPill tone={SHIPMENT_STATUS_TONE[s.status] || 'mute'}>{s.status.replace('_',' ')}</StatusPill>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>Seller</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13.5, fontWeight:600, color:C.ink }}>{s.profiles?.full_name || 'Seller'} {s.shops?.name ? `· ${s.shops.name}` : ''}</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{s.profiles?.email || ''}</div>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>Items</div>
+          {(s.order_items ?? []).length === 0 ? (
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>—</div>
+          ) : (s.order_items ?? []).map(it => (
+            <div key={it.id} style={{ display:'flex', justifyContent:'space-between', fontFamily:"'Inter',sans-serif", fontSize:13 }}>
+              <span style={{ color:C.ink }}>{it.title} <span style={{ color:C.mute }}>×{it.quantity}</span></span>
+              <span style={{ fontFamily:"'JetBrains Mono',monospace", color:C.ink }}>${Number(it.unit_price ?? 0).toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, background:C.paper, borderRadius:12, padding:12 }}>
+          <div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Carrier</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{s.carrier || '—'}</div>
+          </div>
+          <div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Tracking number</div>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:600, color:C.ink }}>{s.tracking_number || '—'}</div>
+          </div>
+          <div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Estimated delivery</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{s.estimated_delivery ? new Date(s.estimated_delivery).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' }) : '—'}</div>
+          </div>
+          <div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>Shipping fee</div>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:600, color:C.ink }}>${(s.shipping_fee ?? 0).toFixed(2)}</div>
+          </div>
+        </div>
+        {s.failure_reason && (
+          <div style={{ background:'#FDEDED', borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>Issue: {s.failure_reason}</div>
+        )}
+
+        <div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, marginBottom:6 }}>History ({history.length})</div>
+          {history.length === 0 ? (
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No recorded status changes yet.</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:220, overflowY:'auto' }}>
+              {history.slice().reverse().map(h => (
+                <div key={h.id} style={{ borderLeft:`2px solid ${h.source === 'admin_override' ? C.warning : C.hairline}`, paddingLeft:10 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700, color:C.ink, textTransform:'capitalize' }}>{h.status.replace('_',' ')}</span>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{new Date(h.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+                  </div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{HISTORY_SOURCE_LABEL[h.source] || h.source}{h.note ? ` — ${h.note}` : ''}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {canManage && <Btn wide onClick={onCorrect}>Correct this shipment</Btn>}
+      </div>
+    </Modal>
+  );
+}
+
+function AdminShipmentOverrideModal({ shipment, carriers, onClose, onDone, onLog }) {
+  const knownCarriers = React.useMemo(() => {
+    const list = carriers || [];
+    return shipment.carrier && !list.includes(shipment.carrier) ? [shipment.carrier, ...list] : list;
+  }, [carriers, shipment.carrier]);
   const [status, setStatus] = React.useState(shipment.status);
   const [carrier, setCarrier] = React.useState(shipment.carrier || '');
+  const [useOtherCarrier, setUseOtherCarrier] = React.useState(knownCarriers.length === 0);
   const [trackingNumber, setTrackingNumber] = React.useState(shipment.tracking_number || '');
+  const [estimatedDelivery, setEstimatedDelivery] = React.useState(shipment.estimated_delivery || '');
+  const [failureReason, setFailureReason] = React.useState(shipment.failure_reason || '');
   const [note, setNote] = React.useState('');
+  const [confirming, setConfirming] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
 
   async function submit() {
-    if (!note.trim()) { setError('A note explaining this correction is required.'); return; }
     setSaving(true);
     setError('');
-    const { error: err } = await sbAdminOverrideShipment(shipment.id, { status, carrier: carrier || null, trackingNumber: trackingNumber || null }, note.trim());
+    const { error: err } = await sbAdminOverrideShipment(shipment.id, {
+      status, carrier: carrier || null, trackingNumber: trackingNumber || null, estimatedDelivery: estimatedDelivery || null,
+      failureReason: status === 'failed' ? (failureReason.trim() || null) : null,
+    }, note.trim());
     setSaving(false);
     if (err) { setError(err.message || 'Could not apply this override.'); return; }
     onLog(`#${shipment.order_id.slice(0,8)} → ${status} (${note.trim()})`);
     onDone();
   }
 
+  const changed = status !== shipment.status || carrier !== (shipment.carrier || '') || trackingNumber !== (shipment.tracking_number || '') || estimatedDelivery !== (shipment.estimated_delivery || '');
+
   return (
-    <Modal open title="Override shipment" onClose={onClose}>
+    <Modal open title="Correct shipment" onClose={onClose}>
       <div style={{ marginBottom:14, fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>
-        This is a correction tool, not a routine edit — every override is written to this shipment's permanent history with your note attached.
+        This is a correction tool, not a routine edit — every override is written to this shipment's permanent history with your note attached, and the buyer may be notified if the status actually changes.
       </div>
       <AdminField label="Status">
         <select value={status} onChange={e => setStatus(e.target.value)} style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5 }}>
@@ -2904,14 +4120,169 @@ function AdminShipmentOverrideModal({ shipment, onClose, onDone, onLog }) {
         </select>
       </AdminField>
       <div style={{ height:10 }} />
-      <AdminField label="Carrier"><AdminTextInput value={carrier} onChange={setCarrier} placeholder="e.g. DHL" /></AdminField>
+      <AdminField label="Carrier">
+        {useOtherCarrier || knownCarriers.length === 0 ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <AdminTextInput value={carrier} onChange={setCarrier} placeholder="e.g. DHL" />
+            {knownCarriers.length > 0 && (
+              <button onClick={() => setUseOtherCarrier(false)} style={{ border:'none', background:'none', cursor:'pointer', padding:0, textAlign:'left', fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.primary }}>Choose from the carrier list instead</button>
+            )}
+          </div>
+        ) : (
+          <select value={carrier} onChange={e => { if (e.target.value === '__other__') setUseOtherCarrier(true); else setCarrier(e.target.value); }}
+            style={{ height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5, width:'100%' }}>
+            <option value="">No carrier</option>
+            {knownCarriers.map(c => <option key={c} value={c}>{c}</option>)}
+            <option value="__other__">Other…</option>
+          </select>
+        )}
+      </AdminField>
       <div style={{ height:10 }} />
       <AdminField label="Tracking number"><AdminTextInput value={trackingNumber} onChange={setTrackingNumber} placeholder="Optional" mono /></AdminField>
       <div style={{ height:10 }} />
+      <AdminField label="Estimated delivery">
+        <input type="date" value={estimatedDelivery} onChange={e => setEstimatedDelivery(e.target.value)}
+          style={{ width:'100%', height:40, border:`1.5px solid ${C.hairline}`, borderRadius:9, padding:'0 12px', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:C.ink, background:C.white }} />
+      </AdminField>
+      {status === 'failed' && (
+        <>
+          <div style={{ height:10 }} />
+          <AdminField label="Failure reason">
+            <AdminTextInput value={failureReason} onChange={setFailureReason} placeholder="e.g. Address not found — recipient unreachable" />
+          </AdminField>
+        </>
+      )}
+      <div style={{ height:10 }} />
       <AdminField label="Note (required)"><AdminTextInput value={note} onChange={setNote} placeholder="Why is this being corrected?" /></AdminField>
-      {error && <div style={{ marginTop:10, fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{error}</div>}
-      <Btn wide onClick={submit} disabled={saving} style={{ marginTop:16 }}>{saving ? 'Saving…' : 'Apply override'}</Btn>
+      {error && <div role="alert" style={{ marginTop:10, background:'#FDEDED', borderRadius:10, padding:'8px 12px', fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{error}</div>}
+
+      {confirming ? (
+        <div style={{ marginTop:14, background: changed ? '#FFF6E5' : C.paper, border:`1px solid ${changed ? C.warning : C.hairline}`, borderRadius:12, padding:'12px 14px', display:'flex', flexDirection:'column', gap:10 }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:'#92400E' }}>
+            {changed ? <>Apply this correction — status <strong style={{ textTransform:'capitalize' }}>{status.replace('_',' ')}</strong>, carrier <strong>{carrier || '—'}</strong>, tracking <strong>{trackingNumber || '—'}</strong>? This is written to the shipment's permanent history.</>
+                     : 'No field actually changed — this will only add a note to the history. Continue?'}
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => setConfirming(false)} disabled={saving}>Back</Btn>
+            <Btn size="sm" variant="primary" style={{ flex:1 }} onClick={submit} disabled={saving}>{saving ? 'Applying…' : 'Confirm correction'}</Btn>
+          </div>
+        </div>
+      ) : (
+        <Btn wide onClick={() => { if (!note.trim()) { setError('A note explaining this correction is required.'); return; } setError(''); setConfirming(true); }} disabled={saving} style={{ marginTop:16 }}>
+          Review correction
+        </Btn>
+      )}
     </Modal>
+  );
+}
+
+// ─── NOTIFICATIONS (settings toggles + admin broadcast composer) ──
+const BROADCAST_SEGMENTS = [
+  { key:'all',     label:'All users' },
+  { key:'buyers',  label:'Buyers' },
+  { key:'sellers', label:'Sellers' },
+];
+
+function AdminNotifSection({ accessCtx }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const [, forceTick] = React.useState(0);
+  const [segment, setSegment] = React.useState('all');
+  const [title, setTitle] = React.useState('');
+  const [body, setBody] = React.useState('');
+  const [confirming, setConfirming] = React.useState(false);
+  const [sending, setSending] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [toast, setToast] = React.useState(null);
+
+  function toggleNotif(field, value) { window._NOTIF_SETTINGS = { ...window._NOTIF_SETTINGS, [field]: value }; forceTick(t => t + 1); }
+
+  const canSend = title.trim() && body.trim() && !sending;
+
+  async function handleConfirmSend() {
+    if (!canSend) return;
+    setSending(true); setError('');
+    const { data, error: sendError } = await sbAdminSendBroadcast({ segment, type:'promo', title: title.trim(), body: body.trim() });
+    setSending(false);
+    if (sendError) { setError(sendError.message || 'Could not send this broadcast.'); return; }
+    logAdminAction('Sent broadcast notification', `"${title.trim()}" → ${BROADCAST_SEGMENTS.find(s => s.key === segment)?.label}`, 'notifications', null);
+    setConfirming(false);
+    setToast({ type:'success', message:`Sent to ${data?.recipients ?? 0} recipient${data?.recipients === 1 ? '' : 's'}.` });
+    setTitle(''); setBody('');
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="System Notifications" />
+      <AdminSettingsRows rows={[
+        { type:'toggle', k:'New orders', on:window._NOTIF_SETTINGS.newOrders },
+        { type:'toggle', k:'New sellers', on:window._NOTIF_SETTINGS.newSellers },
+        { type:'toggle', k:'Urgent reports', on:window._NOTIF_SETTINGS.urgentReports },
+        { type:'toggle', k:'Weekly reports', on:window._NOTIF_SETTINGS.weeklyReports },
+        { type:'toggle', k:'Marketing emails', on:window._NOTIF_SETTINGS.marketingEmails },
+      ]} onToggle={(k, v) => {
+        const map = { 'New orders':'newOrders', 'New sellers':'newSellers', 'Urgent reports':'urgentReports', 'Weekly reports':'weeklyReports', 'Marketing emails':'marketingEmails' };
+        toggleNotif(map[k], v);
+      }} />
+
+      {can('notifications.broadcast') && (
+        <>
+          <SectionTitle title="Broadcast" sub="Push + in-app notification to a segment of users" />
+          <AdminCard style={{ display:'flex', flexDirection:'column', gap:12, maxWidth:480 }}>
+            <AdminField label="Recipients">
+              <div style={{ display:'flex', gap:8 }}>
+                {BROADCAST_SEGMENTS.map(s => (
+                  <button key={s.key} onClick={() => setSegment(s.key)} style={{
+                    flex:1, padding:'8px 10px', borderRadius:9, cursor:'pointer',
+                    border:`1.5px solid ${segment === s.key ? C.primary : C.hairline}`,
+                    background: segment === s.key ? C.primarySoft : C.white,
+                    color: segment === s.key ? C.primaryDeep : C.mute,
+                    fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:700,
+                  }}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </AdminField>
+            <AdminField label="Title"><AdminTextInput value={title} onChange={setTitle} placeholder="e.g. Flash sale — 24h only!" /></AdminField>
+            <AdminField label="Message"><AdminTextInput value={body} onChange={setBody} placeholder="e.g. -40% on everything until midnight." /></AdminField>
+
+            {(title || body) && (
+              <div style={{ background:C.paper, borderRadius:12, padding:12 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.mute, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.05em' }}>Preview</div>
+                <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+                  <div style={{ width:32, height:32, borderRadius:9, background:C.primary, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <Icon name="bell" size={15} color="#fff" />
+                  </div>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{title || 'Notification title'}</div>
+                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:2 }}>{body || 'Message body…'}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {error && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{error}</div>}
+
+            {confirming ? (
+              <div style={{ background:'#FFF6E5', border:`1px solid ${C.warning}`, borderRadius:12, padding:'12px 14px', display:'flex', flexDirection:'column', gap:10 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:'#92400E' }}>
+                  Send "<strong>{title.trim()}</strong>" to <strong>{BROADCAST_SEGMENTS.find(s => s.key === segment)?.label}</strong>? This cannot be undone.
+                </div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <Btn size="sm" style={{ flex:1, color:C.mute, border:`1.5px solid ${C.hairline}`, background:'transparent' }} onClick={() => setConfirming(false)} disabled={sending}>Cancel</Btn>
+                  <Btn size="sm" variant="primary" style={{ flex:1 }} onClick={handleConfirmSend} disabled={!canSend}>{sending ? 'Sending…' : 'Confirm & Send'}</Btn>
+                </div>
+              </div>
+            ) : (
+              <Btn variant="primary" size="md" wide onClick={() => setConfirming(true)} disabled={!canSend}>
+                Review &amp; Send Broadcast
+              </Btn>
+            )}
+          </AdminCard>
+        </>
+      )}
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
   );
 }
 
@@ -2920,6 +4291,10 @@ function AdminShellScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
   const isDesktop = useIsDesktop();
   const [section, setSection] = React.useState(params.section || 'overview');
+  // Lets Shipping's "#orderId" link jump straight to that order's own detail
+  // page inside Orders, instead of just switching tabs to the generic list.
+  const [ordersDeepLinkId, setOrdersDeepLinkId] = React.useState(null);
+  function goToOrder(orderId) { setOrdersDeepLinkId(orderId); setSection('orders'); }
   const [adminStats, setAdminStats] = React.useState(null);
   const [remoteUsers, setRemoteUsers] = React.useState(null);
   const [userDetail, setUserDetail] = React.useState(null);
@@ -3019,19 +4394,6 @@ function AdminShellScreen({ params = {} }) {
     forceTick(t => t + 1);
   }
 
-  // ── Inventory / Flash deals ──
-  function updateStock(id, value) {
-    const p = window.PRODUCTS.find(p => p.id === id);
-    if (p) p.stock = Math.max(0, parseInt(value) || 0);
-    forceTick(t => t + 1);
-  }
-  function toggleFlash(id) {
-    const p = window.PRODUCTS.find(p => p.id === id);
-    if (p) p.isFlash = !p.isFlash;
-    logAdminAction('Toggled flash deal', p?.title || '');
-    forceTick(t => t + 1);
-  }
-
   // ── Announcement / Homepage / Shop-by-category ──
   function saveAnnouncement(updates) { window._ANNOUNCEMENT = { ...window._ANNOUNCEMENT, ...updates }; logAdminAction('Updated announcement bar', updates.text ?? ''); forceTick(t => t + 1); }
   function toggleHomeSection(key, val) { window._HOME_SECTIONS = { ...window._HOME_SECTIONS, [key]: val }; forceTick(t => t + 1); }
@@ -3042,8 +4404,7 @@ function AdminShellScreen({ params = {} }) {
   // ── Rewards ──
   function saveRewards(field, value) { window._REWARDS_CONFIG = { ...window._REWARDS_CONFIG, [field]: value }; forceTick(t => t + 1); }
 
-  // ── Notifications / Roles / Security / Platform Settings toggles ──
-  function toggleNotif(field, value) { window._NOTIF_SETTINGS = { ...window._NOTIF_SETTINGS, [field]: value }; forceTick(t => t + 1); }
+  // ── Roles / Security / Platform Settings toggles ──
   function toggleSecurity(field, value) { window._SECURITY_SETTINGS = { ...window._SECURITY_SETTINGS, [field]: value }; logAdminAction('Changed security setting', `${field} → ${value}`); forceTick(t => t + 1); }
   function togglePlatformSetting(field, value) { window._PLATFORM_SETTINGS = { ...window._PLATFORM_SETTINGS, [field]: value }; logAdminAction('Changed platform setting', `${field} → ${value}`); forceTick(t => t + 1); }
 
@@ -3053,52 +4414,18 @@ function AdminShellScreen({ params = {} }) {
     switch (section) {
       case 'overview': return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={window._ADMIN_REVIEWS} kycCount={adminStats?.pendingKyc ?? 0} />;
 
-      case 'orders': return <AdminOrdersSection accessCtx={accessCtx} />;
-      case 'shipping': return <AdminShippingSection accessCtx={accessCtx} />;
+      case 'orders': return <AdminOrdersSection accessCtx={accessCtx} initialDetailId={ordersDeepLinkId} onConsumeInitialDetailId={() => setOrdersDeepLinkId(null)} />;
+      case 'shipping': return <AdminShippingSection accessCtx={accessCtx} onViewOrder={goToOrder} />;
 
-      case 'products': return <AdminProductsSection />;
+      case 'products': return <AdminProductsSection accessCtx={accessCtx} />;
 
       case 'categories': return <AdminCategoriesSection />;
 
-      case 'brands': return <AdminBrandsSection />;
+      case 'brands': return <AdminBrandsSection accessCtx={accessCtx} />;
 
-      case 'inventory': return (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Inventory" sub="Stock levels across all products" />
-          <AdminCard padded={false} style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
-              <thead><tr><Th>Product</Th><Th align="right">Stock</Th><Th>Status</Th></tr></thead>
-              <tbody>
-                {window.PRODUCTS.map(p => {
-                  const stock = p.stock ?? 50;
-                  return (
-                    <tr key={p.id}>
-                      <Td>{p.title}</Td>
-                      <Td align="right"><input type="number" value={stock} onChange={e => updateStock(p.id, e.target.value)} style={{ width:70, textAlign:'right', border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'4px 8px', fontFamily:"'JetBrains Mono',monospace", fontSize:12.5 }} /></Td>
-                      <Td>{stock === 0 ? <StatusPill tone="danger">out of stock</StatusPill> : stock < 10 ? <StatusPill tone="warning">low stock</StatusPill> : <StatusPill tone="success">in stock</StatusPill>}</Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </AdminCard>
-        </div>
-      );
+      case 'inventory': return <AdminInventorySection accessCtx={accessCtx} />;
 
-      case 'flashdeals': return (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Flash Deals" sub="Toggle which products appear in Flash Deals on Home" />
-          <AdminCard padded={false}>
-            {window.PRODUCTS.map((p, i) => (
-              <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
-                <span style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink }}>{p.title}</span>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:C.mute }}>${Number(p.price).toFixed(2)}</span>
-                <Switch checked={!!p.isFlash} onChange={() => toggleFlash(p.id)} />
-              </div>
-            ))}
-          </AdminCard>
-        </div>
-      );
+      case 'flashdeals': return <AdminFlashDealsSection accessCtx={accessCtx} />;
 
       case 'customers': return userDetail ? (
         <AdminUserDetail user={userDetail} onBack={() => setUserDetail(null)} onSave={handleSaveUserDetail} />
@@ -3288,21 +4615,9 @@ function AdminShellScreen({ params = {} }) {
         );
       }
 
-      case 'notifications': return (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="System Notifications" />
-          <AdminSettingsRows rows={[
-            { type:'toggle', k:'New orders', on:window._NOTIF_SETTINGS.newOrders },
-            { type:'toggle', k:'New sellers', on:window._NOTIF_SETTINGS.newSellers },
-            { type:'toggle', k:'Urgent reports', on:window._NOTIF_SETTINGS.urgentReports },
-            { type:'toggle', k:'Weekly reports', on:window._NOTIF_SETTINGS.weeklyReports },
-            { type:'toggle', k:'Marketing emails', on:window._NOTIF_SETTINGS.marketingEmails },
-          ]} onToggle={(k, v) => {
-            const map = { 'New orders':'newOrders', 'New sellers':'newSellers', 'Urgent reports':'urgentReports', 'Weekly reports':'weeklyReports', 'Marketing emails':'marketingEmails' };
-            toggleNotif(map[k], v);
-          }} />
-        </div>
-      );
+      case 'notifications': return <AdminNotifSection accessCtx={accessCtx} />;
+
+      case 'trustsafety': return <AdminTrustSafetySection accessCtx={accessCtx} />;
 
       case 'roles': return <AdminStaffSection initialTab="roles" />;
 
@@ -3381,24 +4696,7 @@ function AdminShellScreen({ params = {} }) {
         </div>
       );
 
-      case 'backup': return (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Backup" sub="Export the current session's catalog & content as JSON" />
-          <AdminCard style={{ maxWidth:480, display:'flex', flexDirection:'column', gap:10 }}>
-            <Btn variant="primary" onClick={async () => {
-              const { categories } = await sbAdminGetCategories({ limit: 1000 });
-              const payload = { products: window.PRODUCTS, categories, exportedAt: new Date().toISOString() };
-              const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url; a.download = `clorivo-backup-${Date.now()}.json`; a.click();
-              URL.revokeObjectURL(url);
-              logAdminAction('Exported backup', `${window.PRODUCTS.length} products, ${categories.length} categories`);
-            }}>Download backup (.json)</Btn>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>Includes products and categories currently in this session.</span>
-          </AdminCard>
-        </div>
-      );
+      case 'backup': return <AdminBackupSection />;
 
       case 'health': {
         const supaConfigured = !!window._supabase;
