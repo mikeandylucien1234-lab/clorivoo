@@ -26,7 +26,7 @@ function PublicShopScreen() {
   const [totalCount, setTotalCount] = React.useState(0); // real server-side total for the current filters
   const [loadState, setLoadState]   = React.useState('loading'); // loading | error | success
   const [loadingMore, setLoadingMore]   = React.useState(false);
-  const [wishlist, setWishlist]     = React.useState((window._WISHLIST || []).map(w => w.id));
+  const [wishlist, setWishlist]     = React.useState([]);
   const [toast, setToast]           = React.useState(null);
   const [userId, setUserId]         = React.useState(null);
   const categoryTreeRef = React.useRef([]);
@@ -35,7 +35,7 @@ function PublicShopScreen() {
   React.useEffect(() => {
     sbGetCategoryTree().then(tree => { categoryTreeRef.current = tree; setTopCategories(tree.filter(c => c.show_in_menu !== false)); });
     sbGetActiveBrands().then(setBrands);
-    sbGetUser().then(u => setUserId(u?.id || null));
+    sbGetUser().then(u => { setUserId(u?.id || null); if (u?.id) sbGetWishlist(u.id).then(items => setWishlist(items.map(i => i.id))); });
   }, []);
 
   // Subcategory chips for whichever top category is selected — real children
@@ -96,15 +96,18 @@ function PublicShopScreen() {
     }).catch(() => setLoadingMore(false));
   }
 
-  function toggleWish(p) {
+  async function toggleWish(p) {
+    if (!userId) { setToast({ type:'error', message:'Please sign in to use your wishlist.' }); return; }
     const already = wishlist.includes(p.id);
     if (already) {
-      window._WISHLIST = (window._WISHLIST || []).filter(w => w.id !== p.id);
       setWishlist(prev => prev.filter(id => id !== p.id));
+      const { error } = await sbRemoveFromWishlist(userId, p.id);
+      if (error) { setWishlist(prev => [...prev, p.id]); setToast({ type:'error', message:'Could not remove from wishlist.' }); return; }
       setToast({ type:'success', message:'Removed from wishlist' });
     } else {
-      window._WISHLIST = [...(window._WISHLIST || []), { id:p.id, name:p.title, price:p.price, oldPrice:p.oldPrice, discount:p.discount, category:p.categories?.name, brand:p.brands?.name, inStock:(p.stock ?? 1) > 0, addedAt:new Date().toISOString(), popularity:p.rating?Math.round(p.rating*20):50, tint:p.tint, alertOn:false }];
       setWishlist(prev => [...prev, p.id]);
+      const { error } = await sbAddToWishlist(userId, p.id);
+      if (error) { setWishlist(prev => prev.filter(id => id !== p.id)); setToast({ type:'error', message:'Could not add to wishlist.' }); return; }
       setToast({ type:'success', message:'Added to wishlist' });
     }
   }

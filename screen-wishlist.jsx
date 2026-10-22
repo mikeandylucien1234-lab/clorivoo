@@ -2,7 +2,6 @@
 // Pages: WishlistScreen, WishlistSharedScreen, WishlistNotificationsScreen, WishlistAlertsScreen
 // Shared: WishlistQuickActionsSheet
 
-window._WISHLIST = window._WISHLIST || [];
 window._PRICE_ALERT_LOG = window._PRICE_ALERT_LOG || [];
 
 const SORTS = [
@@ -192,8 +191,9 @@ function WishlistTile({ item, onOpen, onMore, onRemove, onAddToCart }) {
 function WishlistScreen() {
   const { navigate } = useNav();
   const isDesktop = useIsDesktop();
-  const [items, setItems] = React.useState(window._WISHLIST);
+  const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
+  const [userId, setUserId] = React.useState(null);
   const [view, setView] = React.useState(window._WISHLIST_VIEW || 'list');
   const [sortKey, setSortKey] = React.useState('newest');
   const [sortOpen, setSortOpen] = React.useState(false);
@@ -201,17 +201,19 @@ function WishlistScreen() {
   const [filters, setFilters] = React.useState({ category:'all', maxPrice:2000, brand:'all', inStockOnly:false });
   const [activeSheet, setActiveSheet] = React.useState(null);
   const [toast, setToast] = React.useState(null);
-  const loggedIn = false; // demo: sync banner shown for guests
+  const loggedIn = !!userId;
 
-  React.useEffect(() => { window._WISHLIST = items; }, [items]);
   React.useEffect(() => { window._WISHLIST_VIEW = view; }, [view]);
   React.useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(t);
+    sbGetUser().then(u => {
+      setUserId(u?.id || null);
+      if (!u?.id) { setItems([]); setLoading(false); return; }
+      sbGetWishlist(u.id).then(rows => { setItems(rows); setLoading(false); });
+    });
   }, []);
 
-  const categories = ['all', ...new Set(window._WISHLIST.map(i => i.category))];
-  const brands = ['all', ...new Set(window._WISHLIST.map(i => i.brand))];
+  const categories = ['all', ...new Set(items.map(i => i.category))];
+  const brands = ['all', ...new Set(items.map(i => i.brand))];
 
   let visible = items.filter(i =>
     (filters.category === 'all' || i.category === filters.category) &&
@@ -221,9 +223,10 @@ function WishlistScreen() {
   );
   visible = applySort(visible, sortKey);
 
-  function removeItem(item) {
+  async function removeItem(item) {
     setItems(prev => prev.filter(i => i.id !== item.id));
     setToast({ type:'success', message:`${item.name} removed from wishlist` });
+    if (userId) await sbRemoveFromWishlist(userId, item.id);
   }
   function addToCart(item) {
     (window.CART_ITEMS || (window.CART_ITEMS = [])).push({ product:{ id:item.id, title:item.name, price:item.price }, qty:1, variant:item.variant });
@@ -492,7 +495,8 @@ function WishlistSharedScreen() {
   const isDesktop = useIsDesktop();
   const [isPublic, setIsPublic] = React.useState(true);
   const [toast, setToast] = React.useState(null);
-  const items = window._WISHLIST;
+  const [items, setItems] = React.useState([]);
+  React.useEffect(() => { sbGetUser().then(u => { if (u?.id) sbGetWishlist(u.id).then(setItems); }); }, []);
   const shareUrl = 'clorivo.com/w/johndoe-2024';
 
   function copyLink() {
@@ -631,13 +635,13 @@ function WishlistNotificationsScreen() {
 function WishlistAlertsScreen() {
   const { navigate, goBack } = useNav();
   const isDesktop = useIsDesktop();
-  const [items, setItems] = React.useState(window._WISHLIST);
+  const [items, setItems] = React.useState([]);
   const [pushOn, setPushOn] = React.useState(true);
   const [emailOn, setEmailOn] = React.useState(true);
   const [backInStockOn, setBackInStockOn] = React.useState(true);
   const [toast, setToast] = React.useState(null);
 
-  React.useEffect(() => { window._WISHLIST = items; }, [items]);
+  React.useEffect(() => { sbGetUser().then(u => { if (u?.id) sbGetWishlist(u.id).then(setItems); }); }, []);
 
   function toggleItemAlert(id) {
     setItems(prev => prev.map(i => i.id === id ? { ...i, alertOn: !i.alertOn } : i));

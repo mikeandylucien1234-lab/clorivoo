@@ -24,6 +24,7 @@ function ProfileScreen() {
   // confirmed — a buyer never briefly sees "Seller Dashboard" or "Admin
   // Console" during the fetch.
   const [accessCtx, setAccessCtx] = React.useState(null);
+  const [wishlistCount, setWishlistCount] = React.useState(0);
 
   React.useEffect(() => {
     const id = setInterval(() => setProfile({ ...window._PROFILE }), 500);
@@ -32,6 +33,7 @@ function ProfileScreen() {
 
   React.useEffect(() => {
     sbGetMyAccessContext().then(ctx => setAccessCtx(ctx));
+    sbGetUser().then(u => { if (u?.id) sbGetWishlistCount(u.id).then(setWishlistCount); });
   }, []);
 
   const orders = window.MOCK_ORDERS || [];
@@ -44,7 +46,6 @@ function ProfileScreen() {
     cancelled: orders.filter(o => o.status === 'cancelled').length,
   };
   const walletBalance = window._WALLET_BALANCE ?? 45.50;
-  const wishlistCount = (window._WISHLIST || []).length;
 
   const stats = [
     { icon:'archive',     value: String(orderCounts.all), label:'Orders' },

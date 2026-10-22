@@ -1796,6 +1796,35 @@ async function sbAdminDeleteCoupon(couponId) {
   return { error };
 }
 
+// ─── WISHLIST ──────────────────────────────────────────────────────
+async function sbGetWishlist(userId) {
+  if (!_sb || !userId) return [];
+  const { data, error } = await _sb.from('wishlists')
+    .select('id, created_at, products(*, categories(name), brands(name), shops(name))')
+    .eq('user_id', userId).order('created_at', { ascending: false });
+  if (error) return [];
+  return (data ?? []).filter(row => row.products).map((row, idx) => {
+    const card = _toCard(row.products, idx);
+    return { ...card, name: card.title, popularity: card.rating ? Math.round(card.rating * 20) : 50, wishlistId: row.id, addedAt: row.created_at, alertOn: false };
+  });
+}
+async function sbAddToWishlist(userId, productId) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { error } = await _sb.from('wishlists').insert({ user_id: userId, product_id: productId });
+  if (error && error.code === '23505') return { error: null };
+  return { error };
+}
+async function sbRemoveFromWishlist(userId, productId) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { error } = await _sb.from('wishlists').delete().eq('user_id', userId).eq('product_id', productId);
+  return { error };
+}
+async function sbGetWishlistCount(userId) {
+  if (!_sb || !userId) return 0;
+  const { count } = await _sb.from('wishlists').select('id', { count: 'exact', head: true }).eq('user_id', userId);
+  return count ?? 0;
+}
+
 // ─── ADMIN — PLATFORM SETTINGS (persistent key/value table) ───────────
 async function sbAdminGetPlatformSettings() {
   if (!_sb) return {};
@@ -2551,6 +2580,7 @@ Object.assign(window, {
   sbAdminGetReviews, sbAdminModerateReview, sbAdminGetSupportTickets, sbAdminUpdateSupportTicket,
   sbAdminGetCoupons, sbAdminCreateCoupon, sbAdminUpdateCoupon, sbAdminDeleteCoupon,
   sbAdminGetPlatformSettings, sbAdminSetPlatformSetting, sbAdminGetCommissionRate, sbAdminSetCommissionRate,
+  sbGetWishlist, sbAddToWishlist, sbRemoveFromWishlist, sbGetWishlistCount,
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
   sbGetSellerShipments, sbSellerCreateShipment, sbSellerUpdateShipment, sbSellerReportDeliveryFailure,

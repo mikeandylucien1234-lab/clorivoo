@@ -154,11 +154,11 @@ function SearchScreen({ params = {} }) {
   const [filters, setFilters] = React.useState({ brand:'all', maxPrice:1500, inStockOnly:false, discountOnly:false, minRating:0 });
   const [visibleCount, setVisibleCount] = React.useState(6);
   const [loadingMore, setLoadingMore] = React.useState(false);
-  const [wishlist, setWishlist] = React.useState((window._WISHLIST || []).map(w => w.id));
+  const [wishlist, setWishlist] = React.useState([]);
   const [toast, setToast] = React.useState(null);
   const [quickViewProduct, setQuickViewProduct] = React.useState(null);
   const [userId, setUserId] = React.useState(null);
-  React.useEffect(() => { sbGetUser().then(u => setUserId(u?.id || null)); }, []);
+  React.useEffect(() => { sbGetUser().then(u => { setUserId(u?.id || null); if (u?.id) sbGetWishlist(u.id).then(items => setWishlist(items.map(i => i.id))); }); }, []);
 
   React.useEffect(() => { window._RECENT_SEARCHES = recents; }, [recents]);
   React.useEffect(() => { inputRef.current?.focus(); }, []);
@@ -201,15 +201,18 @@ function SearchScreen({ params = {} }) {
   function removeRecent(term) {
     setRecents(prev => prev.filter(r => r !== term));
   }
-  function toggleWish(p) {
+  async function toggleWish(p) {
+    if (!userId) { setToast({ type:'error', message:'Please sign in to use your wishlist.' }); return; }
     const already = wishlist.includes(p.id);
     if (already) {
-      window._WISHLIST = (window._WISHLIST || []).filter(w => w.id !== p.id);
       setWishlist(prev => prev.filter(id => id !== p.id));
+      const { error } = await sbRemoveFromWishlist(userId, p.id);
+      if (error) { setWishlist(prev => [...prev, p.id]); setToast({ type:'error', message:'Could not remove from wishlist.' }); return; }
       setToast({ type:'success', message:'Removed from wishlist' });
     } else {
-      window._WISHLIST = [...(window._WISHLIST || []), { id:p.id, name:p.title, variant:p.variant||'', price:p.price, oldPrice:p.oldPrice, discount:p.discount, category:p.category, brand:p.brand, inStock:p.inStock, addedAt:new Date().toISOString(), popularity:p.rating?Math.round(p.rating*20):50, tint:p.tint, alertOn:false }];
       setWishlist(prev => [...prev, p.id]);
+      const { error } = await sbAddToWishlist(userId, p.id);
+      if (error) { setWishlist(prev => prev.filter(id => id !== p.id)); setToast({ type:'error', message:'Could not add to wishlist.' }); return; }
       setToast({ type:'success', message:'Added to wishlist' });
     }
   }
