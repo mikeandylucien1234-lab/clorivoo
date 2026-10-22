@@ -1746,6 +1746,56 @@ async function sbAdminGetModerationLog({ limit = 50 } = {}) {
   return data ?? [];
 }
 
+// ─── ADMIN — REVIEWS / SUPPORT TICKETS / COUPONS ──────────────────────
+async function sbAdminGetReviews(status = 'all') {
+  if (!_sb) return [];
+  const { data, error } = await _sb.rpc('admin_get_reviews', { p_status: status });
+  if (error) return [];
+  return data ?? [];
+}
+async function sbAdminModerateReview(reviewId, hidden) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('admin_moderate_review', { p_review_id: reviewId, p_hidden: hidden });
+  return { data, error };
+}
+async function sbAdminGetSupportTickets(status = 'all') {
+  if (!_sb) return [];
+  const { data, error } = await _sb.rpc('admin_get_support_tickets', { p_status: status });
+  if (error) return [];
+  return data ?? [];
+}
+async function sbAdminUpdateSupportTicket(ticketId, { status = null, response = null } = {}) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('admin_update_support_ticket', { p_ticket_id: ticketId, p_status: status, p_response: response });
+  return { data, error };
+}
+async function sbAdminGetCoupons() {
+  if (!_sb) return [];
+  const { data, error } = await _sb.rpc('admin_get_coupons');
+  if (error) return [];
+  return data ?? [];
+}
+async function sbAdminCreateCoupon({ code, discountType, discountValue, expiresAt = null, minOrderAmount = null, usageLimit = null }) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('admin_create_coupon', {
+    p_code: code, p_discount_type: discountType, p_discount_value: discountValue,
+    p_expires_at: expiresAt, p_min_order_amount: minOrderAmount, p_usage_limit: usageLimit,
+  });
+  return { data, error };
+}
+async function sbAdminUpdateCoupon(couponId, { isActive = null, expiresAt = null, discountValue = null } = {}) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('admin_update_coupon', {
+    p_coupon_id: couponId, p_is_active: isActive, p_expires_at: expiresAt, p_discount_value: discountValue,
+  });
+  return { data, error };
+}
+async function sbAdminDeleteCoupon(couponId) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { error } = await _sb.rpc('admin_delete_coupon', { p_coupon_id: couponId });
+  return { error };
+}
+
 // ─── NOTIFICATIONS ───────────────────────────────────────────────
 async function sbGetNotifications(userId) {
   if (!_sb || !userId) return { data: _DEMO_NOTIFICATIONS, error: null };
@@ -2474,6 +2524,8 @@ Object.assign(window, {
   sbReportUser, sbBlockUser, sbUnblockUser, sbGetMyBlockedUsers,
   sbAdminGetTrustSafetyStats, sbAdminGetReports, sbAdminReviewReport,
   sbAdminGetUserViolations, sbAdminApplyViolation, sbAdminGetModerationLog,
+  sbAdminGetReviews, sbAdminModerateReview, sbAdminGetSupportTickets, sbAdminUpdateSupportTicket,
+  sbAdminGetCoupons, sbAdminCreateCoupon, sbAdminUpdateCoupon, sbAdminDeleteCoupon,
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
   sbGetSellerShipments, sbSellerCreateShipment, sbSellerUpdateShipment, sbSellerReportDeliveryFailure,

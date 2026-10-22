@@ -2,8 +2,6 @@
 
 // ─── SHARED ADMIN STATE (session-scoped, mirrors window._PROFILE pattern) ──
 window._ADMIN_AUDIT_LOG   = window._ADMIN_AUDIT_LOG   || [];
-window._COUPONS            = window._COUPONS           || [];
-window._ADMIN_REVIEWS      = window._ADMIN_REVIEWS     || [];
 window._REWARDS_CONFIG     = window._REWARDS_CONFIG    || { pointsPerDollar:1, referralBonus:10, minRedeem:500 };
 window._ANNOUNCEMENT       = window._ANNOUNCEMENT       || { enabled:false, text:'', link:'' };
 window._HOME_SECTIONS      = window._HOME_SECTIONS      || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
@@ -4364,34 +4362,51 @@ function AdminShellScreen({ params = {} }) {
   // superseded there by the real kycCount from sbAdminGetStats())
   const sellersList = [];
 
+  const [toast, setToast] = React.useState(null);
+
   // ── Reviews ──
-  function setReviewStatus(id, status) {
-    window._ADMIN_REVIEWS = window._ADMIN_REVIEWS.map(r => r.id === id ? { ...r, status } : r);
-    logAdminAction(status === 'hidden' ? 'Hid review' : 'Restored review', id);
-    forceTick(t => t + 1);
+  const [reviews, setReviews] = React.useState(null);
+  const loadReviews = React.useCallback(() => { sbAdminGetReviews('all').then(setReviews); }, []);
+  React.useEffect(() => { if (section === 'reviews' || section === 'overview') loadReviews(); }, [section, loadReviews]);
+  async function setReviewStatus(id, hidden) {
+    const { error } = await sbAdminModerateReview(id, hidden);
+    if (error) { setToast({ type:'error', message: error.message || 'Could not update this review.' }); return; }
+    logAdminAction(hidden ? 'Hid review' : 'Restored review', id);
+    loadReviews();
   }
 
   // ── Tickets ──
-  function setTicketStatus(id, status) {
-    window._TICKETS = (window._TICKETS || []).map(t => t.id === id ? { ...t, status } : t);
+  const [tickets, setTickets] = React.useState(null);
+  const loadTickets = React.useCallback(() => { sbAdminGetSupportTickets('all').then(setTickets); }, []);
+  React.useEffect(() => { if (section === 'tickets') loadTickets(); }, [section, loadTickets]);
+  async function setTicketStatus(id, status) {
+    const { error } = await sbAdminUpdateSupportTicket(id, { status });
+    if (error) { setToast({ type:'error', message: error.message || 'Could not update this ticket.' }); return; }
     logAdminAction('Updated ticket status', `${id} → ${status}`);
-    forceTick(t => t + 1);
+    loadTickets();
   }
 
   // ── Coupons ──
-  function addCoupon() {
-    window._COUPONS = [...window._COUPONS, { id:`cp${Date.now()}`, code:'NEWCODE', discount:10, active:true, expiresAt:'' }];
-    logAdminAction('Created coupon', 'NEWCODE');
-    forceTick(t => t + 1);
+  const [coupons, setCoupons] = React.useState(null);
+  const loadCoupons = React.useCallback(() => { sbAdminGetCoupons().then(setCoupons); }, []);
+  React.useEffect(() => { if (section === 'coupons') loadCoupons(); }, [section, loadCoupons]);
+  async function addCoupon() {
+    const { error } = await sbAdminCreateCoupon({ code: `CODE${Date.now().toString().slice(-6)}`, discountType: 'percent', discountValue: 10 });
+    if (error) { setToast({ type:'error', message: error.message || 'Could not create this coupon.' }); return; }
+    logAdminAction('Created coupon', '');
+    loadCoupons();
   }
-  function updateCoupon(id, field, value) {
-    window._COUPONS = window._COUPONS.map(c => c.id === id ? { ...c, [field]: value } : c);
-    forceTick(t => t + 1);
+  async function updateCoupon(id, field, value) {
+    const patch = field === 'discount' ? { discountValue: value } : field === 'active' ? { isActive: value } : field === 'expiresAt' ? { expiresAt: value || null } : {};
+    const { error } = await sbAdminUpdateCoupon(id, patch);
+    if (error) { setToast({ type:'error', message: error.message || 'Could not update this coupon.' }); return; }
+    loadCoupons();
   }
-  function deleteCoupon(id) {
-    window._COUPONS = window._COUPONS.filter(c => c.id !== id);
+  async function deleteCoupon(id) {
+    const { error } = await sbAdminDeleteCoupon(id);
+    if (error) { setToast({ type:'error', message: error.message || 'Could not delete this coupon.' }); return; }
     logAdminAction('Deleted coupon', id);
-    forceTick(t => t + 1);
+    loadCoupons();
   }
 
   // ── Announcement / Homepage / Shop-by-category ──
@@ -4412,7 +4427,7 @@ function AdminShellScreen({ params = {} }) {
 
   function renderSection() {
     switch (section) {
-      case 'overview': return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={window._ADMIN_REVIEWS} kycCount={adminStats?.pendingKyc ?? 0} />;
+      case 'overview': return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={reviews || []} kycCount={adminStats?.pendingKyc ?? 0} />;
 
       case 'orders': return <AdminOrdersSection accessCtx={accessCtx} initialDetailId={ordersDeepLinkId} onConsumeInitialDetailId={() => setOrdersDeepLinkId(null)} />;
       case 'shipping': return <AdminShippingSection accessCtx={accessCtx} onViewOrder={goToOrder} />;
@@ -4463,20 +4478,20 @@ function AdminShellScreen({ params = {} }) {
 
       case 'reviews': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Reviews" sub={`${window._ADMIN_REVIEWS.length} reviews`} />
+          <SectionTitle title="Reviews" sub={reviews === null ? 'Loading…' : `${reviews.length} reviews`} />
           <AdminCard padded={false}>
-            {window._ADMIN_REVIEWS.length === 0 ? <AdminEmptyRow text="No reviews yet." /> : window._ADMIN_REVIEWS.map((r, i) => (
-              <div key={r.id} style={{ padding:'12px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none', opacity: r.status === 'hidden' ? 0.5 : 1 }}>
+            {reviews === null ? <AdminEmptyRow text="Loading…" /> : reviews.length === 0 ? <AdminEmptyRow text="No reviews yet." /> : reviews.map((r, i) => (
+              <div key={r.id} style={{ padding:'12px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none', opacity: r.is_hidden ? 0.5 : 1 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:4 }}>
                   <div>
-                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>{r.author}</span>
-                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}> · {r.product}</span>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>{r.buyer_name}</span>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}> · {r.product_title || 'Unknown product'}</span>
                   </div>
                   <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'#F59E0B' }}>{'★'.repeat(r.rating)}{'☆'.repeat(5-r.rating)}</span>
                 </div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute, marginBottom:8 }}>{r.text}</div>
-                <button onClick={() => setReviewStatus(r.id, r.status === 'hidden' ? 'published' : 'hidden')} style={{ border:`1.5px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'5px 12px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:600, color: r.status === 'hidden' ? C.success : C.danger }}>
-                  {r.status === 'hidden' ? 'Restore' : 'Hide review'}
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute, marginBottom:8 }}>{r.comment}</div>
+                <button onClick={() => setReviewStatus(r.id, !r.is_hidden)} style={{ border:`1.5px solid ${C.hairline}`, background:C.white, borderRadius:8, padding:'5px 12px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:600, color: r.is_hidden ? C.success : C.danger }}>
+                  {r.is_hidden ? 'Restore' : 'Hide review'}
                 </button>
               </div>
             ))}
@@ -4484,27 +4499,28 @@ function AdminShellScreen({ params = {} }) {
         </div>
       );
 
-      case 'tickets': {
-        const tickets = window._TICKETS || [];
-        return (
+      case 'tickets': return (
           <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-            <SectionTitle title="Support Tickets" sub={`${tickets.length} tickets`} />
+            <SectionTitle title="Support Tickets" sub={tickets === null ? 'Loading…' : `${tickets.length} tickets`} />
             <AdminCard padded={false}>
-              {tickets.length === 0 ? <AdminEmptyRow text="No tickets" /> : tickets.map((t, i) => (
-                <div key={t.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{t.subject}</div>
-                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{t.id} · {t.createdAt}</div>
+              {tickets === null ? <AdminEmptyRow text="Loading…" /> : tickets.length === 0 ? <AdminEmptyRow text="No tickets" /> : tickets.map((t, i) => (
+                <div key={t.id} style={{ display:'flex', flexDirection:'column', gap:6, padding:'11px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>{t.subject} <span style={{ color:C.mute, fontWeight:500 }}>— {t.seller_name}</span></div>
+                      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{t.id.slice(0,8)} · {new Date(t.created_at).toLocaleString()} · {t.priority}</div>
+                    </div>
+                    <select value={t.status} onChange={e => setTicketStatus(t.id, e.target.value)} style={{ border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'5px 8px', fontFamily:"'Inter',sans-serif", fontSize:12, color:C.ink, background:C.white }}>
+                      {['open','in_progress','closed'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
+                    </select>
                   </div>
-                  <select value={t.status} onChange={e => setTicketStatus(t.id, e.target.value)} style={{ border:`1.5px solid ${C.hairline}`, borderRadius:8, padding:'5px 8px', fontFamily:"'Inter',sans-serif", fontSize:12, color:C.ink, background:C.white }}>
-                    {['open','in_progress','closed'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
-                  </select>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>{t.message}</div>
+                  {t.response && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.primaryDeep, background:C.primarySoft, borderRadius:8, padding:'8px 10px' }}>Response: {t.response}</div>}
                 </div>
               ))}
             </AdminCard>
           </div>
         );
-      }
 
       case 'rewards': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
@@ -4525,18 +4541,20 @@ function AdminShellScreen({ params = {} }) {
 
       case 'coupons': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Coupons" sub={`${window._COUPONS.length} codes`} action={<Btn variant="primary" size="sm" onClick={addCoupon}>+ New coupon</Btn>} />
+          <SectionTitle title="Coupons" sub={coupons === null ? 'Loading…' : `${coupons.length} codes`} action={<Btn variant="primary" size="sm" onClick={addCoupon}>+ New platform coupon</Btn>} />
           <AdminCard padded={false} style={{ overflowX:'auto' }}>
             <table style={{ width:'100%', borderCollapse:'collapse' }}>
-              <thead><tr><Th>Code</Th><Th align="right">Discount</Th><Th>Expires</Th><Th>Active</Th><Th></Th></tr></thead>
+              <thead><tr><Th>Code</Th><Th>Scope</Th><Th align="right">Discount</Th><Th>Expires</Th><Th>Active</Th><Th></Th></tr></thead>
               <tbody>
-                {window._COUPONS.length === 0 && <tr><td colSpan={5}><AdminEmptyRow text="No coupons yet." /></td></tr>}
-                {window._COUPONS.map(c => (
+                {coupons === null && <tr><td colSpan={6}><AdminEmptyRow text="Loading…" /></td></tr>}
+                {coupons !== null && coupons.length === 0 && <tr><td colSpan={6}><AdminEmptyRow text="No coupons yet." /></td></tr>}
+                {(coupons || []).map(c => (
                   <tr key={c.id}>
-                    <Td><input value={c.code} onChange={e => updateCoupon(c.id,'code',e.target.value.toUpperCase())} style={{ border:'none', outline:'none', background:'transparent', fontFamily:"'JetBrains Mono',monospace", fontSize:12.5, fontWeight:700, color:C.ink }} /></Td>
-                    <Td align="right"><input type="number" value={c.discount} onChange={e => updateCoupon(c.id,'discount',parseInt(e.target.value)||0)} style={{ width:56, textAlign:'right', border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'4px 6px', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }} />%</Td>
-                    <Td><input type="date" value={c.expiresAt} onChange={e => updateCoupon(c.id,'expiresAt',e.target.value)} style={{ border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'4px 6px', fontFamily:"'Inter',sans-serif", fontSize:12 }} /></Td>
-                    <Td><Switch checked={c.active} onChange={v => updateCoupon(c.id,'active',v)} /></Td>
+                    <Td><span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12.5, fontWeight:700, color:C.ink }}>{c.code}</span></Td>
+                    <Td><span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{c.scope === 'platform' ? 'Platform-wide' : (c.shop_name || 'Shop')}</span></Td>
+                    <Td align="right"><input type="number" value={c.discount_value} onChange={e => updateCoupon(c.id,'discount',parseFloat(e.target.value)||0)} style={{ width:56, textAlign:'right', border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'4px 6px', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }} />{c.discount_type === 'percent' ? '%' : '$'}</Td>
+                    <Td><input type="date" value={c.expires_at ? c.expires_at.slice(0,10) : ''} onChange={e => updateCoupon(c.id,'expiresAt',e.target.value ? new Date(e.target.value).toISOString() : null)} style={{ border:`1.5px solid ${C.hairline}`, borderRadius:7, padding:'4px 6px', fontFamily:"'Inter',sans-serif", fontSize:12 }} /></Td>
+                    <Td><Switch checked={c.is_active} onChange={v => updateCoupon(c.id,'active',v)} /></Td>
                     <Td align="right"><button onClick={() => deleteCoupon(c.id)} style={{ border:'none', background:'none', cursor:'pointer' }}><Icon name="trash" size={15} color={C.danger} /></button></Td>
                   </tr>
                 ))}
@@ -4771,7 +4789,7 @@ function AdminShellScreen({ params = {} }) {
         </div>
       );
 
-      default: return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={window._ADMIN_REVIEWS} kycCount={adminStats?.pendingKyc ?? 0} />;
+      default: return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={reviews || []} kycCount={adminStats?.pendingKyc ?? 0} />;
     }
   }
 
@@ -4843,6 +4861,7 @@ function AdminShellScreen({ params = {} }) {
           </div>
         </div>
       </div>
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }
