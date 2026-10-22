@@ -407,3 +407,21 @@ where not exists (
   select 1 from public.scam_filter_patterns p
   where p.category = new_patterns.category and p.pattern = new_patterns.pattern
 );
+
+-- ─── Spelled-out-digit phone bypass fix (found as a known limitation in
+-- the Phase 7 final report, closed in the follow-up verification pass).
+-- 7+ consecutive spelled-out single digits (EN/FR/ES/HT) reads as a
+-- phone number read aloud letter-by-letter. The threshold of 7 keeps
+-- this clear of legitimate size/quantity lists, which rarely chain more
+-- than 2-3 consecutive spelled digits and commonly use words like
+-- "ten"/"twelve" that are intentionally excluded from this list. ──────
+insert into public.scam_filter_patterns (category, language, pattern, description, severity)
+select * from (values
+  ('phone','all','(\m(zero|one|two|three|four|five|six|seven|eight|nine|zewo|youn|de|twa|kat|senk|sis|set|uit|nèf|nef|un|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|une|deux|trois|quatre|cinq|sept|huit|neuf)\M[\s,.\-]*){7,}',
+   '7+ consecutive spelled-out single digits (any of EN/FR/ES/HT) — catches phone numbers spelled in letters to evade the digit-based phone patterns.',
+   'block')
+) as new_patterns(category, language, pattern, description, severity)
+where not exists (
+  select 1 from public.scam_filter_patterns p
+  where p.category = new_patterns.category and p.pattern = new_patterns.pattern
+);
