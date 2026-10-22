@@ -25,6 +25,9 @@ const ADMIN_NAV = [
   { key:'overview', label:'Dashboard', icon:'barChart' },
   { group:'Catalog', items:[
     { key:'orders',     label:'Orders',      icon:'cart' },
+    { key:'payments',   label:'Payments',    icon:'creditCard' },
+    { key:'refunds',    label:'Refunds',     icon:'refreshCw' },
+    { key:'commissions',label:'Commissions', icon:'dollarSign' },
     { key:'shipping',   label:'Shipping',    icon:'truck' },
     { key:'products',   label:'Products',    icon:'package' },
     { key:'categories', label:'Categories',  icon:'grid' },
@@ -4282,6 +4285,157 @@ function AdminNotifSection({ accessCtx }) {
   );
 }
 
+// ─── ADMIN — Payments / Refunds / Commissions (real Supabase data;
+// the RPCs/queries already existed and were only reachable nested
+// inside AdminOrderDetail — these give them standalone sections). ──
+function AdminPaymentsSection({ accessCtx }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const [intents, setIntents] = React.useState(null);
+  const [toast, setToast] = React.useState(null);
+  const [busyId, setBusyId] = React.useState(null);
+  const load = React.useCallback(() => { sbAdminGetPaymentIntents({ limit: 50 }).then(setIntents); }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  async function confirm(intentId, result) {
+    setBusyId(intentId);
+    const { error } = await sbAdminConfirmPayment(intentId, result);
+    setBusyId(null);
+    if (error) { setToast({ type:'error', message: error.message || 'Could not update this payment.' }); return; }
+    setToast({ type:'success', message: `Payment marked ${result}.` });
+    load();
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Payments" sub={intents === null ? 'Loading…' : `${intents.length} payment intents`} />
+      <AdminCard padded={false} style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead><tr><Th>Order</Th><Th>Buyer</Th><Th>Provider</Th><Th align="right">Amount</Th><Th>Status</Th><Th></Th></tr></thead>
+          <tbody>
+            {intents === null && <tr><td colSpan={6}><AdminEmptyRow text="Loading…" /></td></tr>}
+            {intents !== null && intents.length === 0 && <tr><td colSpan={6}><AdminEmptyRow text="No payment intents yet." /></td></tr>}
+            {(intents || []).map(p => (
+              <tr key={p.id}>
+                <Td><span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>#{p.order_id?.slice(0,8)}</span></Td>
+                <Td>{p.orders?.profiles?.full_name || p.orders?.profiles?.email || 'Unknown'}</Td>
+                <Td>{p.provider}</Td>
+                <Td align="right">${Number(p.amount).toFixed(2)}</Td>
+                <Td><StatusPill tone={p.status === 'succeeded' ? 'success' : p.status === 'failed' ? 'danger' : 'warning'}>{p.status}</StatusPill></Td>
+                <Td align="right">
+                  {can('payments.confirm') && p.status === 'pending' && (
+                    <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
+                      <button disabled={busyId===p.id} onClick={() => confirm(p.id, 'succeeded')} style={{ border:'none', background:'none', cursor:'pointer', color:C.success, fontSize:11.5, fontWeight:700, fontFamily:"'Inter',sans-serif" }}>Confirm</button>
+                      <button disabled={busyId===p.id} onClick={() => confirm(p.id, 'failed')} style={{ border:'none', background:'none', cursor:'pointer', color:C.danger, fontSize:11.5, fontWeight:700, fontFamily:"'Inter',sans-serif" }}>Fail</button>
+                    </div>
+                  )}
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </AdminCard>
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
+  );
+}
+
+function AdminRefundsSection({ accessCtx }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const [result, setResult] = React.useState(null);
+  const [statusFilter, setStatusFilter] = React.useState('ALL');
+  const [toast, setToast] = React.useState(null);
+  const [busyId, setBusyId] = React.useState(null);
+  const load = React.useCallback(() => { sbAdminGetRefundRequests({ status: statusFilter, limit: 50 }).then(setResult); }, [statusFilter]);
+  React.useEffect(() => { load(); }, [load]);
+
+  async function decide(requestId, decision) {
+    setBusyId(requestId);
+    const { error } = await sbAdminDecideRefund(requestId, decision);
+    setBusyId(null);
+    if (error) { setToast({ type:'error', message: error.message || 'Could not decide this refund.' }); return; }
+    load();
+  }
+  async function recordResult(requestId, amount, resultStatus) {
+    setBusyId(requestId);
+    const { error } = await sbAdminRecordRefundResult(requestId, resultStatus, amount);
+    setBusyId(null);
+    if (error) { setToast({ type:'error', message: error.message || 'Could not record this refund result.' }); return; }
+    load();
+  }
+
+  const requests = result?.requests || [];
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Refunds" sub={result === null ? 'Loading…' : `${result.totalRequests} requests`} />
+      <div style={{ display:'flex', gap:6 }}>
+        {['ALL','PENDING','APPROVED','REJECTED','REFUNDED'].map(s => (
+          <button key={s} onClick={() => setStatusFilter(s)} style={{
+            padding:'5px 11px', borderRadius:7, border:`1px solid ${statusFilter === s ? C.primary : C.hairline}`,
+            background: statusFilter === s ? C.primarySoft : C.white, cursor:'pointer',
+            fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:600, color: statusFilter === s ? C.primaryDeep : C.mute,
+          }}>{s}</button>
+        ))}
+      </div>
+      <AdminCard padded={false}>
+        {result === null ? <AdminEmptyRow text="Loading…" /> : requests.length === 0 ? <AdminEmptyRow text="No refund requests." /> : requests.map((r, i) => (
+          <div key={r.id} style={{ padding:'12px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
+            <div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, color:C.ink }}>#{r.order_id?.slice(0,8)} — {r.orders?.profiles?.full_name || 'Unknown buyer'}</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{r.reason}</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>Requested: ${Number(r.amount_requested).toFixed(2)}{r.amount_approved != null ? ` · Approved: $${Number(r.amount_approved).toFixed(2)}` : ''}</div>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
+              <StatusPill tone={r.status === 'PENDING' ? 'warning' : r.status === 'REJECTED' ? 'danger' : r.status === 'REFUNDED' ? 'success' : 'mute'}>{r.status}</StatusPill>
+              {can('orders.refund') && r.status === 'PENDING' && (
+                <div style={{ display:'flex', gap:6 }}>
+                  <Btn variant="secondary" size="sm" disabled={busyId===r.id} onClick={() => decide(r.id, 'APPROVED')}>Approve</Btn>
+                  <Btn variant="secondary" size="sm" disabled={busyId===r.id} onClick={() => decide(r.id, 'REJECTED')}>Reject</Btn>
+                </div>
+              )}
+              {can('payments.confirm') && r.status === 'APPROVED' && (
+                <Btn variant="primary" size="sm" disabled={busyId===r.id} onClick={() => recordResult(r.id, r.amount_approved ?? r.amount_requested, 'succeeded')}>Record refunded</Btn>
+              )}
+            </div>
+          </div>
+        ))}
+      </AdminCard>
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
+  );
+}
+
+function AdminCommissionsSection() {
+  const [ledger, setLedger] = React.useState(null);
+  React.useEffect(() => { sbAdminGetCommissionLedger({ limit: 100 }).then(setLedger); }, []);
+  const total = (ledger || []).reduce((sum, e) => sum + Number(e.commission_amount || 0), 0);
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Commissions" sub={ledger === null ? 'Loading…' : `${ledger.length} entries · $${total.toFixed(2)} total commission`} />
+      <AdminCard padded={false} style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead><tr><Th>Order</Th><Th>Shop</Th><Th align="right">Gross</Th><Th align="right">Rate</Th><Th align="right">Commission</Th><Th align="right">Net to seller</Th><Th>Status</Th></tr></thead>
+          <tbody>
+            {ledger === null && <tr><td colSpan={7}><AdminEmptyRow text="Loading…" /></td></tr>}
+            {ledger !== null && ledger.length === 0 && <tr><td colSpan={7}><AdminEmptyRow text="No commission entries yet." /></td></tr>}
+            {(ledger || []).map(e => (
+              <tr key={e.id}>
+                <Td><span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>#{e.order_id?.slice(0,8)}</span></Td>
+                <Td>{e.shops?.name || 'Unknown shop'}</Td>
+                <Td align="right">${Number(e.gross_amount).toFixed(2)}</Td>
+                <Td align="right">{(Number(e.commission_rate) * 100).toFixed(1)}%</Td>
+                <Td align="right">${Number(e.commission_amount).toFixed(2)}</Td>
+                <Td align="right">${Number(e.net_amount).toFixed(2)}</Td>
+                <Td><StatusPill tone={e.status === 'settled' ? 'success' : 'mute'}>{e.status}</StatusPill></Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </AdminCard>
+    </div>
+  );
+}
+
 // ─── MAIN SHELL ──────────────────────────────────────────────────
 function AdminShellScreen({ params = {} }) {
   const { navigate, goBack } = useNav();
@@ -4450,6 +4604,10 @@ function AdminShellScreen({ params = {} }) {
 
       case 'orders': return <AdminOrdersSection accessCtx={accessCtx} initialDetailId={ordersDeepLinkId} onConsumeInitialDetailId={() => setOrdersDeepLinkId(null)} />;
       case 'shipping': return <AdminShippingSection accessCtx={accessCtx} onViewOrder={goToOrder} />;
+
+      case 'payments': return <AdminPaymentsSection accessCtx={accessCtx} />;
+      case 'refunds': return <AdminRefundsSection accessCtx={accessCtx} />;
+      case 'commissions': return <AdminCommissionsSection />;
 
       case 'products': return <AdminProductsSection accessCtx={accessCtx} />;
 
