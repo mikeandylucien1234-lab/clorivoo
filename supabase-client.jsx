@@ -1796,6 +1796,30 @@ async function sbAdminDeleteCoupon(couponId) {
   return { error };
 }
 
+// ─── ADMIN — PLATFORM SETTINGS (persistent key/value table) ───────────
+async function sbAdminGetPlatformSettings() {
+  if (!_sb) return {};
+  const { data, error } = await _sb.rpc('admin_get_platform_settings');
+  if (error) return {};
+  return data ?? {};
+}
+async function sbAdminSetPlatformSetting(key, value) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('admin_set_platform_setting', { p_key: key, p_value: value });
+  return { data, error };
+}
+async function sbAdminGetCommissionRate() {
+  if (!_sb) return { rate: 0, basis: 'order_subtotal' };
+  const { data, error } = await _sb.rpc('admin_get_commission_rate');
+  if (error) return { rate: 0, basis: 'order_subtotal' };
+  return data;
+}
+async function sbAdminSetCommissionRate(rate, note = null) {
+  if (!_sb) return { error: { message: 'Not configured' } };
+  const { data, error } = await _sb.rpc('admin_set_commission_rate', { p_rate: rate, p_note: note });
+  return { data, error };
+}
+
 // ─── NOTIFICATIONS ───────────────────────────────────────────────
 async function sbGetNotifications(userId) {
   if (!_sb || !userId) return { data: _DEMO_NOTIFICATIONS, error: null };
@@ -2526,6 +2550,7 @@ Object.assign(window, {
   sbAdminGetUserViolations, sbAdminApplyViolation, sbAdminGetModerationLog,
   sbAdminGetReviews, sbAdminModerateReview, sbAdminGetSupportTickets, sbAdminUpdateSupportTicket,
   sbAdminGetCoupons, sbAdminCreateCoupon, sbAdminUpdateCoupon, sbAdminDeleteCoupon,
+  sbAdminGetPlatformSettings, sbAdminSetPlatformSetting, sbAdminGetCommissionRate, sbAdminSetCommissionRate,
   sbGetNotifications, sbMarkNotificationRead,
   sbGetSellerStats, sbGetSellerOrders,
   sbGetSellerShipments, sbSellerCreateShipment, sbSellerUpdateShipment, sbSellerReportDeliveryFailure,

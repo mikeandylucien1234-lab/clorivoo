@@ -5,11 +5,9 @@ window._ADMIN_AUDIT_LOG   = window._ADMIN_AUDIT_LOG   || [];
 window._REWARDS_CONFIG     = window._REWARDS_CONFIG    || { pointsPerDollar:1, referralBonus:10, minRedeem:500 };
 window._ANNOUNCEMENT       = window._ANNOUNCEMENT       || { enabled:false, text:'', link:'' };
 window._HOME_SECTIONS      = window._HOME_SECTIONS      || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
-window._SEO_CONFIG         = window._SEO_CONFIG         || { ga:'', metaPixel:'', tiktok:'', searchConsole:'' };
 window._LOGIN_HISTORY      = window._LOGIN_HISTORY      || [];
 window._NOTIF_SETTINGS     = window._NOTIF_SETTINGS     || { newOrders:true, newSellers:true, urgentReports:true, weeklyReports:false, marketingEmails:false };
 window._SECURITY_SETTINGS  = window._SECURITY_SETTINGS  || { twoFactor:true, biometric:true, loginAlerts:false };
-window._PLATFORM_SETTINGS  = window._PLATFORM_SETTINGS  || { freeShipping:true, realTimeTracking:true, commissionRate:0.10 };
 
 // Local, instant-feedback mirror of the audit log — the real, tamper-resistant
 // record lives in the `audit_logs` table (written via the log_audit() RPC,
@@ -4413,15 +4411,36 @@ function AdminShellScreen({ params = {} }) {
   function saveAnnouncement(updates) { window._ANNOUNCEMENT = { ...window._ANNOUNCEMENT, ...updates }; logAdminAction('Updated announcement bar', updates.text ?? ''); forceTick(t => t + 1); }
   function toggleHomeSection(key, val) { window._HOME_SECTIONS = { ...window._HOME_SECTIONS, [key]: val }; forceTick(t => t + 1); }
 
+  // ── Platform settings (persistent) ──
+  const [platformSettings, setPlatformSettings] = React.useState(null);
+  const [commissionRate, setCommissionRate] = React.useState(null);
+  const loadPlatformSettings = React.useCallback(() => { sbAdminGetPlatformSettings().then(setPlatformSettings); }, []);
+  const loadCommissionRate = React.useCallback(() => { sbAdminGetCommissionRate().then(setCommissionRate); }, []);
+  React.useEffect(() => {
+    if (['ga','metapixel','tiktok','searchconsole','settings'].includes(section)) loadPlatformSettings();
+    if (section === 'settings') loadCommissionRate();
+  }, [section, loadPlatformSettings, loadCommissionRate]);
+  const seoConfig = (platformSettings && platformSettings.seo) || { ga:'', metaPixel:'', tiktok:'', searchConsole:'' };
+
   // ── SEO ──
-  function saveSeo(field, value) { window._SEO_CONFIG = { ...window._SEO_CONFIG, [field]: value }; forceTick(t => t + 1); }
+  async function saveSeo(field, value) {
+    const next = { ...seoConfig, [field]: value };
+    const { error } = await sbAdminSetPlatformSetting('seo', next);
+    if (error) { setToast({ type:'error', message: error.message || 'Could not save this setting.' }); return; }
+    setPlatformSettings(s => ({ ...(s || {}), seo: next }));
+  }
 
   // ── Rewards ──
   function saveRewards(field, value) { window._REWARDS_CONFIG = { ...window._REWARDS_CONFIG, [field]: value }; forceTick(t => t + 1); }
 
   // ── Roles / Security / Platform Settings toggles ──
   function toggleSecurity(field, value) { window._SECURITY_SETTINGS = { ...window._SECURITY_SETTINGS, [field]: value }; logAdminAction('Changed security setting', `${field} → ${value}`); forceTick(t => t + 1); }
-  function togglePlatformSetting(field, value) { window._PLATFORM_SETTINGS = { ...window._PLATFORM_SETTINGS, [field]: value }; logAdminAction('Changed platform setting', `${field} → ${value}`); forceTick(t => t + 1); }
+  async function togglePlatformSetting(field, value) {
+    const { error } = await sbAdminSetPlatformSetting(field, value);
+    if (error) { setToast({ type:'error', message: error.message || 'Could not save this setting.' }); return; }
+    logAdminAction('Changed platform setting', `${field} → ${value}`);
+    setPlatformSettings(s => ({ ...(s || {}), [field]: value }));
+  }
 
   const title = ADMIN_TITLES[section] || 'Dashboard';
 
@@ -4623,10 +4642,10 @@ function AdminShellScreen({ params = {} }) {
         const field = fieldMap[section];
         return (
           <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-            <SectionTitle title={ADMIN_TITLES[section]} sub="Tracking ID saved for this session" />
+            <SectionTitle title={ADMIN_TITLES[section]} sub="Saved to the platform settings database" />
             <AdminCard style={{ maxWidth:480 }}>
               <AdminField label={labelMap[section]}>
-                <AdminTextInput value={window._SEO_CONFIG[field]} onChange={v => saveSeo(field, v)} placeholder="e.g. G-XXXXXXXXXX" mono />
+                <AdminTextInput value={seoConfig[field] || ''} onChange={v => saveSeo(field, v)} placeholder="e.g. G-XXXXXXXXXX" mono />
               </AdminField>
             </AdminCard>
           </div>
@@ -4744,20 +4763,21 @@ function AdminShellScreen({ params = {} }) {
 
       case 'settings': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Platform Settings" sub="Changes apply immediately to new orders and the Business Overview KPIs." />
+          <SectionTitle title="Platform Settings" sub={commissionRate === null || platformSettings === null ? 'Loading…' : 'Persisted to the database — the commission rate is read by every new order.'} />
           <AdminSettingsRows rows={[
-            { type:'number', k:'Marketplace commission rate', v: (window._PLATFORM_SETTINGS.commissionRate * 100).toFixed(1) },
-            { type:'toggle', k:'Free shipping enabled', on:window._PLATFORM_SETTINGS.freeShipping },
-            { type:'toggle', k:'Real-time tracking', on:window._PLATFORM_SETTINGS.realTimeTracking },
+            { type:'number', k:'Marketplace commission rate', v: commissionRate === null ? '…' : (commissionRate.rate * 100).toFixed(1) },
+            { type:'toggle', k:'Free shipping enabled', on: !!(platformSettings && platformSettings.free_shipping_enabled) },
+            { type:'toggle', k:'Real-time tracking', on: platformSettings ? platformSettings.real_time_tracking_enabled !== false : true },
           ]} onToggle={(k, v) => {
-            const map = { 'Free shipping enabled':'freeShipping', 'Real-time tracking':'realTimeTracking' };
+            const map = { 'Free shipping enabled':'free_shipping_enabled', 'Real-time tracking':'real_time_tracking_enabled' };
             togglePlatformSetting(map[k], v);
-          }} onNumber={(k, v) => {
+          }} onNumber={async (k, v) => {
             if (k === 'Marketplace commission rate') {
               const pct = Math.max(0, Math.min(100, parseFloat(v) || 0));
-              window._PLATFORM_SETTINGS = { ...window._PLATFORM_SETTINGS, commissionRate: pct / 100 };
+              const { error } = await sbAdminSetCommissionRate(pct / 100);
+              if (error) { setToast({ type:'error', message: error.message || 'Could not update the commission rate.' }); return; }
               logAdminAction('Changed platform setting', `commissionRate → ${pct}%`);
-              forceTick(t => t + 1);
+              setCommissionRate(r => ({ ...(r || {}), rate: pct / 100 }));
             }
           }} />
         </div>
