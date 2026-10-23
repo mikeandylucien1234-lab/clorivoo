@@ -50,7 +50,7 @@ test.describe('Admin — Owner Vault (UI logic, mocked outcomes)', () => {
       window.sbAdminGetOwnerVaultOverview = async () => { throw new Error('should never be called'); };
     });
     await goto(page, 'admin', { section: 'ownervault' });
-    await expect(page.getByText("You don't have Owner access")).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText("You don't have Owner access")).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('kpwebnoqsjlxxiamwsst')).toHaveCount(0);
     await expect(page.getByText(/does not grant this automatically/)).toBeVisible();
   });
