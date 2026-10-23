@@ -1034,7 +1034,7 @@ function AdminSettingsRows({ rows, onToggle, onNumber }) {
   return (
     <AdminCard padded={false}>
       {rows.map((r, i) => (
-        <div key={i} style={{ padding:'14px 16px', borderTop: i > 0 ? `1px solid ${C.hairline}` : 'none' }}>
+        <div key={i} data-testid={r.testId} style={{ padding:'14px 16px', borderTop: i > 0 ? `1px solid ${C.hairline}` : 'none' }}>
           {r.type === 'kv' && (
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>{r.k}</span>
@@ -4600,7 +4600,7 @@ function AdminNotifSection({ accessCtx }) {
       <AdminSettingsRows rows={!prefsLoaded ? [] : Object.keys(ADMIN_NOTIF_PREF_LABELS).map(key => ({
         type: 'toggle', k: ADMIN_NOTIF_PREF_LABELS[key], on: prefs[key],
         sub: prefStatusSub(key), subTone: prefStatusTone(key),
-        disabled: saveStatus[key] === 'saving',
+        disabled: saveStatus[key] === 'saving', testId: `notif-pref-${key}`,
       }))} onToggle={(label, v) => {
         const key = Object.keys(ADMIN_NOTIF_PREF_LABELS).find(k => ADMIN_NOTIF_PREF_LABELS[k] === label);
         if (key) handlePrefToggle(key, v);

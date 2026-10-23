@@ -18,11 +18,11 @@ test.describe('Admin — Notification preferences (persisted, mocked outcomes)',
       window.sbGetMyAdminNotificationPrefs = async () => ({ newOrders: false, newSellers: true, urgentReports: false, weeklyReports: true, marketingEmails: true });
     });
     await goto(page, 'admin', { section: 'notifications' });
-    await expect(page.getByText('New orders')).toBeVisible({ timeout: 8000 });
+    const row = page.getByTestId('notif-pref-newOrders');
+    await expect(row).toBeVisible({ timeout: 8000 });
     // Switch for "New orders" should render OFF (false), not the old
     // hardcoded default of true — proves it's reading real saved state.
-    const row = page.locator('div', { hasText: 'New orders' }).first();
-    await expect(row.locator('button')).toHaveCSS('justify-content', 'flex-start'); // Switch renders OFF this way
+    await expect(row.locator('button')).toHaveCSS('justify-content', 'flex-start');
   });
 
   test('toggling a preference saves it and shows Saved, then clears', async ({ page }) => {
@@ -36,11 +36,11 @@ test.describe('Admin — Notification preferences (persisted, mocked outcomes)',
       };
     });
     await goto(page, 'admin', { section: 'notifications' });
-    await expect(page.getByText('New orders')).toBeVisible({ timeout: 8000 });
-    const row = page.locator('div', { hasText: 'New orders' }).first();
+    const row = page.getByTestId('notif-pref-newOrders');
+    await expect(row).toBeVisible({ timeout: 8000 });
     await row.locator('button').click();
-    await expect(page.getByText('Saving…')).toBeVisible({ timeout: 3000 });
-    await expect(page.getByText('Saved')).toBeVisible({ timeout: 5000 });
+    await expect(row.getByText('Saving…')).toBeVisible({ timeout: 3000 });
+    await expect(row.getByText('Saved')).toBeVisible({ timeout: 5000 });
     savedCalls = await page.evaluate(() => window.__savedCalls);
     expect(savedCalls).toEqual([['newOrders', false]]);
   });
@@ -51,14 +51,14 @@ test.describe('Admin — Notification preferences (persisted, mocked outcomes)',
       window.sbSetMyAdminNotificationPref = async () => ({ error: { message: 'simulated backend failure' } });
     });
     await goto(page, 'admin', { section: 'notifications' });
-    await expect(page.getByText('New orders')).toBeVisible({ timeout: 8000 });
-    const row = page.locator('div', { hasText: 'New orders' }).first();
+    const row = page.getByTestId('notif-pref-newOrders');
+    await expect(row).toBeVisible({ timeout: 8000 });
     await row.locator('button').click();
-    await expect(page.getByText('Could not save — tap to retry')).toBeVisible({ timeout: 5000 });
+    await expect(row.getByText('Could not save — tap to retry')).toBeVisible({ timeout: 5000 });
     // Reverted to ON (the last confirmed value) — never left showing
     // the failed OFF value as if it had been saved.
     await expect(row.locator('button')).toHaveCSS('justify-content', 'flex-end');
-    await expect(page.getByText('Saved')).toHaveCount(0);
+    await expect(row.getByText('Saved')).toHaveCount(0);
   });
 
   test('reloading the section restores the persisted values (simulated reload)', async ({ page }) => {
@@ -68,15 +68,15 @@ test.describe('Admin — Notification preferences (persisted, mocked outcomes)',
       window.sbSetMyAdminNotificationPref = async (key, value) => { window.__backend[key] = value; return { error: null }; };
     });
     await goto(page, 'admin', { section: 'notifications' });
-    await expect(page.getByText('Weekly reports')).toBeVisible({ timeout: 8000 });
-    const weeklyRow = page.locator('div', { hasText: 'Weekly reports' }).first();
+    const weeklyRow = page.getByTestId('notif-pref-weeklyReports');
+    await expect(weeklyRow).toBeVisible({ timeout: 8000 });
     await weeklyRow.locator('button').click();
-    await expect(page.getByText('Saved')).toBeVisible({ timeout: 5000 });
+    await expect(weeklyRow.getByText('Saved')).toBeVisible({ timeout: 5000 });
     // Navigate away and back — a fresh mount re-reads from "the backend".
     await goto(page, 'admin', { section: 'overview' });
     await goto(page, 'admin', { section: 'notifications' });
-    await expect(page.getByText('Weekly reports')).toBeVisible({ timeout: 8000 });
-    const weeklyRowAgain = page.locator('div', { hasText: 'Weekly reports' }).first();
+    const weeklyRowAgain = page.getByTestId('notif-pref-weeklyReports');
+    await expect(weeklyRowAgain).toBeVisible({ timeout: 8000 });
     await expect(weeklyRowAgain.locator('button')).toHaveCSS('justify-content', 'flex-end'); // now ON, restored
   });
 
@@ -86,7 +86,7 @@ test.describe('Admin — Notification preferences (persisted, mocked outcomes)',
       window.sbSetMyAdminNotificationPref = async () => ({ error: null });
     });
     await goto(page, 'admin', { section: 'notifications' });
-    await expect(page.getByText('Broadcast')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText('Broadcast', { exact: true })).toBeVisible({ timeout: 8000 });
     await page.getByPlaceholder(/Flash sale/).fill('Test broadcast');
     await page.getByPlaceholder(/-40% on everything/).fill('Body text');
     await page.getByRole('button', { name: /Review & Send Broadcast/i }).click();
