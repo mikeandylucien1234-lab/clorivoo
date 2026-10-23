@@ -2524,6 +2524,171 @@ function AdminBackupSection() {
   );
 }
 
+// ─── ADMIN — System Health: real, live checks against Database,
+// Authentication, Storage, Edge Functions and Realtime (see
+// supabase/phase9_health_section_migration.sql and
+// supabase/functions/health-check). Replaces the previous hardcoded
+// "Backend reachable: false — Project paused" placeholder. Every
+// status below is observed on this exact page load / click — never
+// hardcoded — and a failure is classified by cause (network, timeout,
+// expired session, permission denied, or a real service error)
+// instead of collapsed into one generic "down". ─────────────────────
+const HEALTH_SERVICES = [
+  { key:'database',       label:'Database',       icon:'archive', run: () => sbAdminHealthPing() },
+  { key:'auth',           label:'Authentication', icon:'lock',    run: () => sbAdminCheckAuthService() },
+  { key:'storage',        label:'Storage',        icon:'image',   run: () => sbAdminCheckStorageService() },
+  { key:'edge_functions', label:'Edge Functions', icon:'zap',     run: () => sbAdminCheckEdgeFunctions() },
+  { key:'realtime',       label:'Realtime',       icon:'globe',   run: () => sbAdminCheckRealtime() },
+];
+const HEALTH_CHECK_TIMEOUT_MS = 8000;
+const HEALTH_AUTO_REFRESH_MS = 60000;
+
+function _healthTimeoutRace(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise(resolve => setTimeout(() => resolve({ ok:false, errorType:'timeout', message:'Check timed out.' }), ms)),
+  ]);
+}
+
+function AdminHealthSection({ accessCtx }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const canView = can('system.health');
+
+  const [statuses, setStatuses] = React.useState(() => Object.fromEntries(HEALTH_SERVICES.map(s => [s.key, { state:'pending' }])));
+  const [checking, setChecking] = React.useState(false);
+  const [lastCheckedAt, setLastCheckedAt] = React.useState(null);
+  const [history, setHistory] = React.useState([]);
+  const [historyLoading, setHistoryLoading] = React.useState(true);
+  const [, forceTick] = React.useState(0);
+
+  const loadHistory = React.useCallback(() => {
+    if (!canView) { setHistoryLoading(false); return; }
+    sbAdminGetHealthHistory(30).then(h => { setHistory(h); setHistoryLoading(false); });
+  }, [canView]);
+
+  const runCheck = React.useCallback(async () => {
+    if (!canView) return;
+    setChecking(true);
+    const results = await Promise.all(HEALTH_SERVICES.map(async (svc) => {
+      const started = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      const outcome = await _healthTimeoutRace(svc.run(), HEALTH_CHECK_TIMEOUT_MS);
+      const latency = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started);
+      const status = outcome.ok ? 'ok' : (outcome.errorType === 'permission' ? 'degraded' : 'down');
+      return { key: svc.key, status, latency: outcome.ok ? latency : null, errorType: outcome.errorType || null, message: outcome.message || null };
+    }));
+    const nextStatuses = {};
+    results.forEach(r => { nextStatuses[r.key] = { state: r.status, latency: r.latency, errorType: r.errorType, message: r.message }; });
+    setStatuses(nextStatuses);
+    setLastCheckedAt(new Date().toISOString());
+    setChecking(false);
+    await sbAdminRecordHealthCheck(results.map(r => ({ service: r.key, status: r.status, latency_ms: r.latency, message: r.message })));
+    loadHistory();
+  }, [canView, loadHistory]);
+
+  React.useEffect(() => { if (canView) runCheck(); }, [canView]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { loadHistory(); }, [loadHistory]);
+  React.useEffect(() => {
+    if (!canView) return;
+    const id = setInterval(() => runCheck(), HEALTH_AUTO_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [canView, runCheck]);
+  React.useEffect(() => {
+    const id = setInterval(() => forceTick(t => t + 1), 15000); // keeps "x ago" labels fresh
+    return () => clearInterval(id);
+  }, []);
+
+  if (!canView) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+        <SectionTitle title="System Health" />
+        <AdminCard style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:'32px 20px', textAlign:'center' }}>
+          <Icon name="lock" size={22} color={C.mute} />
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink }}>You don't have access to System Health</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute, maxWidth:360 }}>This section requires the <strong>system.health</strong> permission. Ask an admin to grant it under Staff → Roles.</div>
+        </AdminCard>
+      </div>
+    );
+  }
+
+  const ok = HEALTH_SERVICES.filter(s => statuses[s.key]?.state === 'ok').length;
+  const degraded = HEALTH_SERVICES.filter(s => statuses[s.key]?.state === 'degraded').length;
+  const down = HEALTH_SERVICES.filter(s => statuses[s.key]?.state === 'down').length;
+  const pending = HEALTH_SERVICES.filter(s => statuses[s.key]?.state === 'pending').length;
+  const overall = pending === HEALTH_SERVICES.length ? 'pending' : down > 0 ? 'down' : degraded > 0 ? 'degraded' : 'ok';
+  const overallLabel = overall === 'ok' ? 'All systems operational' : overall === 'degraded' ? 'Degraded — some checks need attention' : overall === 'down' ? 'Service disruption detected' : 'Running first check…';
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle
+        title="System Health"
+        sub="Live checks against the real Database, Authentication, Storage, Edge Functions and Realtime services — nothing below is simulated."
+        action={<Btn variant="primary" onClick={runCheck} disabled={checking}>{checking ? 'Checking…' : 'Check System'}</Btn>}
+      />
+
+      <AdminCard>
+        <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+          <Icon
+            name={checking ? 'refreshCw' : (overall === 'ok' ? 'checkCircle' : overall === 'down' ? 'xCircle' : overall === 'degraded' ? 'alertTriangle' : 'clock')}
+            size={22}
+            color={overall === 'ok' ? C.success : overall === 'down' ? C.danger : overall === 'degraded' ? C.warning : C.mute}
+          />
+          <div style={{ flex:1, minWidth:200 }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:700, color:C.ink }}>{overallLabel}</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute }}>{lastCheckedAt ? `Last checked ${fmtRelativeShort(lastCheckedAt)}` : 'Not checked yet this session'}</div>
+          </div>
+          <div style={{ display:'flex', gap:20 }}>
+            {[['Operational', ok, C.success], ['Degraded', degraded, C.warning], ['Unavailable', down, C.danger]].map(([label, count, color]) => (
+              <div key={label} style={{ textAlign:'center' }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:18, fontWeight:800, color }}>{count}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10.5, color:C.mute }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </AdminCard>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(210px, 1fr))', gap:12 }}>
+        {HEALTH_SERVICES.map(svc => {
+          const s = statuses[svc.key] || { state:'pending' };
+          const tone = s.state === 'ok' ? 'success' : s.state === 'degraded' ? 'warning' : s.state === 'down' ? 'danger' : 'mute';
+          return (
+            <AdminCard key={svc.key}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                <Icon name={svc.icon} size={16} color={C.mute} />
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, flex:1 }}>{svc.label}</span>
+                <StatusPill tone={tone}>{s.state === 'pending' ? 'checking' : s.state}</StatusPill>
+              </div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>
+                {s.state === 'pending' ? 'Running first check…' : `${typeof s.latency === 'number' ? s.latency + ' ms · ' : ''}${lastCheckedAt ? fmtRelativeShort(lastCheckedAt) : ''}`}
+              </div>
+              {s.message && s.state !== 'ok' && (
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color: tone === 'danger' ? C.danger : C.warning, marginTop:6 }}>{s.message}</div>
+              )}
+            </AdminCard>
+          );
+        })}
+      </div>
+
+      <AdminCard padded={false}>
+        <div style={{ padding:'12px 16px', borderBottom:`1px solid ${C.hairline}`, fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Check history</div>
+        {historyLoading ? (
+          <AdminEmptyRow text="Loading…" />
+        ) : history.length === 0 ? (
+          <AdminEmptyRow text="No checks recorded yet — click Check System above." />
+        ) : history.map((h, i) => (
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none', flexWrap:'wrap' }}>
+            <StatusPill tone={h.status === 'ok' ? 'success' : h.status === 'degraded' ? 'warning' : 'danger'}>{h.status}</StatusPill>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.ink, width:120, textTransform:'capitalize' }}>{String(h.service).replace('_',' ')}</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, width:80 }}>{typeof h.latency_ms === 'number' ? `${h.latency_ms} ms` : '—'}</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, flex:1, minWidth:120 }}>{h.message || ''}</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{fmtRelativeShort(h.checked_at)}</span>
+          </div>
+        ))}
+      </AdminCard>
+    </div>
+  );
+}
+
 // ─── ADMIN — Trust & Safety Center (messaging anti-scam filter,
 // buyer/seller reports, blocks, and progressive violation history —
 // all backed by scam_filter_patterns / message_moderation_log /
@@ -4949,31 +5114,7 @@ function AdminShellScreen({ params = {} }) {
 
       case 'backup': return <AdminBackupSection />;
 
-      case 'health': {
-        const supaConfigured = !!window._supabase;
-        const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
-        return (
-          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-            <SectionTitle title="System Health" />
-            <AdminCard padded={false}>
-              {[
-                { name:'Browser connectivity', ok: online },
-                { name:'Supabase client configured', ok: supaConfigured },
-                { name:'Backend reachable', ok: false, note:'Project paused — see Owner Vault' },
-              ].map((h, i) => (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 16px', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
-                  <Icon name={h.ok ? 'checkCircle' : 'xCircle'} size={17} color={h.ok ? C.success : C.danger} />
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink }}>{h.name}</div>
-                    {h.note && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute }}>{h.note}</div>}
-                  </div>
-                  <StatusPill tone={h.ok ? 'success' : 'danger'}>{h.ok ? 'ok' : 'issue'}</StatusPill>
-                </div>
-              ))}
-            </AdminCard>
-          </div>
-        );
-      }
+      case 'health': return <AdminHealthSection accessCtx={accessCtx} />;
 
       case 'settings': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>

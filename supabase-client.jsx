@@ -2577,6 +2577,130 @@ function _prodToSb(p) {
   };
 }
 
+// ─── ADMIN — System Health (real checks, not placeholders) ────────
+// Each function below performs one REAL round trip against a real
+// Supabase service and reports what actually happened — never a
+// hardcoded "ok". The shared classifier distinguishes network
+// failure, timeout, expired session, and permission denial so the
+// Health UI never confuses "no permission" with "service is down".
+function _classifyHealthError(error, thrown) {
+  if (thrown) {
+    const msg = String(thrown?.message || thrown || '');
+    if (thrown?.name === 'AbortError') return { errorType:'timeout', message:'Request timed out.' };
+    if (/fetch|network/i.test(msg)) return { errorType:'network', message:'Network error — unable to reach Supabase.' };
+    return { errorType:'unknown', message: msg.slice(0, 200) || 'Unexpected error.' };
+  }
+  const msg = String(error?.message || '');
+  if (/permission denied|system\.health required/i.test(msg)) return { errorType:'permission', message:'Permission denied — system.health required.' };
+  if (/jwt|session|not authenticated|auth session missing/i.test(msg)) return { errorType:'session_expired', message:'Session expired — please sign in again.' };
+  if (/fetch|network/i.test(msg)) return { errorType:'network', message:'Network error — unable to reach Supabase.' };
+  return { errorType:'unknown', message: msg.slice(0, 200) || 'Unexpected error.' };
+}
+
+// Database check target: the caller times this exact round trip
+// (admin_health_ping() over PostgREST) — success + elapsed time IS the
+// real database/API latency, not a simulated one.
+async function sbAdminHealthPing() {
+  if (!_sb) return { ok:false, errorType:'network', message:'Supabase not configured' };
+  try {
+    const { data, error } = await _sb.rpc('admin_health_ping');
+    if (error) return { ok:false, ..._classifyHealthError(error) };
+    return { ok:true, data };
+  } catch (e) {
+    return { ok:false, ..._classifyHealthError(null, e) };
+  }
+}
+
+// auth.getUser() makes a real round trip to Supabase Auth to validate
+// the current JWT server-side (unlike getSession(), which only reads
+// the locally cached token) — a genuine Auth-service availability
+// check, and it also surfaces an expired/invalid session as an error.
+async function sbAdminCheckAuthService() {
+  if (!_sb) return { ok:false, errorType:'network', message:'Supabase not configured' };
+  try {
+    const { data, error } = await _sb.auth.getUser();
+    if (error) return { ok:false, ..._classifyHealthError(error) };
+    if (!data?.user) return { ok:false, errorType:'session_expired', message:'No active session.' };
+    return { ok:true };
+  } catch (e) {
+    return { ok:false, ..._classifyHealthError(null, e) };
+  }
+}
+
+// Lists (not downloads) the 'categories' bucket — public, non-sensitive
+// — so this never exposes private files (kyc-documents, seller-files, …).
+async function sbAdminCheckStorageService() {
+  if (!_sb) return { ok:false, errorType:'network', message:'Supabase not configured' };
+  try {
+    const { data, error } = await _sb.storage.from('categories').list('', { limit: 1 });
+    if (error) return { ok:false, ..._classifyHealthError(error) };
+    return { ok:true };
+  } catch (e) {
+    return { ok:false, ..._classifyHealthError(null, e) };
+  }
+}
+
+// Invokes the dedicated health-check Edge Function (see
+// supabase/functions/health-check) rather than any real, consequential
+// function (send-email, on-new-order, …) — this one does nothing but
+// confirm it was reached and can do real work via the caller's own JWT.
+async function sbAdminCheckEdgeFunctions() {
+  if (!_sb) return { ok:false, errorType:'network', message:'Supabase not configured' };
+  try {
+    const { data, error } = await _sb.functions.invoke('health-check');
+    if (error) {
+      const status = error?.context?.status;
+      if (status === 403) return { ok:false, errorType:'permission', message:'Permission denied — system.health required.' };
+      if (status === 401) return { ok:false, errorType:'session_expired', message:'Session expired — please sign in again.' };
+      return { ok:false, ..._classifyHealthError(error) };
+    }
+    return { ok:true, data };
+  } catch (e) {
+    return { ok:false, ..._classifyHealthError(null, e) };
+  }
+}
+
+// Opens a real, disposable Realtime channel and waits for the actual
+// 'SUBSCRIBED' confirmation from the server — never reports realtime
+// as active without that confirmation. Always cleans up the channel.
+async function sbAdminCheckRealtime(timeoutMs = 6000) {
+  if (!_sb) return { ok:false, errorType:'network', message:'Supabase not configured' };
+  return new Promise((resolve) => {
+    let settled = false;
+    const channel = _sb.channel(`health-check-${Date.now()}`);
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { _sb.removeChannel(channel); } catch (e) {}
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish({ ok:false, errorType:'timeout', message:'Realtime did not confirm a subscription in time.' }), timeoutMs);
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') finish({ ok:true });
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        finish({ ok:false, errorType: status === 'TIMED_OUT' ? 'timeout' : 'unknown', message: `Realtime channel reported: ${status}` });
+      }
+    });
+  });
+}
+
+// p_results: array of { service, status, latency_ms, message } objects
+// built from the real checks above — the RPC itself re-validates every
+// field before writing (see phase9_health_section_migration.sql).
+async function sbAdminRecordHealthCheck(results) {
+  if (!_sb) return { data:null, error:{ message:'Supabase not configured' } };
+  const { data, error } = await _sb.rpc('admin_record_health_check', { p_results: results });
+  return { data, error };
+}
+
+async function sbAdminGetHealthHistory(limit = 50) {
+  if (!_sb) return [];
+  const { data, error } = await _sb.rpc('admin_get_health_history', { p_limit: limit });
+  if (error) return [];
+  return data ?? [];
+}
+
 const _DEMO_SHOPS = [];
 const _DEMO_BANNERS = [];
 const _DEMO_CONVERSATIONS = [];
@@ -2648,5 +2772,8 @@ Object.assign(window, {
   sbRequestBrand, sbGetMyBrandRequests, sbAdminGetBrandRequests, sbAdminDecideBrandRequest,
   sbUploadAuthenticityProof, sbAdminGetAuthenticityProofUrl,
   sbUploadFile,
+  sbAdminHealthPing, sbAdminCheckAuthService, sbAdminCheckStorageService,
+  sbAdminCheckEdgeFunctions, sbAdminCheckRealtime,
+  sbAdminRecordHealthCheck, sbAdminGetHealthHistory,
   _isConfigured,
 });
