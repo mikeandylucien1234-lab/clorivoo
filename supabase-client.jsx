@@ -2701,6 +2701,24 @@ async function sbAdminGetHealthHistory(limit = 50) {
   return data ?? [];
 }
 
+// ─── ADMIN — Owner Vault ────────────────────────────────────────────
+// is_owner() is a deliberately separate, narrower gate than
+// has_permission() — every admin bypasses every permission key, so
+// routing Owner-only access through the normal permission system
+// cannot work here (see phase9_owner_vault_migration.sql). This wraps
+// am_i_owner(), which only ever answers for the caller's own account.
+async function sbAmIOwner() {
+  if (!_sb) return false;
+  const { data, error } = await _sb.rpc('am_i_owner');
+  return !error && data === true;
+}
+
+async function sbAdminGetOwnerVaultOverview() {
+  if (!_sb) return { data: null, error: { message: 'Supabase not configured' } };
+  const { data, error } = await _sb.rpc('admin_get_owner_vault_overview');
+  return { data, error };
+}
+
 const _DEMO_SHOPS = [];
 const _DEMO_BANNERS = [];
 const _DEMO_CONVERSATIONS = [];
@@ -2775,5 +2793,6 @@ Object.assign(window, {
   sbAdminHealthPing, sbAdminCheckAuthService, sbAdminCheckStorageService,
   sbAdminCheckEdgeFunctions, sbAdminCheckRealtime,
   sbAdminRecordHealthCheck, sbAdminGetHealthHistory,
+  sbAmIOwner, sbAdminGetOwnerVaultOverview,
   _isConfigured,
 });

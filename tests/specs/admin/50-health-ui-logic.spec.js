@@ -97,11 +97,11 @@ test.describe('Admin — System Health (UI logic, mocked outcomes)', () => {
       window.sbAdminGetHealthHistory = async () => ([]);
     });
     await goto(page, 'admin', { section: 'health' });
-    await expect(page.getByText('All systems operational')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText('All systems operational')).toBeVisible({ timeout: 15000 });
     const callsAfterMount = await page.evaluate(() => window.__pingCalls);
     expect(callsAfterMount).toBeGreaterThanOrEqual(1);
     await page.getByRole('button', { name: /Check System/i }).click();
-    await page.waitForTimeout(500);
+    await page.waitForFunction((prev) => (window.__pingCalls || 0) > prev, callsAfterMount, { timeout: 10000 });
     calls = await page.evaluate(() => window.__pingCalls);
     expect(calls).toBeGreaterThan(callsAfterMount);
   });

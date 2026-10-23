@@ -2691,6 +2691,169 @@ function AdminHealthSection({ accessCtx }) {
   );
 }
 
+// ─── ADMIN — Owner Vault: restricted to explicit, individually-granted
+// Owner accounts (public.owner_accounts / is_owner(), see
+// supabase/phase9_owner_vault_migration.sql) — deliberately NOT the
+// same gate as "any admin". has_permission() gives role='admin' a
+// blanket bypass over every permission key, so there is no permission
+// string that could ever mean "admin, but not this" — routing Owner
+// access through the normal Staff → Roles permission system cannot
+// work here. is_owner() is a separate, narrower allowlist instead, and
+// there is deliberately no UI to grant it — adding an Owner is a
+// direct database action.
+function AdminOwnerVaultSection({ onNav }) {
+  const [isOwner, setIsOwner] = React.useState(null); // null=checking, false=denied, true=granted
+  const [overview, setOverview] = React.useState(null);
+  const [loadError, setLoadError] = React.useState(null);
+
+  const load = React.useCallback(() => {
+    sbAmIOwner().then(owner => {
+      setIsOwner(owner);
+      if (!owner) return;
+      sbAdminGetOwnerVaultOverview().then(({ data, error }) => {
+        if (error) { setLoadError(error.message || 'Unable to load Owner Vault data.'); return; }
+        setOverview(data);
+        setLoadError(null);
+      });
+    });
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  if (isOwner === null) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+        <SectionTitle title="Owner Vault" />
+        <AdminCard><span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Checking access…</span></AdminCard>
+      </div>
+    );
+  }
+
+  if (isOwner === false) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+        <SectionTitle title="Owner Vault" />
+        <AdminCard style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:'32px 20px', textAlign:'center' }}>
+          <Icon name="lock" size={22} color={C.mute} />
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:C.ink }}>You don't have Owner access</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute, maxWidth:420 }}>
+            Owner Vault is restricted to specifically designated Owner accounts — this is separate from, and narrower than, full admin
+            access. Being an admin does not grant this automatically. An existing Owner can grant Owner access to another account
+            directly in the database (there is no self-service option by design); ask whoever manages CLORIVO's Supabase project.
+          </div>
+        </AdminCard>
+      </div>
+    );
+  }
+
+  const health = overview?.health || [];
+  const dbCheck = health.find(h => h.service === 'database');
+  const servicesChecked = health.length;
+  const servicesDown = health.filter(h => h.status === 'down').length;
+  const servicesDegraded = health.filter(h => h.status === 'degraded').length;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Owner Vault" sub="Sensitive platform overview — visible only to designated Owner accounts" action={
+        <Btn variant="secondary" onClick={load}>Refresh</Btn>
+      } />
+
+      {loadError && (
+        <AdminCard style={{ border:`1.5px solid ${C.danger}` }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.danger }}>{loadError}</span>
+        </AdminCard>
+      )}
+
+      <AdminCard>
+        <AdminField label="Supabase project">
+          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, color:C.ink }}>{overview?.project_ref || 'kpwebnoqsjlxxiamwsst'}</div>
+        </AdminField>
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:12 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Database reachable (from the last recorded check)</span>
+            {dbCheck ? (
+              <StatusPill tone={dbCheck.status === 'ok' ? 'success' : dbCheck.status === 'degraded' ? 'warning' : 'danger'}>{dbCheck.status}</StatusPill>
+            ) : (
+              <StatusPill tone="mute">never checked</StatusPill>
+            )}
+          </div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Frontend deployment status</span>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color:C.mute, fontStyle:'italic' }}>Not verifiable from inside the running app — check your hosting provider directly</span>
+          </div>
+        </div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute, marginTop:10 }}>
+          A live Supabase project, a reachable backend, and a deployed frontend are three separate facts — this screen never collapses them into one status.
+        </div>
+      </AdminCard>
+
+      <AdminCard>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Essential services</span>
+          <button onClick={() => onNav('health')} style={{ border:'none', background:'none', color:C.primary, fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:'pointer' }}>Open Health →</button>
+        </div>
+        {servicesChecked === 0 ? (
+          <AdminEmptyRow text="No health checks recorded yet — run one from the Health section." />
+        ) : (
+          <>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginBottom:8 }}>
+              {servicesChecked} service{servicesChecked === 1 ? '' : 's'} checked · {servicesDown} down · {servicesDegraded} degraded
+            </div>
+            {health.map((h, i) => (
+              <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.ink, textTransform:'capitalize' }}>{String(h.service).replace('_',' ')}</span>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>{fmtRelativeShort(h.checked_at)}</span>
+                  <StatusPill tone={h.status === 'ok' ? 'success' : h.status === 'degraded' ? 'warning' : 'danger'}>{h.status}</StatusPill>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </AdminCard>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:12 }}>
+        <AdminCard>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Staff & Roles</span>
+            <button onClick={() => onNav('staff')} style={{ border:'none', background:'none', color:C.primary, fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, cursor:'pointer' }}>Open →</button>
+          </div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>{overview?.staff?.active_count ?? 0} active staff · {overview?.staff?.roles_count ?? 0} roles</div>
+        </AdminCard>
+        <AdminCard>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Audit Log</span>
+            <button onClick={() => onNav('auditlog')} style={{ border:'none', background:'none', color:C.primary, fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, cursor:'pointer' }}>Open →</button>
+          </div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>{overview?.audit?.total ?? 0} entries total</div>
+          {overview?.audit?.last && (
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute, marginTop:4 }}>Last: {overview.audit.last.action} · {fmtRelativeShort(overview.audit.last.created_at)}</div>
+          )}
+        </AdminCard>
+        <AdminCard>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Commissions</span>
+            <button onClick={() => onNav('commissions')} style={{ border:'none', background:'none', color:C.primary, fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, cursor:'pointer' }}>Open →</button>
+          </div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>Rate: {((overview?.commissions?.rate ?? 0) * 100).toFixed(1)}% · Confirmed net: ${(overview?.commissions?.confirmed_net_all_time ?? 0).toFixed(2)}</div>
+        </AdminCard>
+        <AdminCard>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink }}>Platform Settings</span>
+            <button onClick={() => onNav('settings')} style={{ border:'none', background:'none', color:C.primary, fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:700, cursor:'pointer' }}>Open →</button>
+          </div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:C.mute }}>
+            {overview?.settings_last_updated_at ? `Last updated ${fmtRelativeShort(overview.settings_last_updated_at)}` : 'No recorded updates'}
+          </div>
+        </AdminCard>
+      </div>
+
+      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>
+        {overview?.generated_at ? `Snapshot generated ${fmtRelativeShort(overview.generated_at)}` : ''}
+      </div>
+    </div>
+  );
+}
+
 // ─── ADMIN — Trust & Safety Center (messaging anti-scam filter,
 // buyer/seller reports, blocks, and progressive violation history —
 // all backed by scam_filter_patterns / message_moderation_log /
@@ -5140,31 +5303,7 @@ function AdminShellScreen({ params = {} }) {
         </div>
       );
 
-      case 'ownervault': return (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Owner Vault" sub="Sensitive platform & billing information" />
-          <AdminCard style={{ border:'1.5px solid #F6C97D', background:'#FFF9EE' }}>
-            <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-              <Icon name="alertTriangle" size={18} color="#C68A00" />
-              <div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:'#8A5A00' }}>Backend project is paused</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12.5, color:'#8A5A00', marginTop:4, lineHeight:1.5 }}>
-                  The Supabase project "clorivoo" (ref kpwebnoqsjlxxiamwsst) is currently paused. The account's free tier is already
-                  at its 2 active-project limit, so it can't auto-resume. Until it's resumed, every admin edit (products, banners,
-                  customers) persists only for this browser session — not across reloads or between visitors.
-                  To fix: pause or delete another active project in this Supabase organization, or upgrade the plan, then resume
-                  this project.
-                </div>
-              </div>
-            </div>
-          </AdminCard>
-          <AdminCard>
-            <AdminField label="Project reference">
-              <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, color:C.ink }}>kpwebnoqsjlxxiamwsst</div>
-            </AdminField>
-          </AdminCard>
-        </div>
-      );
+      case 'ownervault': return <AdminOwnerVaultSection onNav={onNav} />;
 
       default: return <AdminOverview adminStats={adminStats} onNav={onNav} sellersList={sellersList} reviews={reviews || []} kycCount={adminStats?.pendingKyc ?? 0} />;
     }
