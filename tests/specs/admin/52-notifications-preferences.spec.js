@@ -32,6 +32,7 @@ test.describe('Admin — Notification preferences (persisted, mocked outcomes)',
       window.sbSetMyAdminNotificationPref = async (key, value) => {
         window.__savedCalls = window.__savedCalls || [];
         window.__savedCalls.push([key, value]);
+        await new Promise(r => setTimeout(r, 150)); // real network latency, not instant — makes "Saving…" observable
         return { error: null };
       };
     });
