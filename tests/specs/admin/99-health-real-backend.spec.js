@@ -52,8 +52,8 @@ test.describe('Admin — System Health (real backend)', () => {
     await expect(page.getByText(/Checking…/)).toBeVisible({ timeout: 3000 }).catch(() => {});
     await expect(page.getByText('All systems operational')).toBeVisible({ timeout: 15000 });
 
-    for (const label of ['Database', 'Authentication', 'Storage', 'Edge Functions', 'Realtime']) {
-      const card = page.locator('div', { hasText: label }).first();
+    for (const key of ['database', 'auth', 'storage', 'edge_functions', 'realtime']) {
+      const card = page.getByTestId(`health-card-${key}`);
       await expect(card.getByText('ok', { exact: true })).toBeVisible({ timeout: 10000 });
     }
 
@@ -82,11 +82,11 @@ test.describe('Admin — System Health (real backend)', () => {
     await page.getByRole('button', { name: /Check System/i }).click();
     await page.waitForTimeout(3000);
 
-    const storageCard = page.locator('div', { hasText: 'Storage' }).first();
+    const storageCard = page.getByTestId('health-card-storage');
     await expect(storageCard.getByText(/down|degraded/)).toBeVisible({ timeout: 10000 });
     // The other 4 services must stay unaffected — proves failures are
     // isolated per-service, not collapsed into one global flag.
-    const dbCard = page.locator('div', { hasText: 'Database' }).first();
+    const dbCard = page.getByTestId('health-card-database');
     await expect(dbCard.getByText('ok', { exact: true })).toBeVisible({ timeout: 10000 });
 
     await context.unroute('**/storage/v1/object/list/categories**');
@@ -105,7 +105,7 @@ test.describe('Admin — System Health (real backend)', () => {
 
     await goto(page, 'admin', { section: 'health' });
     await page.getByRole('button', { name: /Check System/i }).click();
-    const edgeCard = page.locator('div', { hasText: 'Edge Functions' }).first();
+    const edgeCard = page.getByTestId('health-card-edge_functions');
     await expect(edgeCard.getByText('down')).toBeVisible({ timeout: 15000 });
     await expect(edgeCard.getByText(/timed out/i)).toBeVisible({ timeout: 2000 });
 

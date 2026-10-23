@@ -2652,7 +2652,8 @@ function AdminHealthSection({ accessCtx }) {
           const s = statuses[svc.key] || { state:'pending' };
           const tone = s.state === 'ok' ? 'success' : s.state === 'degraded' ? 'warning' : s.state === 'down' ? 'danger' : 'mute';
           return (
-            <AdminCard key={svc.key}>
+            <div key={svc.key} data-testid={`health-card-${svc.key}`}>
+            <AdminCard>
               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
                 <Icon name={svc.icon} size={16} color={C.mute} />
                 <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:C.ink, flex:1 }}>{svc.label}</span>
@@ -2665,6 +2666,7 @@ function AdminHealthSection({ accessCtx }) {
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color: tone === 'danger' ? C.danger : C.warning, marginTop:6 }}>{s.message}</div>
               )}
             </AdminCard>
+            </div>
           );
         })}
       </div>
