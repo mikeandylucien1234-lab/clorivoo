@@ -6,8 +6,10 @@ window._REWARDS_CONFIG     = window._REWARDS_CONFIG    || { pointsPerDollar:1, r
 window._ANNOUNCEMENT       = window._ANNOUNCEMENT       || { enabled:false, text:'', link:'' };
 window._HOME_SECTIONS      = window._HOME_SECTIONS      || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
 window._LOGIN_HISTORY      = window._LOGIN_HISTORY      || [];
-window._NOTIF_SETTINGS     = window._NOTIF_SETTINGS     || { newOrders:true, newSellers:true, urgentReports:true, weeklyReports:false, marketingEmails:false };
 window._SECURITY_SETTINGS  = window._SECURITY_SETTINGS  || { twoFactor:true, biometric:true, loginAlerts:false };
+// System Notifications' 5 admin preferences used to live here
+// (window._NOTIF_SETTINGS) — now persisted for real per-admin in the
+// notification_preferences table; see AdminNotifSection.
 
 // Local, instant-feedback mirror of the audit log — the real, tamper-resistant
 // record lives in the `audit_logs` table (written via the log_audit() RPC,
@@ -1041,8 +1043,11 @@ function AdminSettingsRows({ rows, onToggle, onNumber }) {
           )}
           {r.type === 'toggle' && (
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink }}>{r.k}</span>
-              <Switch checked={r.on} onChange={v => onToggle && onToggle(r.k, v)} />
+              <div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink }}>{r.k}</div>
+                {r.sub && <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color: r.subTone === 'danger' ? C.danger : r.subTone === 'success' ? C.success : C.mute, marginTop:2 }}>{r.sub}</div>}
+              </div>
+              <Switch checked={r.on} disabled={r.disabled} onChange={v => onToggle && onToggle(r.k, v)} />
             </div>
           )}
           {r.type === 'number' && (
@@ -4513,9 +4518,13 @@ const BROADCAST_SEGMENTS = [
   { key:'sellers', label:'Sellers' },
 ];
 
+const ADMIN_NOTIF_PREF_LABELS = {
+  newOrders: 'New orders', newSellers: 'New sellers', urgentReports: 'Urgent reports',
+  weeklyReports: 'Weekly reports', marketingEmails: 'Marketing emails',
+};
+
 function AdminNotifSection({ accessCtx }) {
   const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
-  const [, forceTick] = React.useState(0);
   const [segment, setSegment] = React.useState('all');
   const [title, setTitle] = React.useState('');
   const [body, setBody] = React.useState('');
@@ -4524,7 +4533,43 @@ function AdminNotifSection({ accessCtx }) {
   const [error, setError] = React.useState('');
   const [toast, setToast] = React.useState(null);
 
-  function toggleNotif(field, value) { window._NOTIF_SETTINGS = { ...window._NOTIF_SETTINGS, [field]: value }; forceTick(t => t + 1); }
+  // Real, persisted-per-admin preferences (notification_preferences
+  // table, RLS-scoped to auth.uid() — see sbGetMyAdminNotificationPrefs/
+  // sbSetMyAdminNotificationPref in supabase-client.jsx). prefsLoaded
+  // guards against rendering (and letting the admin toggle) stale
+  // defaults before the real saved values have come back from Supabase.
+  const [prefs, setPrefs] = React.useState(null);
+  const [prefsLoaded, setPrefsLoaded] = React.useState(false);
+  // Per-preference save status: 'saving' | 'saved' | 'error' | undefined (idle).
+  const [saveStatus, setSaveStatus] = React.useState({});
+  // Guards against a slower, earlier request overwriting the UI state
+  // left by a faster, later one on the SAME preference (e.g. a rapid
+  // double-toggle) — only the response matching the latest issued
+  // request for that key is ever applied.
+  const requestSeq = React.useRef({});
+
+  React.useEffect(() => {
+    sbGetMyAdminNotificationPrefs().then(p => { setPrefs(p); setPrefsLoaded(true); });
+  }, []);
+
+  async function handlePrefToggle(key, value) {
+    const previous = prefs[key];
+    const mySeq = (requestSeq.current[key] || 0) + 1;
+    requestSeq.current[key] = mySeq;
+    setPrefs(p => ({ ...p, [key]: value }));
+    setSaveStatus(s => ({ ...s, [key]: 'saving' }));
+    const { error: saveError } = await sbSetMyAdminNotificationPref(key, value);
+    if (requestSeq.current[key] !== mySeq) return; // a newer request for this key already superseded this one
+    if (saveError) {
+      setPrefs(p => ({ ...p, [key]: previous })); // never leave a failed write looking saved
+      setSaveStatus(s => ({ ...s, [key]: 'error' }));
+      return;
+    }
+    setSaveStatus(s => ({ ...s, [key]: 'saved' }));
+    setTimeout(() => {
+      setSaveStatus(s => (s[key] === 'saved' ? { ...s, [key]: undefined } : s));
+    }, 2500);
+  }
 
   const canSend = title.trim() && body.trim() && !sending;
 
@@ -4540,18 +4585,25 @@ function AdminNotifSection({ accessCtx }) {
     setTitle(''); setBody('');
   }
 
+  const prefStatusSub = (key) => {
+    const s = saveStatus[key];
+    if (s === 'saving') return 'Saving…';
+    if (s === 'saved') return 'Saved';
+    if (s === 'error') return 'Could not save — tap to retry';
+    return undefined;
+  };
+  const prefStatusTone = (key) => saveStatus[key] === 'error' ? 'danger' : saveStatus[key] === 'saved' ? 'success' : undefined;
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-      <SectionTitle title="System Notifications" />
-      <AdminSettingsRows rows={[
-        { type:'toggle', k:'New orders', on:window._NOTIF_SETTINGS.newOrders },
-        { type:'toggle', k:'New sellers', on:window._NOTIF_SETTINGS.newSellers },
-        { type:'toggle', k:'Urgent reports', on:window._NOTIF_SETTINGS.urgentReports },
-        { type:'toggle', k:'Weekly reports', on:window._NOTIF_SETTINGS.weeklyReports },
-        { type:'toggle', k:'Marketing emails', on:window._NOTIF_SETTINGS.marketingEmails },
-      ]} onToggle={(k, v) => {
-        const map = { 'New orders':'newOrders', 'New sellers':'newSellers', 'Urgent reports':'urgentReports', 'Weekly reports':'weeklyReports', 'Marketing emails':'marketingEmails' };
-        toggleNotif(map[k], v);
+      <SectionTitle title="System Notifications" sub={prefsLoaded ? 'Your own preferences — saved to your account, restored on every sign-in.' : 'Loading your saved preferences…'} />
+      <AdminSettingsRows rows={!prefsLoaded ? [] : Object.keys(ADMIN_NOTIF_PREF_LABELS).map(key => ({
+        type: 'toggle', k: ADMIN_NOTIF_PREF_LABELS[key], on: prefs[key],
+        sub: prefStatusSub(key), subTone: prefStatusTone(key),
+        disabled: saveStatus[key] === 'saving',
+      }))} onToggle={(label, v) => {
+        const key = Object.keys(ADMIN_NOTIF_PREF_LABELS).find(k => ADMIN_NOTIF_PREF_LABELS[k] === label);
+        if (key) handlePrefToggle(key, v);
       }} />
 
       {can('notifications.broadcast') && (

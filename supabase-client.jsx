@@ -1895,6 +1895,54 @@ async function sbMarkNotificationRead(id) {
   await _sb.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
 }
 
+// ─── ADMIN — personal notification preferences (System Notifications) ──
+// Reuses the existing notification_preferences table (user_id, type,
+// push/in_app/email, unique on (user_id,type), RLS "Own preferences":
+// user_id = auth.uid()) instead of a new table — it already existed
+// (Phase 6) but was never wired to any screen. The 5 admin toggles map
+// to one row each ('admin_' prefixed type, distinct from any future
+// buyer/seller preference type in the same table); the single on/off
+// switch this UI exposes is written to all three channel columns
+// together so the table's existing channel granularity isn't silently
+// narrowed, only unused for now. Defaults mirror the prior hardcoded
+// window._NOTIF_SETTINGS values exactly — same behavior, now persisted
+// per-admin and enforced by RLS server-side, not just in the UI.
+const ADMIN_NOTIF_PREF_TYPES = {
+  newOrders: 'admin_new_orders',
+  newSellers: 'admin_new_sellers',
+  urgentReports: 'admin_urgent_reports',
+  weeklyReports: 'admin_weekly_reports',
+  marketingEmails: 'admin_marketing_emails',
+};
+const ADMIN_NOTIF_PREF_DEFAULTS = { newOrders: true, newSellers: true, urgentReports: true, weeklyReports: false, marketingEmails: false };
+
+async function sbGetMyAdminNotificationPrefs() {
+  const defaults = { ...ADMIN_NOTIF_PREF_DEFAULTS };
+  if (!_sb) return defaults;
+  const user = await sbGetUser();
+  if (!user) return defaults;
+  const types = Object.values(ADMIN_NOTIF_PREF_TYPES);
+  const { data, error } = await _sb.from('notification_preferences').select('type, in_app').eq('user_id', user.id).in('type', types);
+  if (error || !data) return defaults;
+  const byType = Object.fromEntries(data.map(r => [r.type, r.in_app]));
+  const result = { ...defaults };
+  for (const [key, type] of Object.entries(ADMIN_NOTIF_PREF_TYPES)) {
+    if (byType[type] !== undefined && byType[type] !== null) result[key] = byType[type];
+  }
+  return result;
+}
+
+async function sbSetMyAdminNotificationPref(key, value) {
+  const type = ADMIN_NOTIF_PREF_TYPES[key];
+  if (!type) return { error: { message: 'Unknown preference' } };
+  if (!_sb) return { error: { message: 'Supabase not configured' } };
+  const user = await sbGetUser();
+  if (!user) return { error: { message: 'Authentication required' } };
+  const { error } = await _sb.from('notification_preferences')
+    .upsert({ user_id: user.id, type, push: value, in_app: value, email: value }, { onConflict: 'user_id,type' });
+  return { error };
+}
+
 // ─── SELLER HELPERS ───────────────────────────────────────────────
 async function sbGetSellerStats(shopId) {
   if (!_sb || !shopId) return _DEMO_SELLER_STATS;
@@ -2794,5 +2842,6 @@ Object.assign(window, {
   sbAdminCheckEdgeFunctions, sbAdminCheckRealtime,
   sbAdminRecordHealthCheck, sbAdminGetHealthHistory,
   sbAmIOwner, sbAdminGetOwnerVaultOverview,
+  sbGetMyAdminNotificationPrefs, sbSetMyAdminNotificationPref,
   _isConfigured,
 });
