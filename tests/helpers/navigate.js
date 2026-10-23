@@ -241,6 +241,35 @@ function applyAuthMockOverrides({ role, name, email }) {
       if (!note || !note.trim()) return { data: null, error: { message: 'An admin override requires a note explaining the correction' } };
       return { data: { ok: true, status: fields?.status }, error: null };
     };
+
+    // AdminNotifSection's 5 persisted preferences (notification_preferences
+    // table) — without this default, every spec that renders Notifications
+    // but doesn't override these two itself (every pre-existing spec, since
+    // these functions didn't exist before this feature) would fall through
+    // to the real, unconfigured-for-tests Supabase client and make a real
+    // network call on every mount, same class of bug these other defaults
+    // all exist to avoid.
+    window.sbGetMyAdminNotificationPrefs = async () => window._MOCK_ADMIN_NOTIF_PREFS ?? { newOrders: true, newSellers: true, urgentReports: true, weeklyReports: false, marketingEmails: false };
+    window.sbSetMyAdminNotificationPref = async (key, value) => {
+      window._ADMIN_ACTIONS_LOG = window._ADMIN_ACTIONS_LOG ?? [];
+      window._ADMIN_ACTIONS_LOG.push({ action: 'set_notification_pref', key, value });
+      return { error: null };
+    };
+
+    // AdminHealthSection — same reasoning: these didn't exist before that
+    // feature, so no pre-existing spec mocks them, and without a default
+    // any spec that happens to render Health would hit the real client.
+    window.sbAdminHealthPing = async () => ({ ok: true });
+    window.sbAdminCheckAuthService = async () => ({ ok: true });
+    window.sbAdminCheckStorageService = async () => ({ ok: true });
+    window.sbAdminCheckEdgeFunctions = async () => ({ ok: true });
+    window.sbAdminCheckRealtime = async () => ({ ok: true });
+    window.sbAdminRecordHealthCheck = async () => ({ data: { ok: true }, error: null });
+    window.sbAdminGetHealthHistory = async () => ([]);
+
+    // Owner Vault — same reasoning again.
+    window.sbAmIOwner = async () => false;
+    window.sbAdminGetOwnerVaultOverview = async () => ({ data: null, error: { message: 'Permission denied: Owner access required' } });
 }
 
 /** Mock Supabase auth so tests don't need a real backend */
