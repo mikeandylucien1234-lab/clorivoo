@@ -73,7 +73,7 @@ test.describe('Admin — Homepage management (mocked outcomes)', () => {
       window._MOCK_SHOP_SEARCH_RESULTS = [{ id: 'shop-1', name: 'Luna Studio' }];
     });
     await goto(page, 'admin', { section: 'homepage' });
-    await expect(page.getByText('Popular Shops', { exact: true })).toBeVisible({ timeout: 8000 });
+    await expect(page.getByPlaceholder(/Search real shops/)).toBeVisible({ timeout: 8000 });
     await page.getByPlaceholder(/Search real shops/).fill('Luna');
     await expect(page.getByText('Luna Studio')).toBeVisible({ timeout: 3000 });
     await page.getByText('Luna Studio').click();
