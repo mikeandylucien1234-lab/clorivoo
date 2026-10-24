@@ -1021,6 +1021,37 @@ async function sbGetShops({ limit = 10 } = {}) {
   return { data, error };
 }
 
+// ─── HOMEPAGE — admin-curated "Popular Shops", real per-click
+// behavior unchanged when nothing is curated: get_homepage_featured_
+// shops() (public RPC) returns [] until an admin actually curates a
+// list via sbAdminSetHomepageFeaturedShops(), and the caller falls
+// back to the existing followers-ordered sbGetShops() in that case —
+// never a behavior change for a site with no curation set up yet.
+async function sbGetHomepageFeaturedShops(limit = 8) {
+  if (!_sb) return [];
+  const { data, error } = await _sb.rpc('get_homepage_featured_shops', { p_limit: limit });
+  if (error) return [];
+  return data ?? [];
+}
+
+async function sbAdminSetHomepageFeaturedShops(shopIds) {
+  if (!_sb) return { data: null, error: { message: 'Supabase not configured' } };
+  const { data, error } = await _sb.rpc('admin_set_homepage_featured_shops', { p_shop_ids: shopIds });
+  return { data, error };
+}
+
+// Admin curation screen needs to search/pick real active shops by name —
+// no existing helper does this (sbGetShops always orders by followers and
+// never filters by a search term).
+async function sbAdminSearchShops(query, limit = 20) {
+  if (!_sb) return [];
+  let q = _sb.from('shops').select('id, name, slug, logo_url, is_active, followers').eq('is_active', true);
+  if (query && query.trim()) q = q.ilike('name', `%${query.trim()}%`);
+  const { data, error } = await q.order('followers', { ascending: false }).limit(limit);
+  if (error) return [];
+  return data ?? [];
+}
+
 async function sbGetShop(shopId) {
   if (!_sb) return null;
   const { data } = await _sb.from('shops').select('*, shop_banners(*)').eq('id', shopId).single();
@@ -1865,6 +1896,27 @@ async function sbAdminSetPlatformSetting(key, value) {
   if (!_sb) return { error: { message: 'Not configured' } };
   const { data, error } = await _sb.rpc('admin_set_platform_setting', { p_key: key, p_value: value });
   return { data, error };
+}
+
+// ─── HOMEPAGE — the 6 section toggles (hero/shops/deals/categories/
+// featured/videos). get_homepage_config() is a narrow, public RPC
+// (platform_settings itself has no public SELECT policy — only staff
+// with settings.manage/products.view/edit can read the whole table)
+// so BOTH the real public Homepage and this Admin screen call the
+// same function; only writes go through the existing, permission-
+// gated admin_set_platform_setting('homepage', ...) — reused as-is,
+// no new write path needed. Same defaults as the old, non-persistent
+// window._HOME_SECTIONS so behavior is identical until an admin
+// actually changes something.
+const HOMEPAGE_CONFIG_DEFAULTS = { hero: true, shops: true, deals: true, categories: true, featured: true, videos: true };
+async function sbGetHomepageConfig() {
+  if (!_sb) return { ...HOMEPAGE_CONFIG_DEFAULTS };
+  const { data, error } = await _sb.rpc('get_homepage_config');
+  if (error || !data) return { ...HOMEPAGE_CONFIG_DEFAULTS };
+  return { ...HOMEPAGE_CONFIG_DEFAULTS, ...data };
+}
+async function sbAdminSetHomepageConfig(fullConfig) {
+  return sbAdminSetPlatformSetting('homepage', fullConfig);
 }
 async function sbAdminGetCommissionRate() {
   if (!_sb) return { rate: 0, basis: 'order_subtotal' };
@@ -2843,5 +2895,7 @@ Object.assign(window, {
   sbAdminRecordHealthCheck, sbAdminGetHealthHistory,
   sbAmIOwner, sbAdminGetOwnerVaultOverview,
   sbGetMyAdminNotificationPrefs, sbSetMyAdminNotificationPref,
+  sbGetHomepageFeaturedShops, sbAdminSetHomepageFeaturedShops, sbAdminSearchShops,
+  sbGetHomepageConfig, sbAdminSetHomepageConfig,
   _isConfigured,
 });

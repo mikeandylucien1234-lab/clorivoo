@@ -124,6 +124,22 @@ function applyAuthMockOverrides({ role, name, email }) {
     // unconditional {data:[]} here silently ignored any seeded
     // window._MOCK_BANNERS forever, regardless of what a spec seeded.
     window.sbGetBanners    = async () => ({ data: window._MOCK_BANNERS ?? [] });
+    // Homepage's 6 persisted section toggles + "Popular Shops" curation
+    // (screen-admin.jsx AdminHomepageSection, screen-home.jsx HomeScreen)
+    // — real HomeScreen now calls these on every mount, including in
+    // buyer specs that never touch Homepage admin at all, so this needs
+    // a default here for the same reason every other default in this
+    // file exists: no real network call to the (here, denied) real
+    // backend on mount.
+    window.sbGetHomepageConfig = async () => window._MOCK_HOMEPAGE_CONFIG ?? { hero: true, shops: true, deals: true, categories: true, featured: true, videos: true };
+    window.sbAdminSetHomepageConfig = async (cfg) => { window._MOCK_HOMEPAGE_CONFIG = cfg; return { error: null }; };
+    window.sbGetHomepageFeaturedShops = async () => window._MOCK_HOMEPAGE_FEATURED_SHOPS ?? [];
+    window.sbAdminSetHomepageFeaturedShops = async (ids) => {
+      window._ADMIN_ACTIONS_LOG = window._ADMIN_ACTIONS_LOG ?? [];
+      window._ADMIN_ACTIONS_LOG.push({ action: 'set_homepage_featured_shops', ids });
+      return { data: { ok: true }, error: null };
+    };
+    window.sbAdminSearchShops = async () => window._MOCK_SHOP_SEARCH_RESULTS ?? [];
     window.sbGetCart       = async () => ({ data: window._MOCK_CART ?? [] });
     window.sbUpsertCartItem = async () => ({ error: null });
     window.sbCreateOrder   = async () => ({ data: { id: 'mock-order-1', status: 'pending' }, error: null });

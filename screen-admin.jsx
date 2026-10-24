@@ -4,8 +4,10 @@
 window._ADMIN_AUDIT_LOG   = window._ADMIN_AUDIT_LOG   || [];
 window._REWARDS_CONFIG     = window._REWARDS_CONFIG    || { pointsPerDollar:1, referralBonus:10, minRedeem:500 };
 window._ANNOUNCEMENT       = window._ANNOUNCEMENT       || { enabled:false, text:'', link:'' };
-window._HOME_SECTIONS      = window._HOME_SECTIONS      || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
 window._LOGIN_HISTORY      = window._LOGIN_HISTORY      || [];
+// Homepage's 6 section toggles used to live here (window._HOME_SECTIONS)
+// — now persisted for real in platform_settings (key='homepage'); see
+// AdminHomepageSection and sbGetHomepageConfig/sbAdminSetHomepageConfig.
 window._SECURITY_SETTINGS  = window._SECURITY_SETTINGS  || { twoFactor:true, biometric:true, loginAlerts:false };
 // System Notifications' 5 admin preferences used to live here
 // (window._NOTIF_SETTINGS) — now persisted for real per-admin in the
@@ -1077,6 +1079,7 @@ function AdminBannersSection({ onLog }) {
   const [editTitle, setEditTitle]     = React.useState('');
   const [editSubtitle, setEditSubtitle] = React.useState('');
   const [editCta, setEditCta]         = React.useState('');
+  const [editCtaUrl, setEditCtaUrl]   = React.useState('');
   const [editColor, setEditColor]     = React.useState(C.primary);
   const [editUploading, setEditUploading] = React.useState(false);
   const editFileInputRef = React.useRef(null);
@@ -1093,13 +1096,33 @@ function AdminBannersSection({ onLog }) {
   }, []);
 
   function openEditBanner(b) {
-    setEditBanner(b); setEditTitle(b.title || ''); setEditSubtitle(b.subtitle || ''); setEditCta(b.cta_text || ''); setEditColor(b.bg_color || b.color || C.primary);
+    setEditBanner(b); setEditTitle(b.title || ''); setEditSubtitle(b.subtitle || ''); setEditCta(b.cta_text || ''); setEditCtaUrl(b.cta_url || ''); setEditColor(b.bg_color || b.color || C.primary);
   }
   function openNewBanner() { openEditBanner({ placement:'homepage', is_active:true, position: banners.length + 1 }); }
 
+  // Swaps two banners' `position` values and saves both — the only
+  // reorder path (the edit form has no raw position field; drag-free
+  // and mistake-proof for a short admin-curated list).
+  async function moveBanner(index, dir) {
+    const j = index + dir;
+    if (j < 0 || j >= banners.length) return;
+    const a = banners[index], b = banners[j];
+    const [aPos, bPos] = [a.position ?? index, b.position ?? j];
+    const [updatedA, updatedB] = await Promise.all([
+      sbUpsertBanner({ ...a, position: bPos }),
+      sbUpsertBanner({ ...b, position: aPos }),
+    ]);
+    setBanners(prev => {
+      const next = [...prev];
+      if (updatedA.data) next[index] = updatedA.data;
+      if (updatedB.data) next[j] = updatedB.data;
+      return next.sort((x, y) => (x.position ?? 0) - (y.position ?? 0));
+    });
+  }
+
   async function handleSaveBanner() {
     if (!editBanner) return;
-    const updated = { ...editBanner, title: editTitle, subtitle: editSubtitle, cta_text: editCta, bg_color: editColor, placement: editBanner.placement || 'homepage' };
+    const updated = { ...editBanner, title: editTitle, subtitle: editSubtitle, cta_text: editCta, cta_url: editCtaUrl.trim() || null, bg_color: editColor, placement: editBanner.placement || 'homepage' };
     const { data } = await sbUpsertBanner(updated);
     if (data) setBanners(prev => prev.some(b => b.id === data.id) ? prev.map(b => b.id === data.id ? data : b) : [...prev, data]);
     onLog && onLog('Saved homepage banner', editTitle);
@@ -1181,9 +1204,13 @@ function AdminBannersSection({ onLog }) {
             </div>
             <div style={{ padding:'8px 10px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <StatusPill tone={b.is_active ? 'success' : 'mute'}>{b.is_active ? 'live' : 'inactive'}</StatusPill>
-              <button onClick={e => { e.stopPropagation(); handleToggleBanner(b); }} style={{ border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>
-                {b.is_active ? 'Deactivate' : 'Activate'}
-              </button>
+              <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                <button onClick={e => { e.stopPropagation(); moveBanner(i, -1); }} disabled={i === 0} style={{ border:'none', background:'none', cursor: i === 0 ? 'default' : 'pointer', opacity: i === 0 ? 0.3 : 1, padding:2 }} title="Move earlier"><Icon name="chevronRight" size={13} color={C.mute} style={{ transform:'rotate(-90deg)' }} /></button>
+                <button onClick={e => { e.stopPropagation(); moveBanner(i, 1); }} disabled={i === banners.length - 1} style={{ border:'none', background:'none', cursor: i === banners.length - 1 ? 'default' : 'pointer', opacity: i === banners.length - 1 ? 0.3 : 1, padding:2 }} title="Move later"><Icon name="chevronRight" size={13} color={C.mute} style={{ transform:'rotate(90deg)' }} /></button>
+                <button onClick={e => { e.stopPropagation(); handleToggleBanner(b); }} style={{ border:'none', background:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11, color:C.mute }}>
+                  {b.is_active ? 'Deactivate' : 'Activate'}
+                </button>
+              </div>
             </div>
           </div>
         ))}
@@ -1214,6 +1241,9 @@ function AdminBannersSection({ onLog }) {
           <AdminTextInput value={editTitle} onChange={setEditTitle} placeholder="Title" />
           <AdminTextInput value={editSubtitle} onChange={setEditSubtitle} placeholder="Subtitle / kicker (optional)" />
           <AdminTextInput value={editCta} onChange={setEditCta} placeholder="Button text (default: Shop now)" />
+          <AdminField label="Destination (where the button takes shoppers)">
+            <AdminTextInput value={editCtaUrl} onChange={setEditCtaUrl} placeholder="e.g. search, shop, category?category=electronics, or a full https:// link" />
+          </AdminField>
 
           {!editBanner.image_url && (
             <div>
@@ -4668,6 +4698,179 @@ function AdminNotifSection({ accessCtx }) {
   );
 }
 
+// ─── ADMIN — Homepage: the 6 section toggles (hero/shops/deals/
+// categories/featured/videos), now persisted for real in
+// platform_settings (key='homepage') instead of window._HOME_SECTIONS,
+// plus the one real content gap found on audit: "Popular Shops" had no
+// curation at all (sbGetShops() just sorted by followers, and no admin
+// section manages it). Everything else the Homepage renders already
+// has its own dedicated, fully-working admin section — Banners
+// (hero), Categories ("Featured"/"Show on Homepage"), Flash Deals &
+// Products ("Featured") — deliberately linked to here, not duplicated.
+// See supabase/phase9_homepage_management_migration.sql.
+const HOMEPAGE_TOGGLE_ROWS = [
+  { key:'hero', label:'Hero banner', managedIn:'banners', managedLabel:'Banners' },
+  { key:'shops', label:'Popular Shops', managedHere:true },
+  { key:'deals', label:'Flash & Super Deals', managedIn:'flashdeals', managedLabel:'Flash Deals' },
+  { key:'categories', label:'Popular Categories', managedIn:'categories', managedLabel:'Categories → Featured' },
+  { key:'featured', label:'Featured products', managedIn:'products', managedLabel:'Products → Featured' },
+  { key:'videos', label:'Product Videos', note:'Decorative — reuses product photos with a play-button overlay. No real video asset system exists yet; flagged for the general correction phase.' },
+];
+
+function AdminHomepageSection({ accessCtx, onNav }) {
+  const can = (key) => !!accessCtx?.isAdmin || !!accessCtx?.permissions?.includes(key);
+  const canEdit = can('settings.manage');
+
+  const [config, setConfig] = React.useState(null);
+  const [configLoaded, setConfigLoaded] = React.useState(false);
+  const [saveStatus, setSaveStatus] = React.useState({});
+  const requestSeq = React.useRef({});
+
+  const [featuredShops, setFeaturedShops] = React.useState([]);
+  const [shopsLoaded, setShopsLoaded] = React.useState(false);
+  const [shopQuery, setShopQuery] = React.useState('');
+  const [shopResults, setShopResults] = React.useState([]);
+  const [shopsSaveStatus, setShopsSaveStatus] = React.useState(null);
+
+  const loadConfig = React.useCallback(() => {
+    sbGetHomepageConfig().then(c => { setConfig(c); setConfigLoaded(true); });
+  }, []);
+  const loadFeaturedShops = React.useCallback(() => {
+    sbGetHomepageFeaturedShops(20).then(s => { setFeaturedShops(s); setShopsLoaded(true); });
+  }, []);
+  React.useEffect(() => { loadConfig(); loadFeaturedShops(); }, [loadConfig, loadFeaturedShops]);
+
+  React.useEffect(() => {
+    const q = shopQuery.trim();
+    if (!q) { setShopResults([]); return; }
+    const t = setTimeout(() => { sbAdminSearchShops(q, 10).then(setShopResults); }, 300);
+    return () => clearTimeout(t);
+  }, [shopQuery]);
+
+  async function handleToggle(key, value) {
+    if (!canEdit) return;
+    const previous = config;
+    const mySeq = (requestSeq.current[key] || 0) + 1;
+    requestSeq.current[key] = mySeq;
+    const next = { ...config, [key]: value };
+    setConfig(next);
+    setSaveStatus(s => ({ ...s, [key]: 'saving' }));
+    const { error } = await sbAdminSetHomepageConfig(next);
+    if (requestSeq.current[key] !== mySeq) return;
+    if (error) {
+      setConfig(previous); // never leave a failed write looking saved
+      setSaveStatus(s => ({ ...s, [key]: 'error' }));
+      return;
+    }
+    setSaveStatus(s => ({ ...s, [key]: 'saved' }));
+    setTimeout(() => setSaveStatus(s => (s[key] === 'saved' ? { ...s, [key]: undefined } : s)), 2500);
+  }
+
+  async function addFeaturedShop(shop) {
+    if (!canEdit || featuredShops.some(s => s.id === shop.id)) return;
+    const next = [...featuredShops, shop];
+    setFeaturedShops(next);
+    setShopQuery(''); setShopResults([]);
+    await saveFeaturedShops(next);
+  }
+  function removeFeaturedShop(shopId) {
+    if (!canEdit) return;
+    const next = featuredShops.filter(s => s.id !== shopId);
+    setFeaturedShops(next);
+    saveFeaturedShops(next);
+  }
+  function moveFeaturedShop(index, dir) {
+    if (!canEdit) return;
+    const next = [...featuredShops];
+    const j = index + dir;
+    if (j < 0 || j >= next.length) return;
+    [next[index], next[j]] = [next[j], next[index]];
+    setFeaturedShops(next);
+    saveFeaturedShops(next);
+  }
+  async function saveFeaturedShops(list) {
+    setShopsSaveStatus('saving');
+    const { error } = await sbAdminSetHomepageFeaturedShops(list.map(s => s.id));
+    if (error) { setShopsSaveStatus('error'); return; }
+    setShopsSaveStatus('saved');
+    setTimeout(() => setShopsSaveStatus(s => (s === 'saved' ? null : s)), 2500);
+  }
+
+  const statusSub = (key) => {
+    const s = saveStatus[key];
+    if (s === 'saving') return 'Saving…';
+    if (s === 'saved') return 'Saved';
+    if (s === 'error') return 'Could not save — tap to retry';
+    return undefined;
+  };
+  const statusTone = (key) => saveStatus[key] === 'error' ? 'danger' : saveStatus[key] === 'saved' ? 'success' : undefined;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <SectionTitle title="Homepage" sub={!configLoaded ? 'Loading saved configuration…' : (canEdit ? 'Controls what the real public Homepage shows — saved to Supabase, applied on every visit.' : 'Read-only — the settings.manage permission is required to change these.')} />
+
+      <AdminSettingsRows rows={!configLoaded ? [] : HOMEPAGE_TOGGLE_ROWS.map(row => ({
+        type:'toggle', k: row.label, on: !!config[row.key],
+        sub: statusSub(row.key) || row.note || (row.managedIn ? `Content managed in ${row.managedLabel} →` : undefined),
+        subTone: statusTone(row.key),
+        disabled: !canEdit || saveStatus[row.key] === 'saving',
+        testId: `homepage-toggle-${row.key}`,
+      }))} onToggle={(label, v) => {
+        const row = HOMEPAGE_TOGGLE_ROWS.find(r => r.label === label);
+        if (row) handleToggle(row.key, v);
+      }} />
+
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+        {HOMEPAGE_TOGGLE_ROWS.filter(r => r.managedIn).map(r => (
+          <button key={r.key} onClick={() => onNav(r.managedIn)} style={{ border:`1.5px solid ${C.hairline}`, background:C.white, borderRadius:9999, padding:'6px 12px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11.5, fontWeight:600, color:C.primary }}>
+            Manage {r.managedLabel} →
+          </button>
+        ))}
+      </div>
+
+      <SectionTitle title="Popular Shops" sub="Choose which real, active shops appear and in what order — falls back to the most-followed shops when none are chosen." />
+      <AdminCard style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        {canEdit && (
+          <div style={{ position:'relative' }}>
+            <AdminTextInput value={shopQuery} onChange={setShopQuery} placeholder="Search real shops by name…" />
+            {shopResults.length > 0 && (
+              <div style={{ position:'absolute', top:'100%', left:0, right:0, background:C.white, border:`1px solid ${C.hairline}`, borderRadius:10, marginTop:4, zIndex:5, maxHeight:220, overflowY:'auto', boxShadow:'0 8px 24px rgba(14,11,31,0.12)' }}>
+                {shopResults.map(s => (
+                  <div key={s.id} onClick={() => addFeaturedShop(s)} style={{ padding:'8px 12px', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, display:'flex', justifyContent:'space-between' }}>
+                    <span>{s.name}</span>
+                    {featuredShops.some(f => f.id === s.id) && <span style={{ color:C.mute, fontSize:11 }}>already added</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {!shopsLoaded ? (
+          <AdminEmptyRow text="Loading…" />
+        ) : featuredShops.length === 0 ? (
+          <AdminEmptyRow text="No shops curated yet — the Homepage falls back to the most-followed real shops." />
+        ) : featuredShops.map((s, i) => (
+          <div key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderTop: i>0 ? `1px solid ${C.hairline}` : 'none' }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.ink, flex:1 }}>{s.name}</span>
+            {canEdit && (
+              <div style={{ display:'flex', gap:4 }}>
+                <button onClick={() => moveFeaturedShop(i, -1)} disabled={i === 0} style={{ border:'none', background:'none', cursor: i === 0 ? 'default' : 'pointer', opacity: i === 0 ? 0.3 : 1 }}><Icon name="chevronRight" size={14} color={C.mute} style={{ transform:'rotate(-90deg)' }} /></button>
+                <button onClick={() => moveFeaturedShop(i, 1)} disabled={i === featuredShops.length - 1} style={{ border:'none', background:'none', cursor: i === featuredShops.length - 1 ? 'default' : 'pointer', opacity: i === featuredShops.length - 1 ? 0.3 : 1 }}><Icon name="chevronRight" size={14} color={C.mute} style={{ transform:'rotate(90deg)' }} /></button>
+                <button onClick={() => removeFeaturedShop(s.id)} style={{ border:'none', background:'none', cursor:'pointer' }}><Icon name="x" size={14} color={C.danger} /></button>
+              </div>
+            )}
+          </div>
+        ))}
+        {shopsSaveStatus && (
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11.5, color: shopsSaveStatus === 'error' ? C.danger : shopsSaveStatus === 'saved' ? C.success : C.mute }}>
+            {shopsSaveStatus === 'saving' ? 'Saving…' : shopsSaveStatus === 'saved' ? 'Saved' : 'Could not save this order.'}
+          </div>
+        )}
+      </AdminCard>
+    </div>
+  );
+}
+
 // ─── ADMIN — Payments / Refunds / Commissions (real Supabase data;
 // the RPCs/queries already existed and were only reachable nested
 // inside AdminOrderDetail — these give them standalone sections). ──
@@ -4998,9 +5201,8 @@ function AdminShellScreen({ params = {} }) {
     loadCoupons();
   }
 
-  // ── Announcement / Homepage / Shop-by-category ──
+  // ── Announcement / Shop-by-category ──
   function saveAnnouncement(updates) { window._ANNOUNCEMENT = { ...window._ANNOUNCEMENT, ...updates }; logAdminAction('Updated announcement bar', updates.text ?? ''); forceTick(t => t + 1); }
-  function toggleHomeSection(key, val) { window._HOME_SECTIONS = { ...window._HOME_SECTIONS, [key]: val }; forceTick(t => t + 1); }
 
   // ── Platform settings (persistent) ──
   const [platformSettings, setPlatformSettings] = React.useState(null);
@@ -5201,22 +5403,7 @@ function AdminShellScreen({ params = {} }) {
         </div>
       );
 
-      case 'homepage': return (
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          <SectionTitle title="Homepage" sub="Show or hide sections on the storefront Home page" />
-          <AdminSettingsRows rows={[
-            { type:'toggle', k:'Hero banner',          on:window._HOME_SECTIONS.hero },
-            { type:'toggle', k:'Popular Shops',        on:window._HOME_SECTIONS.shops },
-            { type:'toggle', k:'Flash & Super Deals',  on:window._HOME_SECTIONS.deals },
-            { type:'toggle', k:'Popular Categories',   on:window._HOME_SECTIONS.categories },
-            { type:'toggle', k:'Featured products',    on:window._HOME_SECTIONS.featured },
-            { type:'toggle', k:'Product videos',       on:window._HOME_SECTIONS.videos },
-          ]} onToggle={(k, v) => {
-            const map = { 'Hero banner':'hero', 'Popular Shops':'shops', 'Flash & Super Deals':'deals', 'Popular Categories':'categories', 'Featured products':'featured', 'Product videos':'videos' };
-            toggleHomeSection(map[k], v);
-          }} />
-        </div>
-      );
+      case 'homepage': return <AdminHomepageSection accessCtx={accessCtx} onNav={onNav} />;
 
       case 'shopbycategory': return (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>

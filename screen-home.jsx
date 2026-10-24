@@ -5,6 +5,28 @@
 // PostgREST) or a `tint` placeholder color index the way the old fictitious
 // PRODUCTS demo objects did. This derives them from the real columns instead
 // of inventing numbers.
+// Resolves a banner's real cta_url (banners.cta_url — already existed
+// in the schema, just never set by the admin form or read here before
+// now) into real navigation: a full external link opens in a new tab,
+// "screen" or "screen?key=value&key2=value2" navigates in-app, and an
+// empty/unrecognized value falls back to the previous hardcoded
+// behavior (search) so existing banners with no destination set keep
+// working exactly as before.
+function _goToBannerDestination(ctaUrl, navigate) {
+  const raw = (ctaUrl || '').trim();
+  if (!raw) { navigate('search'); return; }
+  if (/^https?:\/\//i.test(raw)) { window.open(raw, '_blank', 'noopener'); return; }
+  const [screen, query] = raw.split('?');
+  const params = {};
+  if (query) {
+    for (const pair of query.split('&')) {
+      const [k, v] = pair.split('=');
+      if (k) params[decodeURIComponent(k)] = v !== undefined ? decodeURIComponent(v) : '';
+    }
+  }
+  navigate(screen || 'search', params);
+}
+
 function _withCardFields(p, i) {
   const price = Number(p.price);
   const comparePrice = p.compare_price != null ? Number(p.compare_price) : null;
@@ -31,8 +53,13 @@ function HomeScreen() {
   const [navCategories, setNavCategories]   = React.useState([]); // real top-level categories (show_in_navigation)
   const [featuredCategories, setFeaturedCategories] = React.useState([]);
   const [flashDealsReal, setFlashDealsReal] = React.useState(null); // null = loading, [] = none active
-
-  const homeSections = window._HOME_SECTIONS || { hero:true, shops:true, deals:true, categories:true, featured:true, videos:true };
+  // Real, persisted config (platform_settings key='homepage' via the
+  // public get_homepage_config() RPC) — replaces window._HOME_SECTIONS,
+  // which never reached this screen's own real visitors either (same
+  // window global, never backed by anything server-side). Defaults to
+  // the exact same values as before while the real config loads, so
+  // there's no flash of an empty page.
+  const [homeSections, setHomeSections] = React.useState({ hero:true, shops:true, deals:true, categories:true, featured:true, videos:true });
   const announcement = window._ANNOUNCEMENT;
   const defaultAddress = (window._ADDRESSES || []).find(a => a.isDefault) || (window._ADDRESSES || [])[0] || null;
   const categories = [{ id:'all', name:'All', slug:'' }, ...navCategories];
@@ -47,7 +74,15 @@ function HomeScreen() {
     sbGetProducts({ limit: 8, featured: true }).then(({ data }) => {
       setFeaturedProducts((data || []).map(_withCardFields));
     });
-    sbGetShops({ limit: 8 }).then(({ data }) => { if (data?.length) setShops(data); });
+    sbGetHomepageConfig().then(setHomeSections);
+    // Real admin curation first (Admin → Homepage → Popular Shops);
+    // falls back to the existing followers-ordered query when nothing
+    // has been curated yet — never a behavior change for a site with
+    // no curation set up, never a fabricated list either way.
+    sbGetHomepageFeaturedShops(8).then(curated => {
+      if (curated?.length) { setShops(curated); return; }
+      sbGetShops({ limit: 8 }).then(({ data }) => { if (data?.length) setShops(data); });
+    });
     sbGetBanners().then(({ data }) => { if (data?.length) setBanners(data); });
     sbGetCategoryTree().then(tree => setNavCategories(tree.filter(c => c.show_in_navigation !== false)));
     sbGetFeaturedCategories(4).then(setFeaturedCategories);
@@ -211,7 +246,7 @@ function HomeScreen() {
                 <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.8)', marginBottom: 4, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{heroBanner.subtitle}</div>
               )}
               <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.03em', lineHeight: 1.15, marginBottom: 12 }}>{heroBanner.title}</div>
-              <button onClick={() => navigate('search')} style={{ background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(8px)', border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: 9999, padding: '8px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, color: '#fff' }}>
+              <button onClick={() => _goToBannerDestination(heroBannerRaw.cta_url, navigate)} style={{ background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(8px)', border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: 9999, padding: '8px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, color: '#fff' }}>
                 <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600 }}>{heroBanner.cta_text || 'Shop now'}</span>
                 <Icon name="arrowLeft" size={14} color="#fff" style={{ transform: 'rotate(180deg)' }} />
               </button>
