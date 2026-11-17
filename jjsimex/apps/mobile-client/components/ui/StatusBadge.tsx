@@ -4,7 +4,7 @@ import { View, Text } from 'react-native';
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   pending:      { label: 'En attente',   color: '#9CA3AF', bg: 'rgba(156,163,175,0.14)' },
   received_usa: { label: 'Reçu USA',     color: '#3B82F6', bg: 'rgba(59,130,246,0.14)' },
-  in_transit:   { label: 'En transit',   color: '#F97316', bg: 'rgba(249,115,22,0.14)' },
+  in_transit:   { label: 'En transit',   color: '#F59E0B', bg: 'rgba(245,158,11,0.14)' },
   arrived:      { label: 'Arrivé',       color: '#A855F7', bg: 'rgba(168,85,247,0.14)' },
   ready_pickup: { label: 'Prêt retrait', color: '#06B6D4', bg: 'rgba(6,182,212,0.14)' },
   delivered:    { label: 'Livré',        color: '#22C55E', bg: 'rgba(34,197,94,0.14)' },
