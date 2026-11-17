@@ -11,7 +11,6 @@ import { ChevronDown, CheckCircle } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-const ACCENT = '#F97316';
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
 
 const CARRIERS = ['UPS', 'FedEx', 'USPS', 'Amazon Logistics', 'DHL', 'Autre'];
@@ -20,6 +19,7 @@ export default function AddCarrierTrackingScreen() {
   const router = useRouter();
   const { session } = useAuth();
   const { colors, isDark } = useTheme();
+  const ACCENT = colors.accent;
   const { t } = useLanguage();
   const params = useLocalSearchParams<{ packageId: string; requestNumber: string }>();
   const [carrier, setCarrier] = useState('');
@@ -115,12 +115,12 @@ export default function AddCarrierTrackingScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D0D0D' },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingTop: statusBarH + 10, paddingBottom: 12,
   },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#FFFFFF' },
+  headerTitle: { fontSize: 17, fontWeight: '700' },
 
   refCard: {
     backgroundColor: '#1A1A1A', borderRadius: 14, padding: 16, marginBottom: 24,

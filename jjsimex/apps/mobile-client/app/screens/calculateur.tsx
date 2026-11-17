@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { calculateShipping, getShippingRates } from '@jjsimex/supabase/shipping';
 import type { ShippingRate } from '@jjsimex/supabase/shipping';
 import { BackButton } from '@/components/layout/BackButton';
@@ -24,6 +25,8 @@ function safeNum(v: unknown): number {
 export default function CalculateurScreen() {
   const router = useRouter();
   const { session, profile } = useAuth();
+  const { colors } = useTheme();
+  const ACCENT = colors.accent;
 
   const [transport, setTransport] = useState<'air' | 'sea'>('air');
   const [weight, setWeight] = useState(5);

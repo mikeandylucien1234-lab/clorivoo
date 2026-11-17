@@ -277,8 +277,8 @@ export default function ProfilScreen() {
           <Sep />
           {/* Email notifications */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 14 }}>
-            <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(249,115,22,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-              <Bell size={18} color="#F97316" />
+            <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: colors.accentLight, alignItems: 'center', justifyContent: 'center' }}>
+              <Bell size={18} color={colors.accent} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{t('email_notif')}</Text>
@@ -289,8 +289,8 @@ export default function ProfilScreen() {
           <Sep />
           {/* Theme */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 14 }}>
-            <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(249,115,22,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-              {isDark ? <Moon size={18} color="#F97316" /> : <Sun size={18} color="#F97316" />}
+            <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: colors.accentLight, alignItems: 'center', justifyContent: 'center' }}>
+              {isDark ? <Moon size={18} color={colors.accent} /> : <Sun size={18} color={colors.accent} />}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{t('theme')}</Text>
@@ -332,12 +332,12 @@ export default function ProfilScreen() {
                 style={{
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                   paddingVertical: 14, paddingHorizontal: 16, borderRadius: 12, marginBottom: 8,
-                  backgroundColor: lang === code ? 'rgba(249,115,22,0.15)' : 'transparent',
-                  borderWidth: lang === code ? 1 : 0, borderColor: '#F97316',
+                  backgroundColor: lang === code ? colors.accentLight : 'transparent',
+                  borderWidth: lang === code ? 1 : 0, borderColor: colors.accent,
                 }}
               >
-                <Text style={{ fontSize: 15, fontWeight: lang === code ? '700' : '500', color: lang === code ? '#F97316' : colors.text }}>{label}</Text>
-                {lang === code && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#F97316' }} />}
+                <Text style={{ fontSize: 15, fontWeight: lang === code ? '700' : '500', color: lang === code ? colors.accent : colors.text }}>{label}</Text>
+                {lang === code && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent }} />}
               </TouchableOpacity>
             ))}
           </View>
@@ -353,9 +353,9 @@ const S = StyleSheet.create({
   headerTitle: { fontSize: 24, fontWeight: '700' },
   editBtn: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   profileCard: { borderWidth: 1, borderRadius: 20, padding: 22, marginBottom: 4 },
-  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#F97316', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  avatarText: { color: '#0D0D0D', fontWeight: '800', fontSize: 26 },
-  cameraButton: { position: 'absolute', bottom: 0, right: -2, width: 24, height: 24, borderRadius: 12, backgroundColor: '#F97316', borderWidth: 2, borderColor: '#1A1A1A', alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#22C55E', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarText: { color: '#FFFFFF', fontWeight: '800', fontSize: 26 },
+  cameraButton: { position: 'absolute', bottom: 0, right: -2, width: 24, height: 24, borderRadius: 12, backgroundColor: '#22C55E', borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   sectionTitle: { fontSize: 12, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 24, marginBottom: 10 },
   section: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14 },
 });

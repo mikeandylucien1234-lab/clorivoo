@@ -20,7 +20,7 @@ import { Image } from 'react-native';
 import { getClient } from '@jjsimex/supabase/client';
 
 const { width } = Dimensions.get('window');
-const ACCENT_FALLBACK = '#22C55E';
+// ACCENT is now derived from theme in component via colors.accent
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
 
 const CATEGORIES = [
@@ -40,6 +40,7 @@ export default function CreateShipmentScreen() {
   const router = useRouter();
   const { session, profile } = useAuth();
   const { colors, isDark } = useTheme();
+  const ACCENT = colors.accent;
   const { t } = useLanguage();
 
   const catLabel = (key: string) => { const m: Record<string,string> = { phone: t('cat_phone'), laptop: t('cat_laptop'), clothes: t('cat_clothes'), shoes: t('cat_shoes'), electronics: t('cat_electronics'), home: t('cat_home'), cosmetics: t('cat_cosmetics'), other: t('cat_other') }; return m[key] ?? key; };
@@ -588,11 +589,11 @@ const s = StyleSheet.create({
     width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: '#333',
     alignItems: 'center', justifyContent: 'center',
   },
-  stepCircleActive: { borderColor: ACCENT, backgroundColor: ACCENT },
+  stepCircleActive: { borderColor: '#22C55E', backgroundColor: '#22C55E' },
   stepNum: { fontSize: 13, fontWeight: '700', color: '#555' },
   stepNumActive: { color: '#FFFFFF' },
   stepLine: { flex: 1, height: 2, backgroundColor: '#333', marginHorizontal: 4 },
-  stepLineActive: { backgroundColor: ACCENT },
+  stepLineActive: { backgroundColor: '#22C55E' },
   stepLabel: { textAlign: 'center', fontSize: 12, color: '#666', marginTop: 6, marginBottom: 8 },
 
   sectionTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF', marginBottom: 16 },
@@ -601,12 +602,12 @@ const s = StyleSheet.create({
     width: (width - 70) / 4, backgroundColor: '#1A1A1A', borderRadius: 14,
     paddingVertical: 14, alignItems: 'center', borderWidth: 2, borderColor: 'transparent',
   },
-  catCardActive: { borderColor: ACCENT },
+  catCardActive: { borderColor: '#22C55E' },
   catIcon: {
-    width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(249,115,22,0.12)',
+    width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(34,197,94,0.12)',
     alignItems: 'center', justifyContent: 'center', marginBottom: 8,
   },
-  catIconActive: { backgroundColor: ACCENT },
+  catIconActive: { backgroundColor: '#22C55E' },
   catLabel: { fontSize: 11, fontWeight: '600', color: '#9CA3AF', textAlign: 'center' },
   catLabelActive: { color: '#FFFFFF' },
 
@@ -638,14 +639,14 @@ const s = StyleSheet.create({
     backgroundColor: '#1A1A1A', borderRadius: 16, padding: 16,
     borderWidth: 2, borderColor: '#2A2A2A',
   },
-  transportCardActive: { borderColor: ACCENT },
+  transportCardActive: { borderColor: '#22C55E' },
   transportIcon: {
     width: 44, height: 44, borderRadius: 12, backgroundColor: '#2A2A2A',
     alignItems: 'center', justifyContent: 'center',
   },
   transportTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
   transportSub: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
-  radioActive: { width: 22, height: 22, borderRadius: 11, backgroundColor: ACCENT, borderWidth: 3, borderColor: '#0D0D0D' },
+  radioActive: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#22C55E', borderWidth: 3, borderColor: '#0D0D0D' },
   transportMeta: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#2A2A2A' },
   transportMetaLabel: { fontSize: 11, color: '#666', marginBottom: 2 },
   transportMetaVal: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
@@ -665,7 +666,7 @@ const s = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: '#1A1A1A',
   },
   ctaBtn: {
-    height: 56, borderRadius: 16, backgroundColor: ACCENT,
+    height: 56, borderRadius: 16, backgroundColor: '#22C55E',
     alignItems: 'center', justifyContent: 'center',
   },
   ctaBtnDisabled: { opacity: 0.4 },
@@ -685,7 +686,7 @@ const s = StyleSheet.create({
   outlineBtnText: { fontSize: 16, fontWeight: '600', color: '#9CA3AF' },
 
   warningBox: {
-    backgroundColor: 'rgba(249,115,22,0.1)', borderWidth: 1, borderColor: ACCENT,
+    backgroundColor: 'rgba(34,197,94,0.1)', borderWidth: 1, borderColor: '#22C55E',
     borderRadius: 12, padding: 14, marginBottom: 12,
   },
   photoZone: {
@@ -699,8 +700,8 @@ const s = StyleSheet.create({
   },
 
   confirmTitle: { fontSize: 24, fontWeight: '800', color: '#FFFFFF', marginTop: 20, marginBottom: 8 },
-  requestNum: { fontSize: 22, fontWeight: '800', color: ACCENT, marginBottom: 12 },
-  copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 99, backgroundColor: 'rgba(249,115,22,0.12)' },
-  copyText: { fontSize: 13, fontWeight: '600', color: ACCENT },
+  requestNum: { fontSize: 22, fontWeight: '800', color: '#22C55E', marginBottom: 12 },
+  copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 99, backgroundColor: 'rgba(34,197,94,0.12)' },
+  copyText: { fontSize: 13, fontWeight: '600', color: '#22C55E' },
   confirmDesc: { fontSize: 14, color: '#9CA3AF', textAlign: 'center', lineHeight: 20, marginTop: 20, paddingHorizontal: 10 },
 });

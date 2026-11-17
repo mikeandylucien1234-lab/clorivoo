@@ -4,6 +4,7 @@ import {
   SafeAreaView, Clipboard, Linking, Alert,
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { BackButton } from '@/components/layout/BackButton';
 import { useToast } from '@/components/ui/Toast';
 
@@ -11,6 +12,7 @@ interface AddressRow { label: string; value: string; }
 
 export default function AdressesUSScreen() {
   const { profile } = useAuth();
+  const { colors } = useTheme();
   const { show, ToastEl } = useToast();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -94,7 +96,7 @@ export default function AdressesUSScreen() {
               >
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rowLabel}>{row.label}</Text>
-                  <Text style={[styles.rowValue, row.label === 'Suite / Apt' && { color: '#F97316' }]}>{row.value}</Text>
+                  <Text style={[styles.rowValue, row.label === 'Suite / Apt' && { color: colors.accent }]}>{row.value}</Text>
                 </View>
                 <View style={[styles.copyIcon, copiedKey === row.label && styles.copyIconDone]}>
                   <Text style={{ fontSize: 13 }}>{copiedKey === row.label ? '✓' : '📋'}</Text>
@@ -150,7 +152,7 @@ export default function AdressesUSScreen() {
           <View style={styles.card}>
             {STEPS.map((step, i) => (
               <View key={i} style={{ flexDirection: 'row', gap: 12, paddingVertical: 10, borderBottomWidth: i < STEPS.length - 1 ? 1 : 0, borderBottomColor: '#1F1F1F' }}>
-                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(249,115,22,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.accentLight, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 18 }}>{step.icon}</Text>
                 </View>
                 <View style={{ flex: 1, justifyContent: 'center' }}>
@@ -166,7 +168,7 @@ export default function AdressesUSScreen() {
           <View style={{ backgroundColor: 'rgba(239,68,68,0.08)', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)', flexDirection: 'row', gap: 10 }}>
             <Text style={{ fontSize: 18 }}>⚠️</Text>
             <Text style={{ flex: 1, fontSize: 13, color: '#FCA5A5', lineHeight: 19 }}>
-              N'oubliez pas d'inclure votre numéro de suite unique (<Text style={{ color: '#F97316', fontWeight: '700' }}>{suiteId}</Text>) dans l'adresse de livraison pour que nous puissions identifier votre colis.
+              N'oubliez pas d'inclure votre numéro de suite unique (<Text style={{ color: colors.accent, fontWeight: '700' }}>{suiteId}</Text>) dans l'adresse de livraison pour que nous puissions identifier votre colis.
             </Text>
           </View>
         </View>
@@ -176,7 +178,7 @@ export default function AdressesUSScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D0D0D' },
+  container: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14 },
   title: { fontSize: 20, fontWeight: '800', color: '#FFFFFF' },
   subtitle: { fontSize: 13, color: '#9CA3AF' },
