@@ -91,7 +91,7 @@ export default function ColisScreen() {
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={{ fontSize: 40, marginBottom: 12 }}>📦</Text>
@@ -126,13 +126,13 @@ const styles = StyleSheet.create({
   searchInput: { height: 44, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 12, color: '#FFFFFF', paddingHorizontal: 16, fontSize: 14 },
   filterRow: { flexDirection: 'row', gap: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1A1A1A' },
   filterTab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A' },
-  filterTabActive: { backgroundColor: '#F97316', borderColor: '#F97316' },
+  filterTabActive: { backgroundColor: '#22C55E', borderColor: '#22C55E' },
   filterText: { fontSize: 13, fontWeight: '600', color: '#9CA3AF' },
-  filterTextActive: { color: '#0D0D0D' },
+  filterTextActive: { color: '#FFFFFF' },
   list: { paddingTop: 16, paddingBottom: 30 },
   empty: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 40 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF', marginBottom: 8 },
   emptyText: { fontSize: 14, color: '#9CA3AF', textAlign: 'center', lineHeight: 20 },
-  addTrackingBtn: { marginTop: 8, marginHorizontal: 0, backgroundColor: '#F97316', borderRadius: 10, paddingVertical: 10, alignItems: 'center' as const },
+  addTrackingBtn: { marginTop: 8, marginHorizontal: 0, backgroundColor: '#22C55E', borderRadius: 10, paddingVertical: 10, alignItems: 'center' as const },
   addTrackingText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' as const },
 });

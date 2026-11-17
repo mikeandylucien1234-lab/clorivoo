@@ -29,10 +29,10 @@ const FILTER_LABELS: { key: FilterType; label: string }[] = [
 ];
 
 const TYPE_ICON: Record<string, { emoji: string; bg: string }> = {
-  package:          { emoji: '📦', bg: '#F97316' },
+  package:          { emoji: '📦', bg: '#22C55E' },
   personal_shopper: { emoji: '🛍️', bg: '#A855F7' },
   payment:          { emoji: '💳', bg: '#2563EB' },
-  promo:            { emoji: '🏷️', bg: '#F97316' },
+  promo:            { emoji: '🏷️', bg: '#22C55E' },
   system:           { emoji: '⚙️', bg: '#6B7280' },
 };
 
@@ -173,7 +173,7 @@ export default function NotificationsScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 30 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
         {loading && (
           <View style={{ alignItems: 'center', paddingTop: 60 }}>
@@ -228,18 +228,18 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0D0D0D' },
   header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4 },
   title: { fontSize: 24, fontWeight: '700', color: '#FFFFFF' },
-  badge: { backgroundColor: '#F97316', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 },
-  badgeText: { fontSize: 12, fontWeight: '700', color: '#0D0D0D' },
-  markAll: { fontSize: 13, fontWeight: '600', color: '#F97316' },
+  badge: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 },
+  badgeText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+  markAll: { fontSize: 13, fontWeight: '600', color: '#22C55E' },
   filterRow: { flexDirection: 'row', gap: 8, paddingVertical: 14 },
   filterTab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A' },
-  filterTabActive: { backgroundColor: '#F97316', borderColor: '#F97316' },
+  filterTabActive: { backgroundColor: '#22C55E', borderColor: '#22C55E' },
   filterText: { fontSize: 13, fontWeight: '600', color: '#9CA3AF' },
-  filterTextActive: { color: '#0D0D0D' },
+  filterTextActive: { color: '#FFFFFF' },
   groupLabel: { fontSize: 12, fontWeight: '600', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 16, marginBottom: 10 },
   card: { position: 'relative', backgroundColor: '#1A1A1A', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: '#1F1F1F' },
-  cardUnread: { borderLeftWidth: 3, borderLeftColor: '#F97316', borderColor: '#1F1F1F' },
-  unreadDot: { position: 'absolute', top: 14, right: 14, width: 8, height: 8, borderRadius: 4, backgroundColor: '#F97316' },
+  cardUnread: { borderLeftWidth: 3, borderLeftColor: '#22C55E', borderColor: '#1F1F1F' },
+  unreadDot: { position: 'absolute', top: 14, right: 14, width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' },
   iconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   cardTitle: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', paddingRight: 16 },
   cardBody: { fontSize: 13, color: '#9CA3AF', lineHeight: 19, marginTop: 4 },

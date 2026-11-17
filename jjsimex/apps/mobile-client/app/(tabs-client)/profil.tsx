@@ -13,15 +13,16 @@ import {
 } from 'lucide-react-native';
 
 function Toggle({ value, onToggle }: { value: boolean; onToggle: () => void }) {
+  const { colors } = useTheme();
   return (
     <TouchableOpacity onPress={onToggle} activeOpacity={0.8}
-      style={{ width: 44, height: 26, borderRadius: 99, backgroundColor: value ? '#F97316' : '#2A2A2A', justifyContent: 'center', padding: 3 }}>
+      style={{ width: 44, height: 26, borderRadius: 99, backgroundColor: value ? colors.accent : colors.border, justifyContent: 'center', padding: 3 }}>
       <View style={{ width: 20, height: 20, borderRadius: 99, backgroundColor: '#FFFFFF', marginLeft: value ? 18 : 0 }} />
     </TouchableOpacity>
   );
 }
 
-function MenuItem({ icon: Icon, label, sub, onPress, iconBg = 'rgba(249,115,22,0.12)', textColor }: {
+function MenuItem({ icon: Icon, label, sub, onPress, iconBg, textColor }: {
   icon: React.ComponentType<{ size: number; color: string }>;
   label: string;
   sub?: string;
@@ -33,8 +34,8 @@ function MenuItem({ icon: Icon, label, sub, onPress, iconBg = 'rgba(249,115,22,0
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.7}
       style={{ flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 14 }}>
-      <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: iconBg, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon size={18} color="#F97316" />
+      <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: iconBg ?? colors.accentLight, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon size={18} color={colors.accent} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 14, fontWeight: '600', color: textColor ?? colors.text }}>{label}</Text>
@@ -85,7 +86,7 @@ export default function ProfilScreen() {
     return (
       <View style={[S.container, { backgroundColor: colors.bg }]}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color="#F97316" size="large" />
+          <ActivityIndicator color={colors.accent} size="large" />
           <Text style={{ color: colors.textSecondary, marginTop: 12, fontSize: 14 }}>Chargement du profil…</Text>
         </View>
       </View>
@@ -224,7 +225,7 @@ export default function ProfilScreen() {
               <React.Fragment key={lbl}>
                 {i > 0 && <View style={{ width: 1, height: 34, backgroundColor: colors.border }} />}
                 <View style={{ flex: 1, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 19, fontWeight: '800', color: '#F97316' }}>{val}</Text>
+                  <Text style={{ fontSize: 19, fontWeight: '800', color: colors.accent }}>{val}</Text>
                   <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 3, textAlign: 'center' }}>{lbl}</Text>
                 </View>
               </React.Fragment>
@@ -249,8 +250,8 @@ export default function ProfilScreen() {
           {/* Language */}
           <TouchableOpacity onPress={() => setLangModal(true)} activeOpacity={0.7}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 14 }}>
-            <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(249,115,22,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-              <Globe size={18} color="#F97316" />
+            <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: colors.accentLight, alignItems: 'center', justifyContent: 'center' }}>
+              <Globe size={18} color={colors.accent} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{t('language')}</Text>
@@ -264,8 +265,8 @@ export default function ProfilScreen() {
           <Sep />
           {/* WhatsApp notifications */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 14 }}>
-            <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(249,115,22,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-              <MessageCircle size={18} color="#F97316" />
+            <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: colors.accentLight, alignItems: 'center', justifyContent: 'center' }}>
+              <MessageCircle size={18} color={colors.accent} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{t('whatsapp_notif')}</Text>

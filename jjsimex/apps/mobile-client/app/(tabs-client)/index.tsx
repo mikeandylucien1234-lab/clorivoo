@@ -2,10 +2,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   FlatList, Dimensions, RefreshControl, Platform, StatusBar,
-  Modal, TextInput, KeyboardAvoidingView, Animated, PanResponder, Linking, Image,
+  Modal, TextInput, KeyboardAvoidingView, Image, Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Bell, ChevronDown, Tag, Plane, BookOpen, Newspaper, Gift, MapPin, Package, ShoppingCart, Calculator, MapPinned, ArrowLeftRight, Ship, Calendar, Check, Navigation, ChevronRight } from 'lucide-react-native';
+import { Bell, Search, Package, ShoppingCart, Calculator, MapPinned, MapPin, ChevronDown, ChevronRight, Plane, Ship, Calendar, Check, ArrowRight, HelpCircle, Truck, Globe, Gift } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -17,19 +17,10 @@ import { getActiveBranches, isBranchOpen, getClosingTime, subscribeToBranches } 
 import type { ExchangeRate } from '@jjsimex/supabase/shipping';
 import type { Departure } from '@jjsimex/supabase/departures';
 import type { Branch } from '@jjsimex/supabase/branches';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 
 const { width } = Dimensions.get('window');
 
-const STORIES = [
-  { Icon: Tag, label: 'Offres', unread: true },
-  { Icon: Plane, label: 'Départs', unread: true },
-  { Icon: BookOpen, label: 'Guide', unread: true },
-  { Icon: Newspaper, label: 'Nouvelles', unread: false },
-  { Icon: Gift, label: 'Parrainage', unread: false },
-];
-
-const BANNER_W = width * 0.88;
+const BANNER_W = width - 40;
 const BANNER_GAP = 12;
 const BANNERS = [
   require('../../assets/images/banner/banner1.png'),
@@ -37,29 +28,12 @@ const BANNERS = [
   require('../../assets/images/banner/banner3.png'),
 ];
 
-const QUICK_ACTIONS = [
-  { Icon: Package, label: 'Tracker un colis', route: '/(tabs-client)/colis', darkIcon: true },
-  { Icon: ShoppingCart, label: 'Personal Shopper', route: '/screens/personal-shopper' },
-  { Icon: Calculator, label: 'Calculateur', route: '/screens/calculateur' },
-  { Icon: MapPinned, label: 'Mes adresses US', route: '/screens/adresses-us', darkIcon: true },
-];
-
-const CITY_SECTIONS = [
-  { flag: '\u{1F1ED}\u{1F1F9}', country: 'haiti', title: 'Haïti', cities: ['Port-au-Prince', 'Cap-Haïtien', 'Pétion-Ville', 'Les Cayes', 'Gonaïves', 'Jacmel'] },
-  { flag: '\u{1F1E9}\u{1F1F4}', country: 'dr', title: 'Rép. Dom.', cities: ['Santo Domingo', 'Santiago', 'Punta Cana'] },
-];
-
 const STATUS_STEPS = ['awaiting_arrival', 'received_usa', 'in_transit', 'arrived', 'ready_pickup', 'delivered'];
-const STATUS_LABELS: Record<string, string> = {
-  awaiting_arrival: 'En attente', received_usa: 'Reçu USA', in_transit: 'En transit', arrived: 'Arrivé', ready_pickup: 'Prêt retrait', delivered: 'Livré',
-};
 
 const LOYALTY_LABELS: Record<string, string> = {
-  bronze: '🥉 Bronze', silver: '🥈 Argent', gold: '🥇 Or', platinum: '💎 Platine',
+  bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum',
 };
-const LOYALTY_PCT: Record<string, number> = { bronze: 25, silver: 50, gold: 75, platinum: 100 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Pkg = any;
 
 export default function HomeScreen() {
@@ -68,13 +42,11 @@ export default function HomeScreen() {
   const { colors, isDark } = useTheme();
   const { t } = useLanguage();
 
-  const STORY_KEYS = ['offers', 'departures', 'guide', 'news', 'sponsorship'];
-  const ACTION_KEYS = ['track_package', 'personal_shopper', 'rate_calculator', 'my_us_addresses'];
-
   const statusLabel = (s: string) => {
     const map: Record<string, string> = { awaiting_arrival: t('status_awaiting'), received_usa: t('status_received'), in_transit: t('status_transit'), arrived: t('status_arrived'), ready_pickup: t('status_ready'), delivered: t('status_delivered') };
     return map[s] ?? s;
   };
+
   const [refreshing, setRefreshing] = useState(false);
   const [citySheetOpen, setCitySheetOpen] = useState(false);
   const [citySearch, setCitySearch] = useState('');
@@ -86,35 +58,13 @@ export default function HomeScreen() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [bannerDot, setBannerDot] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [rateTabOpen, setRateTabOpen] = useState(false);
-  const rateSlide = useRef(new Animated.Value(0)).current;
-  const dragPos = useRef(new Animated.ValueXY({ x: width - 32, y: 300 })).current;
-  const dragStartRef = useRef({ x: 0, y: 0 });
-  const wasDragged = useRef(false);
+  const [pointsBalance, setPointsBalance] = useState(0);
+  const [voucherCount, setVoucherCount] = useState(0);
 
-  const panResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 5 || Math.abs(g.dy) > 5,
-    onPanResponderGrant: () => {
-      wasDragged.current = false;
-      dragStartRef.current = { x: (dragPos.x as any)._value, y: (dragPos.y as any)._value };
-    },
-    onPanResponderMove: (_, g) => {
-      if (Math.abs(g.dx) > 5 || Math.abs(g.dy) > 5) wasDragged.current = true;
-      dragPos.setValue({ x: dragStartRef.current.x + g.dx, y: dragStartRef.current.y + g.dy });
-    },
-    onPanResponderRelease: () => {
-      if (!wasDragged.current) {
-        toggleRateTab();
-      }
-    },
-  })).current;
-
-  function toggleRateTab() {
-    const toValue = rateTabOpen ? 0 : 1;
-    setRateTabOpen(!rateTabOpen);
-    Animated.spring(rateSlide, { toValue, useNativeDriver: true, tension: 80, friction: 12 }).start();
-  }
+  const CITY_SECTIONS = [
+    { flag: '\u{1F1ED}\u{1F1F9}', country: 'haiti', title: 'Haïti', cities: ['Port-au-Prince', 'Cap-Haïtien', 'Pétion-Ville', 'Les Cayes', 'Gonaïves', 'Jacmel'] },
+    { flag: '\u{1F1E9}\u{1F1F4}', country: 'dr', title: 'Rép. Dom.', cities: ['Santo Domingo', 'Santiago', 'Punta Cana'] },
+  ];
 
   async function loadData() {
     if (!session?.user.id) return;
@@ -141,6 +91,22 @@ export default function HomeScreen() {
         .eq('user_id', session.user.id)
         .eq('is_read', false);
       setUnreadCount(count ?? 0);
+    } catch {}
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('points_balance')
+        .eq('id', session.user.id)
+        .single();
+      setPointsBalance((data as any)?.points_balance ?? 0);
+    } catch {}
+    try {
+      const { count } = await supabase
+        .from('user_vouchers')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', session.user.id)
+        .eq('is_used', false);
+      setVoucherCount(count ?? 0);
     } catch {}
   }
 
@@ -186,124 +152,246 @@ export default function HomeScreen() {
   const initials = nameParts.length >= 2 ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase() : (nameParts[0]?.[0]?.toUpperCase() ?? '?');
   const loyalty = profile?.loyalty_level ?? 'bronze';
   const stepIdx = activePackage ? STATUS_STEPS.indexOf(activePackage.status) : -1;
-
   const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
+
+  const ACCENT = colors.accent;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.bg} />
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 110 : 90 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ACCENT} />}
       >
-        {/* HEADER */}
-        <View style={[styles.header, { paddingTop: statusBarH + 18 }]}>
-          <View style={styles.headerLeft}>
-            <View style={styles.avatar}>
-              <Text style={[styles.avatarText, { color: colors.bg }]}>{initials}</Text>
-            </View>
-            <View>
-              <Text style={[styles.greeting, { color: colors.text }]}>{t('hello')}, {firstName} 👋</Text>
-              <TouchableOpacity onPress={() => setCitySheetOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }} activeOpacity={0.7}>
-                <MapPin size={13} color={colors.textSecondary} strokeWidth={2} />
-                <Text style={[styles.location, { color: colors.textSecondary }]}>{profile?.destination_city ?? 'Port-au-Prince'}, {profile?.destination_country === 'dr' ? 'Rép. Dom.' : 'Haïti'}</Text>
-                <ChevronDown size={13} color={colors.textSecondary} strokeWidth={2} />
-              </TouchableOpacity>
-            </View>
-          </View>
-          <TouchableOpacity onPress={() => router.push('/(tabs-client)/notifications')} style={[styles.bellBtn, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Bell size={22} color={colors.text} strokeWidth={1.8} />
-            {unreadCount > 0 && <View style={styles.bellBadge}><Text style={styles.bellBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text></View>}
+        {/* ─── HEADER ─── */}
+        <View style={[styles.header, { paddingTop: statusBarH + 12 }]}>
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs-client)/colis')}
+            style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}
+            activeOpacity={0.8}
+          >
+            <Search size={20} color={colors.textMuted} strokeWidth={1.8} />
+            <Text style={[styles.searchPlaceholder, { color: colors.textMuted }]}>Suivre un colis...</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs-client)/notifications')}
+            style={[styles.headerIcon, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <Bell size={20} color={colors.text} strokeWidth={1.8} />
+            {unreadCount > 0 && (
+              <View style={[styles.badge, { backgroundColor: colors.error }]}>
+                <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
-        {/* STORIES */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storiesRow}>
-          {STORIES.map((s, i) => (
-            <TouchableOpacity key={i} style={styles.storyItem} activeOpacity={0.8}>
-              <View style={[styles.storyCircle, { backgroundColor: colors.card, borderColor: colors.border }, s.unread && styles.storyCircleActive]}>
-                <s.Icon size={26} color={s.unread ? '#F97316' : colors.textSecondary} strokeWidth={1.8} />
+        {/* ─── PROMO BANNER ─── */}
+        <View style={{ marginTop: 16 }}>
+          <FlatList
+            data={BANNERS}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(_, i) => String(i)}
+            snapToInterval={BANNER_W + BANNER_GAP}
+            decelerationRate="fast"
+            onMomentumScrollEnd={e => setBannerDot(Math.round(e.nativeEvent.contentOffset.x / (BANNER_W + BANNER_GAP)))}
+            contentContainerStyle={{ paddingHorizontal: 20 }}
+            renderItem={({ item }) => (
+              <View style={{ width: BANNER_W, height: 160, borderRadius: 20, overflow: 'hidden', marginRight: BANNER_GAP }}>
+                <Image source={item} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
               </View>
-              <Text style={[styles.storyLabel, { color: colors.textSecondary }]}>{t(STORY_KEYS[i])}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* BANNERS */}
-        <FlatList
-          data={BANNERS}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(_, i) => String(i)}
-          snapToInterval={BANNER_W + BANNER_GAP}
-          decelerationRate="fast"
-          onMomentumScrollEnd={e => setBannerDot(Math.round(e.nativeEvent.contentOffset.x / (BANNER_W + BANNER_GAP)))}
-          contentContainerStyle={{ paddingHorizontal: 20 }}
-          renderItem={({ item }) => (
-            <View style={{ width: BANNER_W, height: 140, borderRadius: 16, overflow: 'hidden', marginRight: BANNER_GAP }}>
-              <Image source={item} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-            </View>
-          )}
-        />
-        <View style={styles.dots}>
-          {BANNERS.map((_, i) => (
-            <View key={i} style={[styles.dot, { backgroundColor: colors.border }, i === bannerDot && styles.dotActive]} />
-          ))}
+            )}
+          />
+          <View style={styles.dots}>
+            {BANNERS.map((_, i) => (
+              <View key={i} style={[styles.dot, { backgroundColor: colors.border }, i === bannerDot && { width: 20, backgroundColor: ACCENT }]} />
+            ))}
+          </View>
         </View>
 
-        {/* QUICK ACTIONS */}
-        <View style={styles.section}>
-          <View style={styles.quickGrid}>
-            {QUICK_ACTIONS.map((a, i) => (
-              <TouchableOpacity key={i} onPress={() => router.push(a.route as never)} style={[styles.quickCard, { backgroundColor: colors.card, borderColor: colors.border }]} activeOpacity={0.8}>
-                <View style={[styles.quickIconWrap, a.darkIcon && { backgroundColor: colors.card }]}>
-                  <a.Icon size={22} color="#F97316" strokeWidth={1.8} />
+        {/* ─── MEMBERSHIP CARD ─── */}
+        <View style={{ marginHorizontal: 20, marginTop: 20 }}>
+          <View style={[styles.memberCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.memberTop}>
+              <View style={styles.memberInfo}>
+                <View style={[styles.memberBadge, { backgroundColor: colors.accentLight }]}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: ACCENT }}>
+                    {LOYALTY_LABELS[loyalty] ?? 'Bronze'} Member
+                  </Text>
                 </View>
-                <Text style={[styles.quickLabel, { color: colors.text }]}>{t(ACTION_KEYS[i])}</Text>
+              </View>
+            </View>
+            <View style={styles.memberStats}>
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={[styles.memberStatValue, { color: colors.text }]}>
+                  {pointsBalance >= 1000 ? `${(pointsBalance / 1000).toFixed(1)}K` : pointsBalance}
+                </Text>
+                <Text style={[styles.memberStatLabel, { color: colors.textSecondary }]}>Points</Text>
+              </View>
+              <View style={{ width: 1, height: 30, backgroundColor: colors.border }} />
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={[styles.memberStatValue, { color: colors.text }]}>{voucherCount}</Text>
+                <Text style={[styles.memberStatLabel, { color: colors.textSecondary }]}>Vouchers</Text>
+              </View>
+            </View>
+            <View style={styles.memberActions}>
+              <TouchableOpacity
+                onPress={() => router.push('/screens/pickup')}
+                style={[styles.memberBtn, { backgroundColor: ACCENT }]}
+                activeOpacity={0.85}
+              >
+                <Truck size={18} color="#FFFFFF" strokeWidth={2} />
+                <Text style={styles.memberBtnText}>Pickup</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => router.push('/screens/dropoff')}
+                style={[styles.memberBtn, { backgroundColor: isDark ? '#374151' : '#F3F4F6' }]}
+                activeOpacity={0.85}
+              >
+                <MapPin size={18} color={colors.text} strokeWidth={2} />
+                <Text style={[styles.memberBtnText, { color: colors.text }]}>Dropoff</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs-client)/membership')}
+              style={[styles.upgradeRow, { backgroundColor: colors.accentLight }]}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: ACCENT }}>
+                Niveau supérieur à {pointsBalance + 500} points
+              </Text>
+              <ChevronRight size={16} color={ACCENT} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ─── SHIPPING SERVICES ─── */}
+        <View style={styles.section}>
+          <View style={styles.sectionRow}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Services d'envoi</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs-client)/envoyer')}>
+              <Text style={[styles.seeAll, { color: ACCENT }]}>Voir tout</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.servicesGrid}>
+            {[
+              { icon: '📦', label: 'Régulier', route: '/screens/create-shipment' },
+              { icon: '📄', label: 'Documents', route: '/screens/create-shipment' },
+              { icon: '🏋️', label: '+20kg', route: '/screens/create-shipment' },
+              { icon: '📮', label: 'Multi-colis', route: '/screens/create-shipment' },
+            ].map((svc, i) => (
+              <TouchableOpacity
+                key={i}
+                onPress={() => router.push(svc.route as any)}
+                style={[styles.serviceItem, { backgroundColor: colors.card, borderColor: colors.border }]}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.serviceIcon, { backgroundColor: colors.accentLight }]}>
+                  <Text style={{ fontSize: 24 }}>{svc.icon}</Text>
+                </View>
+                <Text style={[styles.serviceLabel, { color: colors.text }]}>{svc.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* ─── NOUVEAUTÉS ─── */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('whats_new')}</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-            {/* Card 1: GIF animé */}
-            <View style={{ width: 200, height: 220, borderRadius: 20, overflow: 'hidden' }}>
-              <Image
-                source={require('../../assets/images/card-flip.gif')}
-                style={{ width: 200, height: 220 }}
-                resizeMode="cover"
-              />
+        {/* ─── ACTIVE PACKAGE TRACKING ─── */}
+        {activePackage && (
+          <View style={styles.section}>
+            <View style={[styles.trackingCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.trackingHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 2 }}>Votre colis est en route!</Text>
+                  <Text style={[styles.trackingRoute, { color: colors.text }]}>
+                    {activePackage.origin ?? 'Miami'} → {activePackage.destination_city ?? profile?.destination_city ?? '—'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => router.push(`/colis/${activePackage.id}`)}
+                  style={[styles.liveTrackBtn, { borderColor: colors.border }]}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: ACCENT }} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>Live Tracking</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.trackingTimeline}>
+                {['Reçu', 'Transit', 'Arrivé', 'Livré'].map((label, i) => {
+                  const done = i <= stepIdx;
+                  return (
+                    <React.Fragment key={i}>
+                      <View style={{ alignItems: 'center' }}>
+                        <View style={[styles.timelineDot, { backgroundColor: done ? ACCENT : colors.border }]}>
+                          {done && <Check size={10} color="#FFFFFF" strokeWidth={3} />}
+                        </View>
+                        <Text style={{ fontSize: 10, marginTop: 4, color: done ? ACCENT : colors.textMuted, fontWeight: done ? '700' : '400' }}>{label}</Text>
+                      </View>
+                      {i < 3 && <View style={[styles.timelineLine, { backgroundColor: i < stepIdx ? ACCENT : colors.border }]} />}
+                    </React.Fragment>
+                  );
+                })}
+              </View>
+
+              <View style={styles.trackingDetails}>
+                <View style={styles.trackingDetailRow}>
+                  <View style={[styles.trackingDetailIcon, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
+                    <MapPin size={14} color="#EF4444" strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Expéditeur</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{profile?.full_name ?? 'Vous'}</Text>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'center', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>{activePackage.weight_billed ?? '—'} lbs</Text>
+                </View>
+                <View style={styles.trackingDetailRow}>
+                  <View style={[styles.trackingDetailIcon, { backgroundColor: 'rgba(34,197,94,0.1)' }]}>
+                    <MapPin size={14} color="#22C55E" strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Destinataire</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{activePackage.destination_city ?? '—'}, {activePackage.destination_country ?? 'Haïti'}</Text>
+                  </View>
+                </View>
+              </View>
             </View>
+          </View>
+        )}
 
-            {/* Card 2: Pickup */}
-            <TouchableOpacity onPress={() => router.push('/screens/pickup')} style={{ width: 200, borderRadius: 16, backgroundColor: colors.card, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }} activeOpacity={0.85}>
-              <View style={{ height: 160 }}>
-                <Image source={require('../../assets/images/options/pickup.png')} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-              </View>
-              <View style={{ padding: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: colors.textSecondary, marginBottom: 4 }}>{t('service')}</Text>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{t('home_pickup')}</Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* Card 3: Drop-off */}
-            <TouchableOpacity onPress={() => router.push('/screens/dropoff')} style={{ width: 200, borderRadius: 16, backgroundColor: colors.card, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }} activeOpacity={0.85}>
-              <View style={{ height: 160 }}>
-                <Image source={require('../../assets/images/options/dropoff.png')} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-              </View>
-              <View style={{ padding: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: colors.textSecondary, marginBottom: 4 }}>{t('service')}</Text>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{t('dropoff_points')}</Text>
-              </View>
-            </TouchableOpacity>
-          </ScrollView>
+        {/* ─── OTHER FEATURES ─── */}
+        <View style={styles.section}>
+          <View style={styles.sectionRow}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Autres services</Text>
+            <TouchableOpacity><Text style={[styles.seeAll, { color: ACCENT }]}>Voir tout</Text></TouchableOpacity>
+          </View>
+          <View style={styles.servicesGrid}>
+            {[
+              { Icon: ShoppingCart, label: 'Personal\nShopper', route: '/screens/personal-shopper' },
+              { Icon: MapPinned, label: 'Adresses\nUS', route: '/screens/adresses-us' },
+              { Icon: Globe, label: 'International', route: '/screens/create-shipment' },
+              { Icon: Gift, label: 'Échanger\nPoints', route: '/(tabs-client)/membership' },
+            ].map((item, i) => (
+              <TouchableOpacity
+                key={i}
+                onPress={() => router.push(item.route as any)}
+                style={[styles.serviceItem, { backgroundColor: colors.card, borderColor: colors.border }]}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.serviceIcon, { backgroundColor: colors.accentLight }]}>
+                  <item.Icon size={22} color={ACCENT} strokeWidth={1.8} />
+                </View>
+                <Text style={[styles.serviceLabel, { color: colors.text }]}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
-        {/* ─── SECTION 1: PROCHAIN DÉPART ─── */}
+        {/* ─── NEXT DEPARTURES ─── */}
         {(() => {
           const formatDep = (dep: Departure | null, fallbackDays: number, fallbackCap: number) => {
             const d = dep ? new Date(dep.departure_date) : new Date(Date.now() + fallbackDays * 24 * 60 * 60 * 1000);
@@ -319,176 +407,69 @@ export default function HomeScreen() {
           const air = formatDep(airDeparture, 7, 500);
           const sea = formatDep(seaDeparture, 14, 8000);
 
-          const renderCard = (mode: 'air' | 'sea', data: typeof air) => {
-            const label = mode === 'air' ? t('airplane') : t('boat');
-            const IconComp = mode === 'air' ? Plane : Ship;
-            return (
-              <View style={{
-                flex: 1, backgroundColor: colors.card, borderRadius: 16, padding: 14,
-                borderWidth: data.urgent ? 1.5 : 1, borderColor: data.urgent ? '#F97316' : colors.border,
-              }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                  <IconComp size={16} color={data.urgent ? '#F97316' : colors.textSecondary} strokeWidth={2} />
-                  <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textSecondary }}>{label}</Text>
-                </View>
-                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 10 }}>{data.dateStr}</Text>
-                <View style={{ height: 5, backgroundColor: colors.border, borderRadius: 99, overflow: 'hidden', marginBottom: 6 }}>
-                  <View style={{ width: `${Math.max(Math.min(data.pct, 100), 3)}%`, height: '100%', backgroundColor: data.urgent ? '#F97316' : '#22C55E', borderRadius: 99 }} />
-                </View>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: data.urgent ? '#F97316' : '#22C55E', marginBottom: 10 }}>{data.remaining.toFixed(0)} {t('lbs_remaining')}</Text>
-                <View style={{ backgroundColor: data.urgent ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10, alignSelf: 'flex-start' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: data.urgent ? '#EF4444' : '#22C55E' }}>{data.urgent ? t('almost_full') : t('spots_available')}</Text>
-                </View>
-              </View>
-            );
-          };
-
           return (
             <View style={styles.section}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>{t('next_departure')}</Text>
-                <TouchableOpacity><Text style={{ fontSize: 13, fontWeight: '600', color: '#F97316' }}>{t('view_calendar')}</Text></TouchableOpacity>
-              </View>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Prochains départs</Text>
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                {renderCard('air', air)}
-                {renderCard('sea', sea)}
+                {[{ mode: 'air' as const, data: air, Icon: Plane, label: 'Avion' }, { mode: 'sea' as const, data: sea, Icon: Ship, label: 'Bateau' }].map(({ mode, data, Icon, label }) => (
+                  <View key={mode} style={[styles.departureCard, { backgroundColor: colors.card, borderColor: data.urgent ? colors.warning : colors.border }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <Icon size={16} color={data.urgent ? colors.warning : colors.textSecondary} strokeWidth={2} />
+                      <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textSecondary }}>{label}</Text>
+                    </View>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 8 }}>{data.dateStr}</Text>
+                    <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 99, overflow: 'hidden', marginBottom: 6 }}>
+                      <View style={{ width: `${Math.max(Math.min(data.pct, 100), 3)}%`, height: '100%', backgroundColor: data.urgent ? colors.warning : ACCENT, borderRadius: 99 }} />
+                    </View>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: data.urgent ? colors.warning : ACCENT }}>{data.remaining.toFixed(0)} lbs restantes</Text>
+                  </View>
+                ))}
               </View>
             </View>
           );
         })()}
 
-        {/* ─── SECTION 2: COLIS EN COURS ─── */}
-        {activePackage && (() => {
-          const origin = activePackage.origin ?? 'Miami';
-          const dest = activePackage.destination_city ?? profile?.destination_city ?? '—';
-          const mode = activePackage.transport_mode === 'sea' ? '🚢 Bateau' : '✈️ Avion';
-          const weight = activePackage.weight_billed ?? activePackage.weight_real ?? '—';
-          const estimated = activePackage.estimated_delivery ?? null;
-          return (
-            <View style={styles.section}>
-              <View style={styles.sectionRow}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('active_package')}</Text>
-                <TouchableOpacity onPress={() => router.push('/(tabs-client)/colis')}><Text style={styles.seeAll}>{t('view_all')}</Text></TouchableOpacity>
-              </View>
-              <View style={{ backgroundColor: '#F97316', borderRadius: 16, padding: 18, gap: 14 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View>
-                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{t('tracking_number')}</Text>
-                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#FFFFFF', marginTop: 2 }}>{activePackage.tracking_number}</Text>
-                  </View>
-                  <View style={{ backgroundColor: '#C2600A', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>{statusLabel(activePackage.status)}</Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>{origin}</Text>
-                  <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>→</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>{dest}</Text>
-                </View>
-                <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>{weight} lbs · {mode}</Text>
-                {/* Timeline */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0 }}>
-                  {STATUS_STEPS.slice(0, 4).map((step, i) => {
-                    const done = i <= stepIdx;
-                    const labels = [t('received'), t('transit'), t('arrived'), t('delivered')];
-                    return (
-                      <React.Fragment key={step}>
-                        <View style={{ alignItems: 'center', flex: 1 }}>
-                          <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: done ? '#FFFFFF' : 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
-                            {done && <Check size={12} color="#F97316" strokeWidth={3} />}
-                          </View>
-                          <Text style={{ fontSize: 9, color: done ? '#FFFFFF' : 'rgba(255,255,255,0.5)', marginTop: 4, fontWeight: done ? '700' : '400' }}>{labels[i]}</Text>
-                        </View>
-                        {i < 3 && <View style={{ flex: 1, height: 2, backgroundColor: i < stepIdx ? '#FFFFFF' : 'rgba(255,255,255,0.25)', marginBottom: 16 }} />}
-                      </React.Fragment>
-                    );
-                  })}
-                </View>
-                {estimated && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Calendar size={14} color="rgba(255,255,255,0.7)" strokeWidth={2} />
-                    <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>{t('estimated_delivery')} : {new Date(estimated).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</Text>
-                  </View>
-                )}
-                <TouchableOpacity onPress={() => router.push(`/colis/${activePackage.id}`)} style={{ backgroundColor: '#FFFFFF', borderRadius: 12, height: 44, alignItems: 'center', justifyContent: 'center' }} activeOpacity={0.85}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#F97316' }}>{t('follow_detail')}</Text>
-                </TouchableOpacity>
-              </View>
+        {/* ─── HELP CENTER ─── */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            onPress={() => router.push('/screens/faq')}
+            style={[styles.helpCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.helpIcon, { backgroundColor: colors.accentLight }]}>
+              <HelpCircle size={22} color={ACCENT} strokeWidth={1.8} />
             </View>
-          );
-        })()}
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Centre d'aide</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>Obtenez de l'aide pour vos questions.</Text>
+            </View>
+            <ChevronRight size={20} color={colors.textMuted} strokeWidth={1.8} />
+          </TouchableOpacity>
+        </View>
 
-        {/* ─── SECTION 3: RÉCENTS ─── */}
-        {recentPackages.length > 0 && (
-          <View style={styles.section}>
+        {/* ─── BRANCHES ─── */}
+        {branches.length > 0 && (
+          <View style={[styles.section, { marginBottom: 20 }]}>
             <View style={styles.sectionRow}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('recent')}</Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs-client)/colis')}><Text style={styles.seeAll}>{t('view_all')}</Text></TouchableOpacity>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Nos succursales</Text>
+              <TouchableOpacity><Text style={[styles.seeAll, { color: ACCENT }]}>Voir carte</Text></TouchableOpacity>
             </View>
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              {recentPackages.map((pkg: Pkg, i: number) => {
-                const statusColors: Record<string, { bg: string; text: string }> = {
-                  awaiting_arrival: { bg: 'rgba(234,179,8,0.15)', text: '#EAB308' },
-                  received_usa: { bg: 'rgba(156,163,175,0.2)', text: '#9CA3AF' },
-                  in_transit: { bg: 'rgba(249,115,22,0.15)', text: '#F97316' },
-                  arrived: { bg: 'rgba(59,130,246,0.15)', text: '#3B82F6' },
-                  ready_pickup: { bg: 'rgba(249,115,22,0.15)', text: '#F97316' },
-                  delivered: { bg: 'rgba(34,197,94,0.15)', text: '#22C55E' },
-                };
-                const sc = statusColors[pkg.status] ?? statusColors.received_usa;
-                const desc = pkg.description ?? pkg.destination_city ?? '';
-                return (
-                  <TouchableOpacity key={pkg.id} onPress={() => router.push(`/colis/${pkg.id}`)} activeOpacity={0.7}
-                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: colors.border, gap: 12 }}>
-                    <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
-                      <Package size={18} color={colors.textSecondary} strokeWidth={1.8} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{pkg.tracking_number}</Text>
-                      {desc ? <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }} numberOfLines={1}>{desc}</Text> : null}
-                    </View>
-                    <View style={{ backgroundColor: sc.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: sc.text }}>
-                        {pkg.status === 'delivered' ? t('delivered_check') : statusLabel(pkg.status)}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {/* ─── SECTION 4: NOS SUCCURSALES ─── */}
-        <View style={[styles.section, { marginBottom: 30 }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>{t('our_branches')}</Text>
-            <TouchableOpacity><Text style={{ fontSize: 13, fontWeight: '600', color: '#F97316' }}>{t('view_map')}</Text></TouchableOpacity>
-          </View>
-          <View style={{ gap: 10 }}>
             {branches.slice(0, 2).map((b, i) => {
               const open = isBranchOpen(b);
               const closeTime = getClosingTime(b);
-              const isFirst = i === 0;
-              const timeDistText = [
-                closeTime && open ? `${t('closes_at')} ${closeTime}` : null,
-                (b as any).distance ? `${(b as any).distance}` : null,
-              ].filter(Boolean).join(' · ');
               return (
-                <View key={b.id} style={{ backgroundColor: colors.card, borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View key={b.id} style={[styles.branchCard, { backgroundColor: colors.card, borderColor: colors.border }, i > 0 && { marginTop: 8 }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                    <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: isFirst ? 'rgba(249,115,22,0.15)' : colors.border, alignItems: 'center', justifyContent: 'center' }}>
-                      <MapPin size={20} color={isFirst ? '#F97316' : colors.textSecondary} strokeWidth={1.8} />
+                    <View style={[styles.branchIcon, { backgroundColor: colors.accentLight }]}>
+                      <MapPin size={18} color={ACCENT} strokeWidth={1.8} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 6 }}>{b.name}</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <View style={{ backgroundColor: open ? 'rgba(34,197,94,0.15)' : 'rgba(156,163,175,0.15)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '600', color: open ? '#22C55E' : colors.textSecondary }}>{open ? t('open_now') : t('closed')}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{b.name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <View style={{ backgroundColor: open ? 'rgba(34,197,94,0.1)' : 'rgba(156,163,175,0.1)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '600', color: open ? '#22C55E' : colors.textSecondary }}>{open ? 'Ouvert' : 'Fermé'}</Text>
                         </View>
-                        {timeDistText ? (
-                          <Text style={{ fontSize: 11, fontWeight: '500', color: colors.textSecondary }}>{timeDistText}</Text>
-                        ) : null}
+                        {closeTime && open && <Text style={{ fontSize: 10, color: colors.textMuted }}>Ferme à {closeTime}</Text>}
                       </View>
                     </View>
                   </View>
@@ -497,37 +478,36 @@ export default function HomeScreen() {
                       if (b.latitude && b.longitude) Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${b.latitude},${b.longitude}`);
                       else if (b.address) Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.address)}`);
                     }}
-                    style={{ backgroundColor: colors.border, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginLeft: 10 }} activeOpacity={0.7}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{t('directions')}</Text>
+                    style={[styles.dirBtn, { backgroundColor: ACCENT }]}
+                    activeOpacity={0.8}
+                  >
+                    <ArrowRight size={16} color="#FFFFFF" strokeWidth={2} />
                   </TouchableOpacity>
                 </View>
               );
             })}
           </View>
-        </View>
+        )}
 
-        {/* ─── LEGAL FOOTER ─── */}
-        <View style={{ paddingHorizontal: 20, paddingVertical: 16, marginTop: 8 }}>
-          <Text style={{ fontSize: 11, lineHeight: 16, color: colors.textSecondary, textAlign: 'center' }}>
+        {/* ─── FOOTER ─── */}
+        <View style={{ paddingHorizontal: 20, paddingVertical: 16 }}>
+          <Text style={{ fontSize: 11, lineHeight: 16, color: colors.textMuted, textAlign: 'center' }}>
             {t('legal_footer')}
           </Text>
-          <TouchableOpacity onPress={() => Linking.openURL('https://jjsimex.com/conditions')} style={{ alignSelf: 'center', marginTop: 6 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#F97316', textDecorationLine: 'underline' }}>{t('shipping_terms')}</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
 
-      {/* CITY PICKER BOTTOM SHEET */}
+      {/* CITY PICKER */}
       <Modal visible={citySheetOpen} transparent animationType="slide" onRequestClose={() => setCitySheetOpen(false)}>
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setCitySheetOpen(false)}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <TouchableOpacity activeOpacity={1} onPress={() => {}}>
               <View style={[styles.sheetContainer, { backgroundColor: colors.card }]}>
                 <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
-                <Text style={[styles.sheetTitle, { color: colors.text }]}>{t('choose_city')}</Text>
+                <Text style={[styles.sheetTitle, { color: colors.text }]}>Choisir ma ville</Text>
                 <TextInput
                   style={[styles.sheetInput, { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.text }]}
-                  placeholder={t('type_city')}
+                  placeholder="Rechercher une ville..."
                   placeholderTextColor={colors.textMuted}
                   value={citySearch}
                   onChangeText={setCitySearch}
@@ -539,10 +519,10 @@ export default function HomeScreen() {
                     if (filtered.length === 0) return null;
                     return (
                       <View key={section.country} style={{ marginBottom: 16 }}>
-                        <Text style={[styles.sheetSectionTitle, { color: colors.textSecondary }]}>{section.flag} {section.title}</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textSecondary, marginBottom: 8 }}>{section.flag} {section.title}</Text>
                         {filtered.map(c => (
-                          <TouchableOpacity key={c} onPress={() => pickCity(section.country, c)} style={[styles.sheetCity, profile?.destination_city === c && styles.sheetCityActive]} activeOpacity={0.7}>
-                            <Text style={[styles.sheetCityText, { color: colors.text }, profile?.destination_city === c && { color: '#F97316', fontWeight: '700' }]}>{c}</Text>
+                          <TouchableOpacity key={c} onPress={() => pickCity(section.country, c)} style={[styles.cityItem, profile?.destination_city === c && { backgroundColor: colors.accentLight }]} activeOpacity={0.7}>
+                            <Text style={[{ fontSize: 15, color: colors.text }, profile?.destination_city === c && { color: ACCENT, fontWeight: '700' }]}>{c}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -550,8 +530,8 @@ export default function HomeScreen() {
                   })}
                 </ScrollView>
                 {citySearch.length > 0 && (
-                  <TouchableOpacity onPress={() => pickCity(profile?.destination_country ?? 'haiti', citySearch)} style={styles.sheetConfirmBtn} activeOpacity={0.85}>
-                    <Text style={styles.sheetConfirmText}>{t('confirm')} "{citySearch}"</Text>
+                  <TouchableOpacity onPress={() => pickCity(profile?.destination_country ?? 'haiti', citySearch)} style={[styles.confirmBtn, { backgroundColor: ACCENT }]} activeOpacity={0.85}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>Confirmer "{citySearch}"</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -559,88 +539,67 @@ export default function HomeScreen() {
           </KeyboardAvoidingView>
         </TouchableOpacity>
       </Modal>
-
-      {/* FLOATING EXCHANGE RATE TAB — draggable */}
-      {rates && (
-        <Animated.View
-          {...panResponder.panHandlers}
-          style={[styles.floatingWrap, { transform: dragPos.getTranslateTransform() }]}
-        >
-          <Animated.View style={[styles.floatingRow, {
-            transform: [{ translateX: rateSlide.interpolate({ inputRange: [0, 1], outputRange: [0, -280] }) }],
-          }]}>
-            <View style={styles.floatingPanel}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 12 }}>
-                {[
-                  { currency: 'USD', value: rates.usd_to_htg?.toFixed(1), unit: 'HTG', up: true },
-                  { currency: 'CAD', value: rates.cad_to_htg?.toFixed(1) ?? '—', unit: 'HTG', up: true },
-                  { currency: 'EUR', value: rates.eur_to_htg?.toFixed(1), unit: 'HTG', up: true },
-                  { currency: 'USD', value: rates.usd_to_dop?.toFixed(1), unit: 'DOP', up: false },
-                ].map((r, i, arr) => (
-                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ alignItems: 'center', paddingHorizontal: 14 }}>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#9CA3AF' }}>{r.currency}</Text>
-                      <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF', marginVertical: 1 }}>{r.value}</Text>
-                      <Text style={{ fontSize: 10, fontWeight: '600', color: '#F97316' }}>{r.unit} {r.up ? '▲' : '▼'}</Text>
-                    </View>
-                    {i < arr.length - 1 && <View style={{ width: 1, height: 36, backgroundColor: colors.border }} />}
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
-            <View style={[styles.floatingTab, { backgroundColor: colors.card }]}>
-              <ArrowLeftRight size={16} color="#F97316" strokeWidth={2} />
-              <Text style={styles.floatingTabText}>USD</Text>
-            </View>
-          </Animated.View>
-        </Animated.View>
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, paddingTop: 18, paddingBottom: 10 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F97316', alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 17, fontWeight: '700', color: '#0D0D0D' },
-  greeting: { fontSize: 19, fontWeight: '800', color: '#FFFFFF' },
-  location: { fontSize: 13, color: '#9CA3AF' },
-  bellBtn: { width: 44, height: 44, backgroundColor: '#1A1A1A', borderRadius: 22, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#2A2A2A' },
-  bellBadge: { position: 'absolute', top: -2, right: -2, backgroundColor: '#F97316', borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  bellBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
-  storiesRow: { paddingHorizontal: 20, paddingVertical: 14, gap: 18 },
-  storyItem: { alignItems: 'center', gap: 8 },
-  storyCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: '#1A1A1A', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#2A2A2A' },
-  storyCircleActive: { borderColor: '#F97316' },
-  storyLabel: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
-  dots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#2A2A2A' },
-  dotActive: { width: 18, backgroundColor: '#F97316' },
+  header: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, gap: 10,
+  },
+  searchBar: {
+    flex: 1, height: 48, borderRadius: 14, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10, borderWidth: 1,
+  },
+  searchPlaceholder: { fontSize: 14 },
+  headerIcon: {
+    width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1,
+  },
+  badge: {
+    position: 'absolute', top: -4, right: -4, borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5,
+  },
+  badgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+  dots: { flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 10 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  memberCard: { borderRadius: 20, padding: 18, borderWidth: 1, overflow: 'hidden' },
+  memberTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  memberInfo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  memberBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  memberStats: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  memberStatValue: { fontSize: 20, fontWeight: '800' },
+  memberStatLabel: { fontSize: 12, marginTop: 2 },
+  memberActions: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  memberBtn: { flex: 1, height: 48, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  memberBtnText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+  upgradeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
   section: { paddingHorizontal: 20, marginTop: 24 },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: '#FFFFFF', marginBottom: 12 },
-  seeAll: { fontSize: 13, color: '#F97316', fontWeight: '600' },
-  card: { backgroundColor: '#1A1A1A', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#242424' },
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  quickCard: { width: (width - 40 - 10) / 2, backgroundColor: '#1A1A1A', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 14, alignItems: 'flex-start', borderWidth: 1, borderColor: '#242424' },
-  quickIconWrap: { width: 40, height: 40, borderRadius: 10, backgroundColor: 'rgba(249,115,22,0.12)', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  quickLabel: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
-  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  sheetContainer: { backgroundColor: '#141414', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 36 },
-  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#3A3A3A', alignSelf: 'center', marginBottom: 16 },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF', marginBottom: 16 },
-  sheetInput: { height: 48, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 12, color: '#FFFFFF', paddingHorizontal: 16, fontSize: 15, marginBottom: 16 },
-  sheetSectionTitle: { fontSize: 14, fontWeight: '700', color: '#9CA3AF', marginBottom: 8 },
-  sheetCity: { paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10 },
-  sheetCityActive: { backgroundColor: 'rgba(249,115,22,0.1)' },
-  sheetCityText: { fontSize: 15, color: '#E5E7EB' },
-  sheetConfirmBtn: { backgroundColor: '#F97316', borderRadius: 14, height: 50, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
-  sheetConfirmText: { fontSize: 15, fontWeight: '700', color: '#0D0D0D' },
-  floatingWrap: { position: 'absolute', left: 0, top: 0, zIndex: 100 },
-  floatingRow: { flexDirection: 'row', alignItems: 'center' },
-  floatingTab: { width: 32, height: 80, backgroundColor: '#1A1A1A', borderLeftWidth: 2, borderLeftColor: '#F97316', borderTopLeftRadius: 12, borderBottomLeftRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 6 },
-  floatingTabText: { fontSize: 10, fontWeight: '800', color: '#F97316', transform: [{ rotate: '-90deg' }] },
-  floatingPanel: { width: 280, height: 80, backgroundColor: '#111827', borderTopLeftRadius: 16, borderBottomLeftRadius: 16, justifyContent: 'center', marginRight: -1 },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  sectionTitle: { fontSize: 17, fontWeight: '700' },
+  seeAll: { fontSize: 13, fontWeight: '600' },
+  servicesGrid: { flexDirection: 'row', gap: 10 },
+  serviceItem: { flex: 1, alignItems: 'center', paddingVertical: 16, borderRadius: 16, borderWidth: 1 },
+  serviceIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  serviceLabel: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  trackingCard: { borderRadius: 20, padding: 18, borderWidth: 1 },
+  trackingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  trackingRoute: { fontSize: 15, fontWeight: '700', marginTop: 2 },
+  liveTrackBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 20, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6 },
+  trackingTimeline: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', marginBottom: 16 },
+  timelineDot: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  timelineLine: { flex: 1, height: 2, marginTop: 9, marginHorizontal: 4 },
+  trackingDetails: { gap: 4 },
+  trackingDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  trackingDetailIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  departureCard: { flex: 1, borderRadius: 16, padding: 14, borderWidth: 1 },
+  helpCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, padding: 16, borderWidth: 1, gap: 14 },
+  helpIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  branchCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, padding: 14, borderWidth: 1 },
+  branchIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  dirBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
+  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheetContainer: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 36 },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  sheetTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16 },
+  sheetInput: { height: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, fontSize: 15, marginBottom: 16 },
+  cityItem: { paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10 },
+  confirmBtn: { borderRadius: 14, height: 50, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
 });

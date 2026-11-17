@@ -20,7 +20,7 @@ import { Image } from 'react-native';
 import { getClient } from '@jjsimex/supabase/client';
 
 const { width } = Dimensions.get('window');
-const ACCENT = '#F97316';
+const ACCENT_FALLBACK = '#22C55E';
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
 
 const CATEGORIES = [

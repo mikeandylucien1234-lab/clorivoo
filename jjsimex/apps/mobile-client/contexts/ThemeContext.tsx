@@ -9,29 +9,50 @@ export interface ThemeColors {
   textSecondary: string;
   textMuted: string;
   accent: string;
+  accentLight: string;
+  accentDark: string;
   inputBg: string;
+  success: string;
+  error: string;
+  warning: string;
+  tabBar: string;
+  tabBarBorder: string;
 }
 
 const DARK: ThemeColors = {
-  bg: '#0D0D0D',
-  card: '#1A1A1A',
-  border: '#2A2A2A',
+  bg: '#0F1A14',
+  card: '#1A2A20',
+  border: '#2A3A30',
   text: '#FFFFFF',
   textSecondary: '#9CA3AF',
   textMuted: '#6B7280',
-  accent: '#F97316',
-  inputBg: '#0D0D0D',
+  accent: '#22C55E',
+  accentLight: 'rgba(34,197,94,0.12)',
+  accentDark: '#16A34A',
+  inputBg: '#1A2A20',
+  success: '#22C55E',
+  error: '#EF4444',
+  warning: '#F59E0B',
+  tabBar: '#1A2A20',
+  tabBarBorder: '#2A3A30',
 };
 
 const LIGHT: ThemeColors = {
-  bg: '#F5F5F5',
+  bg: '#F8FAF9',
   card: '#FFFFFF',
-  border: '#E5E7EB',
-  text: '#111827',
+  border: '#E8ECE9',
+  text: '#1A1A1A',
   textSecondary: '#6B7280',
   textMuted: '#9CA3AF',
-  accent: '#F97316',
-  inputBg: '#FFFFFF',
+  accent: '#22C55E',
+  accentLight: 'rgba(34,197,94,0.08)',
+  accentDark: '#16A34A',
+  inputBg: '#F3F4F6',
+  success: '#22C55E',
+  error: '#EF4444',
+  warning: '#F59E0B',
+  tabBar: '#FFFFFF',
+  tabBarBorder: '#E8ECE9',
 };
 
 type ThemeMode = 'dark' | 'light';
@@ -44,16 +65,16 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-  mode: 'dark',
-  colors: DARK,
+  mode: 'light',
+  colors: LIGHT,
   toggleTheme: () => {},
-  isDark: true,
+  isDark: false,
 });
 
 const STORAGE_KEY = '@jjsimex_theme';
 
 export function ThemeProvider({ children }: { children: any }) {
-  const [mode, setMode] = useState<ThemeMode>('dark');
+  const [mode, setMode] = useState<ThemeMode>('light');
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then(v => {
