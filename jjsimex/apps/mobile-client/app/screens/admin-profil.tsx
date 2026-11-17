@@ -13,7 +13,7 @@ import {
 import { supabase } from '@/lib/supabase';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 interface AdminStats {
   packagesHandled: number;
@@ -313,7 +313,7 @@ const s = StyleSheet.create({
   },
   roleBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    marginTop: 6, backgroundColor: 'rgba(249,115,22,0.12)',
+    marginTop: 6, backgroundColor: 'rgba(34,197,94,0.12)',
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, alignSelf: 'flex-start',
   },
   roleText: { fontSize: 11, fontWeight: '700', color: ACCENT },
@@ -353,7 +353,7 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   menuIcon: {
-    width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(249,115,22,0.1)',
+    width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(34,197,94,0.1)',
     alignItems: 'center', justifyContent: 'center',
   },
   menuLabel: { fontSize: 14, fontWeight: '600', color: '#FFFFFF', flex: 1 },
@@ -372,7 +372,7 @@ const s = StyleSheet.create({
   teamName: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
   teamEmail: { fontSize: 11, color: '#6B7280' },
   teamRoleBadge: {
-    backgroundColor: 'rgba(249,115,22,0.12)', paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: 'rgba(34,197,94,0.12)', paddingHorizontal: 10, paddingVertical: 4,
     borderRadius: 99,
   },
   teamRoleText: { fontSize: 10, fontWeight: '700', color: ACCENT },

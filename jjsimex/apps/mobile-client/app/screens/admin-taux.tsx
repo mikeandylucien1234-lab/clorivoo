@@ -9,7 +9,7 @@ import { ArrowLeft, RefreshCw } from 'lucide-react-native';
 import { getExchangeRates, updateExchangeRate } from '@jjsimex/supabase/shipping';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 interface ExchangeRate {
   id: string;

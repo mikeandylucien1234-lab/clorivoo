@@ -179,11 +179,11 @@ export default function PersonalShopperScreen() {
                   keyExtractor={item => item}
                   renderItem={({ item }) => (
                     <TouchableOpacity
-                      style={[styles.modalItem, merchant === item && { backgroundColor: 'rgba(249,115,22,0.15)' }]}
+                      style={[styles.modalItem, merchant === item && { backgroundColor: 'rgba(34,197,94,0.15)' }]}
                       onPress={() => { setMerchant(item); setMerchantModalVisible(false); }}
                       activeOpacity={0.7}
                     >
-                      <Text style={{ fontSize: 15, color: merchant === item ? '#F97316' : '#FFFFFF' }}>{item}</Text>
+                      <Text style={{ fontSize: 15, color: merchant === item ? '#22C55E' : '#FFFFFF' }}>{item}</Text>
                     </TouchableOpacity>
                   )}
                 />
@@ -252,13 +252,13 @@ export default function PersonalShopperScreen() {
 
       {tab !== 'Nouvelle demande' && (
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-          {loadingReqs && <ActivityIndicator color="#F97316" style={{ marginTop: 40 }} />}
+          {loadingReqs && <ActivityIndicator color="#22C55E" style={{ marginTop: 40 }} />}
           {!loadingReqs && (tab === 'En cours' ? activeReqs : doneReqs).length === 0 && (
             <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
               <Text style={{ fontSize: 36 }}>🛒</Text>
               <Text style={{ fontSize: 17, fontWeight: '700', color: '#FFFFFF' }}>Aucune demande</Text>
               <TouchableOpacity onPress={() => setTab('Nouvelle demande')}>
-                <Text style={{ color: '#F97316', fontWeight: '600', fontSize: 14 }}>Faire une demande →</Text>
+                <Text style={{ color: '#22C55E', fontWeight: '600', fontSize: 14 }}>Faire une demande →</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -266,7 +266,7 @@ export default function PersonalShopperScreen() {
             <View key={req.id} style={styles.reqCard}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                 <View style={{ flex: 1 }}>
-                  {req.request_number && <Text style={{ fontSize: 11, color: '#F97316', fontWeight: '700', marginBottom: 2 }}>{req.request_number}</Text>}
+                  {req.request_number && <Text style={{ fontSize: 11, color: '#22C55E', fontWeight: '700', marginBottom: 2 }}>{req.request_number}</Text>}
                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{req.merchant}</Text>
                   <Text style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }} numberOfLines={1}>{req.product_url}</Text>
                 </View>
@@ -280,7 +280,7 @@ export default function PersonalShopperScreen() {
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <Text style={{ fontSize: 12, color: '#9CA3AF' }}>Qté: {req.quantity}</Text>
                 <Text style={{ fontSize: 12, color: '#9CA3AF' }}>{req.transport_mode === 'air' ? '✈️ Avion' : '🚢 Bateau'}</Text>
-                {req.total_price && <Text style={{ fontSize: 12, color: '#F97316', fontWeight: '600' }}>${req.total_price}</Text>}
+                {req.total_price && <Text style={{ fontSize: 12, color: '#22C55E', fontWeight: '600' }}>${req.total_price}</Text>}
               </View>
               {req.status === 'quoted' && (
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
@@ -307,19 +307,19 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, color: '#9CA3AF' },
   tabsRow: { flexDirection: 'row' as const, paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
   tabBtn: { flex: 1, paddingHorizontal: 8, paddingVertical: 10, borderRadius: 10, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', alignItems: 'center' as const, justifyContent: 'center' as const },
-  tabBtnActive: { backgroundColor: '#F97316', borderColor: '#F97316' },
+  tabBtnActive: { backgroundColor: '#22C55E', borderColor: '#22C55E' },
   tabText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF', textAlign: 'center' as const },
   tabTextActive: { color: '#0D0D0D' },
   formContainer: { padding: 20, paddingBottom: 60, gap: 16 },
-  infoBox: { backgroundColor: 'rgba(249,115,22,0.08)', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: 'rgba(249,115,22,0.2)' },
+  infoBox: { backgroundColor: 'rgba(34,197,94,0.08)', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)' },
   field: { gap: 8 },
   label: { fontSize: 13, fontWeight: '600', color: '#9CA3AF' },
   input: { height: 50, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 12, color: '#FFFFFF', paddingHorizontal: 16, fontSize: 14 },
   qtyBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', alignItems: 'center', justifyContent: 'center' },
   qtyBtnText: { fontSize: 22, color: '#FFFFFF', lineHeight: 26 },
   transportBtn: { flex: 1, backgroundColor: '#1A1A1A', borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#2A2A2A' },
-  transportBtnActive: { backgroundColor: '#F97316', borderColor: '#F97316' },
-  btnSubmit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#F97316', borderRadius: 14, height: 54, marginTop: 8 },
+  transportBtnActive: { backgroundColor: '#22C55E', borderColor: '#22C55E' },
+  btnSubmit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#22C55E', borderRadius: 14, height: 54, marginTop: 8 },
   btnSubmitText: { fontSize: 16, fontWeight: '700', color: '#0D0D0D' },
   reqCard: { backgroundColor: '#1A1A1A', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#242424', marginBottom: 12 },
   reqBtn: { height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

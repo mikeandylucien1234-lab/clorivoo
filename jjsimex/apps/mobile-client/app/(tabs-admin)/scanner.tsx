@@ -15,13 +15,13 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import type { QRPayload } from '@/components/ui/QRCodeDisplay';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 const WA_NUMBER = '18097851234';
 
 const STATUS_MAP: Record<string, { label: string; bg: string; color: string }> = {
   awaiting_arrival: { label: 'En attente', bg: 'rgba(239,68,68,0.14)', color: '#EF4444' },
   received_usa: { label: 'Reçu USA', bg: '#2A2A2A', color: '#C9CDD3' },
-  in_transit: { label: 'En transit', bg: 'rgba(249,115,22,0.14)', color: '#F97316' },
+  in_transit: { label: 'En transit', bg: 'rgba(34,197,94,0.14)', color: '#22C55E' },
   arrived: { label: 'Arrivé Haïti', bg: 'rgba(234,179,8,0.14)', color: '#EAB308' },
   ready_pickup: { label: 'Prêt retrait', bg: 'rgba(34,197,94,0.14)', color: '#22C55E' },
   delivered: { label: 'Livré ✓', bg: 'rgba(34,197,94,0.14)', color: '#22C55E' },
@@ -391,7 +391,7 @@ const s = StyleSheet.create({
     backgroundColor: '#2A2A2A', borderWidth: 1, borderColor: 'transparent',
     alignItems: 'center', justifyContent: 'center',
   },
-  statusBtnActive: { backgroundColor: 'rgba(249,115,22,0.14)', borderColor: ACCENT },
+  statusBtnActive: { backgroundColor: 'rgba(34,197,94,0.14)', borderColor: ACCENT },
   statusBtnText: { fontSize: 12, fontWeight: '600', color: '#C9CDD3' },
   statusBtnTextActive: { fontWeight: '700', color: ACCENT },
 

@@ -20,7 +20,6 @@ import { Image } from 'react-native';
 import { getClient } from '@jjsimex/supabase/client';
 
 const { width } = Dimensions.get('window');
-// ACCENT is now derived from theme in component via colors.accent
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
 
 const CATEGORIES = [
@@ -331,7 +330,7 @@ export default function CreateShipmentScreen() {
               <Text style={[s.inputLabel, { color: colors.textSecondary }]}>{t('recipient_phone')}</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <View style={[s.input, { width: 70, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={{ color: '#F97316', fontSize: 15, fontWeight: '700' }}>{destCountry === 'haiti' ? '+509' : '+1'}</Text>
+                  <Text style={{ color: ACCENT, fontSize: 15, fontWeight: '700' }}>{destCountry === 'haiti' ? '+509' : '+1'}</Text>
                 </View>
                 <TextInput style={[s.input, { flex: 1, backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]} value={receiverPhone} onChangeText={setReceiverPhone} placeholder="33 12 3456" placeholderTextColor={colors.textMuted} keyboardType="phone-pad" />
               </View>

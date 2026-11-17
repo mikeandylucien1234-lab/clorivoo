@@ -10,7 +10,7 @@ import {
 } from 'lucide-react-native';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 const TABS = [
   { key: 'tous', label: 'Tous' },
@@ -25,7 +25,7 @@ const STATUS_MAP: Record<string, { label: string; bg: string; color: string }> =
   bloque: { label: 'Bloqué', bg: 'rgba(239,68,68,0.14)', color: '#EF4444' },
 };
 
-const AVATAR_COLORS = ['#F97316', '#1E3A5F', '#3B2A5F', '#14532D', '#5F1E1E', '#0D4F6B', '#6B3A0D', '#2A1A5F'];
+const AVATAR_COLORS = ['#22C55E', '#1E3A5F', '#3B2A5F', '#14532D', '#5F1E1E', '#0D4F6B', '#6B3A0D', '#2A1A5F'];
 const AVATAR_TEXT_COLORS = ['#0D0D0D', '#7DB8E8', '#B8A3E8', '#86EFAC', '#FCA5A5', '#7DD3FC', '#FCD34D', '#C4B5FD'];
 
 export default function AdminClients() {
@@ -143,7 +143,7 @@ export default function AdminClients() {
           </View>
           <View style={s.pill}>
             <Text style={s.pillTextGrey}>Nouveaux </Text>
-            <View style={[s.pillBadge, { backgroundColor: 'rgba(249,115,22,0.14)' }]}>
+            <View style={[s.pillBadge, { backgroundColor: 'rgba(34,197,94,0.14)' }]}>
               <Text style={[s.pillBadgeText, { color: ACCENT }]}>{newCount}</Text>
             </View>
           </View>

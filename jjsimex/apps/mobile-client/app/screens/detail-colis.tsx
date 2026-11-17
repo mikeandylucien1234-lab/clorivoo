@@ -43,7 +43,7 @@ export default function ColisDetailScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator color="#F97316" size="large" style={{ marginTop: 100 }} />
+        <ActivityIndicator color="#22C55E" size="large" style={{ marginTop: 100 }} />
       </SafeAreaView>
     );
   }
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0D0D0D' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
   headerTitle: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
-  heroCard: { margin: 20, backgroundColor: '#F97316', borderRadius: 20, padding: 20 },
+  heroCard: { margin: 20, backgroundColor: '#22C55E', borderRadius: 20, padding: 20 },
   heroLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 0.5 },
   heroTracking: { fontSize: 18, fontWeight: '800', color: '#FFFFFF', marginTop: 2 },
   metaPill: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 10, padding: 10, alignItems: 'center' },
@@ -204,14 +204,14 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#FFFFFF', marginBottom: 12 },
   card: { backgroundColor: '#1A1A1A', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#242424' },
   timelineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#2A2A2A', borderWidth: 2, borderColor: '#3A3A3A' },
-  timelineDotDone: { backgroundColor: '#F97316', borderColor: '#F97316' },
-  timelineDotCurrent: { backgroundColor: '#F97316', borderColor: '#F97316', width: 14, height: 14, borderRadius: 7 },
+  timelineDotDone: { backgroundColor: '#22C55E', borderColor: '#22C55E' },
+  timelineDotCurrent: { backgroundColor: '#22C55E', borderColor: '#22C55E', width: 14, height: 14, borderRadius: 7 },
   timelineLine: { width: 2, flex: 1, backgroundColor: '#2A2A2A', marginVertical: 2 },
-  timelineLineDone: { backgroundColor: '#F97316' },
+  timelineLineDone: { backgroundColor: '#22C55E' },
   timelineTitle: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
   timelineTitleDone: { color: '#FFFFFF' },
   timelineSub: { fontSize: 12, color: '#6B7280', marginTop: 2 },
-  timelineDate: { fontSize: 11, color: '#F97316', marginTop: 4, fontWeight: '600' },
+  timelineDate: { fontSize: 11, color: '#22C55E', marginTop: 4, fontWeight: '600' },
   btnWhatsApp: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#22C55E', borderRadius: 14, padding: 16, justifyContent: 'center' },
   btnWhatsAppText: { fontSize: 15, fontWeight: '700', color: '#052E14' },
   btnGray: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#1A1A1A', borderRadius: 14, padding: 16, justifyContent: 'center', borderWidth: 1, borderColor: '#2A2A2A' },

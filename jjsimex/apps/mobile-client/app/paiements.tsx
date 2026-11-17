@@ -12,11 +12,11 @@ const S = StyleSheet.create({
   listContainer: { padding: 16, paddingBottom: 40 },
   card: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#222', borderRadius: 12, padding: 14, marginBottom: 12 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  cardTitle: { fontSize: 13, fontWeight: '700', color: '#F97316' },
+  cardTitle: { fontSize: 13, fontWeight: '700', color: '#22C55E' },
   cardDate: { fontSize: 11, color: '#9CA3AF' },
   cardInfo: { fontSize: 12, color: '#D1D5DB', marginBottom: 6 },
   status: { fontSize: 11, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 8, alignSelf: 'flex-start', fontWeight: '600' },
-  statusPending: { backgroundColor: 'rgba(249,115,22,0.12)', color: '#F97316' },
+  statusPending: { backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' },
   statusConfirmed: { backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' },
   statusFailed: { backgroundColor: 'rgba(239,68,68,0.12)', color: '#EF4444' },
   statusRefunded: { backgroundColor: 'rgba(59,130,246,0.12)', color: '#3B82F6' },
@@ -52,7 +52,7 @@ function getStatusLabel(status: string): string {
 
 function getStatusStyle(status: string): Record<string, string> {
   const styles: Record<string, Record<string, string>> = {
-    pending: { backgroundColor: 'rgba(249,115,22,0.12)', color: '#F97316' },
+    pending: { backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' },
     confirmed: { backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' },
     failed: { backgroundColor: 'rgba(239,68,68,0.12)', color: '#EF4444' },
     refunded: { backgroundColor: 'rgba(59,130,246,0.12)', color: '#3B82F6' },
@@ -104,7 +104,7 @@ export default function PaiementsScreen() {
 
       {loading ? (
         <View style={S.emptyState}>
-          <ActivityIndicator color="#F97316" size="large" />
+          <ActivityIndicator color="#22C55E" size="large" />
         </View>
       ) : payments.length === 0 ? (
         <View style={S.emptyState}>

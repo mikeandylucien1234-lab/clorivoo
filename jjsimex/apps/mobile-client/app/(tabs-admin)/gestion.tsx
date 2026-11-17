@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ShoppingCart, Plane, CreditCard, Bell, User, LogOut } from 'lucide-react-native';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 const MENU_ITEMS = [
   { icon: ShoppingCart, label: 'Personal Shopper', sub: 'Demandes en cours', route: '/screens/admin-personal-shopper' },
@@ -96,7 +96,7 @@ const s = StyleSheet.create({
   },
   menuIcon: {
     width: 42, height: 42, borderRadius: 12,
-    backgroundColor: 'rgba(249,115,22,0.10)',
+    backgroundColor: 'rgba(34,197,94,0.10)',
     alignItems: 'center', justifyContent: 'center',
   },
   menuLabel: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },

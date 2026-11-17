@@ -16,7 +16,7 @@ import {
 } from 'lucide-react-native';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 const PERIODS = [
   { label: "Aujourd'hui", key: 'today' },
@@ -26,9 +26,9 @@ const PERIODS = [
 ] as const;
 
 const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  awaiting_arrival: { bg: 'rgba(249,115,22,0.14)', color: '#F97316', label: 'En attente' },
+  awaiting_arrival: { bg: 'rgba(34,197,94,0.14)', color: '#22C55E', label: 'En attente' },
   received_usa: { bg: '#2A2A2A', color: '#C9CDD3', label: 'Reçu USA' },
-  in_transit: { bg: 'rgba(249,115,22,0.14)', color: '#F97316', label: 'En transit' },
+  in_transit: { bg: 'rgba(34,197,94,0.14)', color: '#22C55E', label: 'En transit' },
   arrived: { bg: 'rgba(59,130,246,0.16)', color: '#60A5FA', label: 'Arrivé' },
   ready_pickup: { bg: 'rgba(34,197,94,0.14)', color: '#22C55E', label: 'Prêt' },
   delivered: { bg: 'rgba(34,197,94,0.14)', color: '#22C55E', label: 'Livré ✓' },
@@ -408,7 +408,7 @@ function formatDate(d: string) {
 function getCapacityColor(dep: any) {
   const pct = ((dep.used_capacity_lbs ?? dep.current_weight ?? 0) / (dep.capacity_lbs || 1)) * 100;
   if (pct >= 80) return '#EF4444';
-  if (pct >= 50) return '#F97316';
+  if (pct >= 50) return '#22C55E';
   return '#22C55E';
 }
 
@@ -467,7 +467,7 @@ const s = StyleSheet.create({
     borderRadius: 16, padding: 16,
   },
   kpiIcon: {
-    width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(249,115,22,0.12)',
+    width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(34,197,94,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
   kpiLabel: { fontSize: 12, color: '#9CA3AF', marginTop: 12 },

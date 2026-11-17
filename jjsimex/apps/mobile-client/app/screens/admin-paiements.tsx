@@ -14,7 +14,7 @@ import { supabase } from '@/lib/supabase';
 import { confirmPayment, refusePayment } from '@jjsimex/supabase/payments';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 const TABS = [
   { key: 'all', label: 'Tous' },
@@ -24,14 +24,14 @@ const TABS = [
 ] as const;
 
 const STATUS_STYLE: Record<string, { label: string; bg: string; color: string }> = {
-  pending: { label: 'En attente', bg: 'rgba(249,115,22,0.14)', color: ACCENT },
+  pending: { label: 'En attente', bg: 'rgba(34,197,94,0.14)', color: ACCENT },
   confirmed: { label: 'Confirmé', bg: 'rgba(34,197,94,0.14)', color: '#22C55E' },
   failed: { label: 'Échoué', bg: 'rgba(239,68,68,0.14)', color: '#EF4444' },
   refunded: { label: 'Remboursé', bg: 'rgba(168,85,247,0.14)', color: '#A855F7' },
 };
 
 const METHOD_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
-  moncash: { label: 'MonCash', icon: Smartphone, color: '#F97316' },
+  moncash: { label: 'MonCash', icon: Smartphone, color: '#22C55E' },
   zelle: { label: 'Zelle', icon: Building, color: '#6D28D9' },
   wire: { label: 'Virement', icon: Building, color: '#3B82F6' },
   cash: { label: 'Espèces', icon: Banknote, color: '#22C55E' },

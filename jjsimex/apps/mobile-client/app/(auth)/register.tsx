@@ -84,7 +84,7 @@ export default function RegisterScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={{ flex: 1, backgroundColor: '#0D0D0D' }} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={{ color: '#F97316', fontSize: 24 }}>←</Text>
+          <Text style={{ color: '#22C55E', fontSize: 24 }}>←</Text>
         </TouchableOpacity>
 
         <Text style={styles.title}>Créer mon compte</Text>
@@ -151,7 +151,7 @@ export default function RegisterScreen() {
                 <TouchableOpacity
                   key={d}
                   onPress={() => { setDest(d); setCity(''); }}
-                  style={{ flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: dest === d ? '#F97316' : '#1A1A1A', borderWidth: 1, borderColor: dest === d ? '#F97316' : '#2A2A2A' }}
+                  style={{ flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: dest === d ? '#22C55E' : '#1A1A1A', borderWidth: 1, borderColor: dest === d ? '#22C55E' : '#2A2A2A' }}
                 >
                   <Text style={{ fontSize: 14, fontWeight: '700', color: dest === d ? '#0D0D0D' : '#9CA3AF' }}>{d === 'HT' ? '🇭🇹 Haïti' : '🇩🇴 Rép. Dom.'}</Text>
                 </TouchableOpacity>
@@ -188,7 +188,7 @@ export default function RegisterScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Indicatif régional</Text>
               <TouchableOpacity onPress={() => setShowAreaCodeModal(false)}>
-                <Text style={{ color: '#F97316', fontSize: 16, fontWeight: '700' }}>Fermer</Text>
+                <Text style={{ color: '#22C55E', fontSize: 16, fontWeight: '700' }}>Fermer</Text>
               </TouchableOpacity>
             </View>
             <FlatList
@@ -197,7 +197,7 @@ export default function RegisterScreen() {
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => { setAreaCode(item); setShowAreaCodeModal(false); }}
-                  style={[styles.modalItem, areaCode === item && { backgroundColor: '#F97316' }]}
+                  style={[styles.modalItem, areaCode === item && { backgroundColor: '#22C55E' }]}
                 >
                   <Text style={{ fontSize: 15, color: areaCode === item ? '#0D0D0D' : '#FFFFFF', fontWeight: areaCode === item ? '700' : '400' }}>+1 ({item})</Text>
                 </TouchableOpacity>
@@ -214,7 +214,7 @@ export default function RegisterScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Ville de retrait</Text>
               <TouchableOpacity onPress={() => setShowCityModal(false)}>
-                <Text style={{ color: '#F97316', fontSize: 16, fontWeight: '700' }}>Fermer</Text>
+                <Text style={{ color: '#22C55E', fontSize: 16, fontWeight: '700' }}>Fermer</Text>
               </TouchableOpacity>
             </View>
             <FlatList
@@ -223,7 +223,7 @@ export default function RegisterScreen() {
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => { setCity(item); setShowCityModal(false); }}
-                  style={[styles.modalItem, city === item && { backgroundColor: '#F97316' }]}
+                  style={[styles.modalItem, city === item && { backgroundColor: '#22C55E' }]}
                 >
                   <Text style={{ fontSize: 15, color: city === item ? '#0D0D0D' : '#FFFFFF', fontWeight: city === item ? '700' : '400' }}>{item}</Text>
                 </TouchableOpacity>
@@ -252,11 +252,11 @@ const styles = StyleSheet.create({
   areaCodeBtn: { height: 50, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6 },
   areaCodeText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
   dropdownBtn: { height: 50, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  btnPrimary: { height: 52, backgroundColor: '#F97316', borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  btnPrimary: { height: 52, backgroundColor: '#22C55E', borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   btnPrimaryText: { fontSize: 15, fontWeight: '700', color: '#0D0D0D' },
   footer: { flexDirection: 'row', justifyContent: 'center', paddingBottom: 20 },
   footerText: { fontSize: 14, color: '#9CA3AF' },
-  footerLink: { fontSize: 14, fontWeight: '700', color: '#F97316' },
+  footerLink: { fontSize: 14, fontWeight: '700', color: '#22C55E' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#1A1A1A', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '70%', paddingBottom: Platform.OS === 'ios' ? 34 : 16 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#2A2A2A' },

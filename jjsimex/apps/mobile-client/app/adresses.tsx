@@ -71,7 +71,7 @@ export default function AdressesUSScreen() {
             <Text style={{ color: '#0D0D0D', fontSize: 12, fontWeight: '700' }}>🏠 Principal</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}>
-            <Text style={{ color: '#F97316', fontSize: 18 }}>📍</Text>
+            <Text style={{ color: '#22C55E', fontSize: 18 }}>📍</Text>
             <Text style={{ fontSize: 18, fontWeight: '700', color: '#FFFFFF' }}>Miami, Floride</Text>
           </View>
 
@@ -100,7 +100,7 @@ export default function AdressesUSScreen() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={openWhatsApp} activeOpacity={0.9}
-              style={{ flex: 1, height: 46, backgroundColor: '#F97316', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
+              style={{ flex: 1, height: 46, backgroundColor: '#22C55E', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ color: '#0D0D0D', fontSize: 13, fontWeight: '700' }}>💚 WhatsApp</Text>
             </TouchableOpacity>
           </View>
@@ -138,12 +138,12 @@ export default function AdressesUSScreen() {
 
         {/* Info importante */}
         <View style={{ backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 12, padding: 16, marginTop: 4 }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: '#F97316', marginBottom: 8 }}>⚠️ Important</Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#22C55E', marginBottom: 8 }}>⚠️ Important</Text>
           <Text style={{ fontSize: 13, lineHeight: 20, color: '#9CA3AF' }}>
             Ajoutez <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>votre ID client</Text> dans la ligne 2 pour que vos colis vous soient correctement attribués.
           </Text>
-          <View style={{ backgroundColor: '#F9731622', borderRadius: 8, padding: 10, marginTop: 12 }}>
-            <Text style={{ fontSize: 12, color: '#F97316', fontWeight: '700', textAlign: 'center' }}>Votre ID : JJI-00247</Text>
+          <View style={{ backgroundColor: '#22C55E22', borderRadius: 8, padding: 10, marginTop: 12 }}>
+            <Text style={{ fontSize: 12, color: '#22C55E', fontWeight: '700', textAlign: 'center' }}>Votre ID : JJI-00247</Text>
           </View>
         </View>
       </ScrollView>
@@ -156,10 +156,10 @@ const S = StyleSheet.create({
   header: { height: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: '#1A1A1A', backgroundColor: '#0D0D0D' },
   backBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  banner: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#1F1F1F', borderLeftWidth: 4, borderLeftColor: '#F97316', borderRadius: 12, padding: 16, marginBottom: 20 },
+  banner: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#1F1F1F', borderLeftWidth: 4, borderLeftColor: '#22C55E', borderRadius: 12, padding: 16, marginBottom: 20 },
   bannerText: { fontSize: 13, lineHeight: 21, color: '#9CA3AF' },
-  cardMain: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#1F1F1F', borderTopWidth: 3, borderTopColor: '#F97316', borderRadius: 16, padding: 18, marginBottom: 18 },
-  badgePrincipal: { backgroundColor: '#F97316', alignSelf: 'flex-start', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 8 },
+  cardMain: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#1F1F1F', borderTopWidth: 3, borderTopColor: '#22C55E', borderRadius: 16, padding: 18, marginBottom: 18 },
+  badgePrincipal: { backgroundColor: '#22C55E', alignSelf: 'flex-start', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 8 },
   cardSecondary: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#1F1F1F', borderRadius: 16, padding: 18 },
   badgeSecondary: { backgroundColor: '#2A2A2A', alignSelf: 'flex-start', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 8 },
   fieldsContainer: { backgroundColor: '#141414', borderWidth: 1, borderColor: '#232323', borderRadius: 12, paddingHorizontal: 14, marginTop: 16 },

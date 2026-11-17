@@ -14,7 +14,7 @@ import { supabase } from '@/lib/supabase';
 import { sendPushNotification } from '@jjsimex/supabase/push';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 const WHATSAPP_PREFIX = '1809';
 
 interface ShopperRequest {
@@ -49,7 +49,7 @@ const TABS = [
 ] as const;
 
 const STATUS_STYLE: Record<string, { label: string; bg: string; color: string }> = {
-  pending: { label: 'En attente', bg: 'rgba(249,115,22,0.14)', color: ACCENT },
+  pending: { label: 'En attente', bg: 'rgba(34,197,94,0.14)', color: ACCENT },
   quoted: { label: 'Devis envoyé', bg: 'rgba(59,130,246,0.14)', color: '#3B82F6' },
   confirmed: { label: 'Confirmée', bg: 'rgba(168,85,247,0.14)', color: '#A855F7' },
   purchased: { label: 'Achetée', bg: 'rgba(34,197,94,0.14)', color: '#22C55E' },
@@ -534,7 +534,7 @@ const s = StyleSheet.create({
   requestNumRow: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     marginHorizontal: 16, marginBottom: 10, paddingHorizontal: 10, paddingVertical: 5,
-    backgroundColor: 'rgba(249,115,22,0.08)', borderRadius: 8, alignSelf: 'flex-start',
+    backgroundColor: 'rgba(34,197,94,0.08)', borderRadius: 8, alignSelf: 'flex-start',
   },
   requestNum: { fontSize: 12, fontWeight: '700', color: ACCENT },
 
@@ -546,7 +546,7 @@ const s = StyleSheet.create({
   linkBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     marginHorizontal: 16, marginBottom: 10, paddingVertical: 10, paddingHorizontal: 12,
-    backgroundColor: 'rgba(249,115,22,0.08)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(249,115,22,0.2)',
+    backgroundColor: 'rgba(34,197,94,0.08)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)',
   },
   linkText: { fontSize: 12, fontWeight: '600', color: ACCENT, flex: 1 },
 

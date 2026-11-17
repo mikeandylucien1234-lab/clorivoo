@@ -3,7 +3,7 @@ import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Path, Circle, Rect, Line } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 function IcoDashboard({ color }: { color: string }) {
   return <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><Rect x="3" y="3" width="7" height="7" rx="1" /><Rect x="14" y="3" width="7" height="7" rx="1" /><Rect x="3" y="14" width="7" height="7" rx="1" /><Rect x="14" y="14" width="7" height="7" rx="1" /></Svg>;
@@ -121,6 +121,6 @@ const s = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(249,115,22,0.3)',
+    borderColor: 'rgba(34,197,94,0.3)',
   },
 });

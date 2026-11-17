@@ -48,7 +48,7 @@ export default function ReferralScreen() {
           </Text>
 
           {loading ? (
-            <ActivityIndicator color="#F97316" style={{ marginTop: 24 }} />
+            <ActivityIndicator color="#22C55E" style={{ marginTop: 24 }} />
           ) : (
             <>
               <Text style={S.codeLabel}>Votre code de parrainage</Text>
@@ -71,7 +71,7 @@ export default function ReferralScreen() {
             ['3.', 'Vous gagnez tous les deux des points bonus'],
           ].map(([num, text]) => (
             <View key={num} style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-              <Text style={{ color: '#F97316', fontWeight: '700', fontSize: 14 }}>{num}</Text>
+              <Text style={{ color: '#22C55E', fontWeight: '700', fontSize: 14 }}>{num}</Text>
               <Text style={{ color: '#9CA3AF', fontSize: 13, flex: 1 }}>{text}</Text>
             </View>
           ))}
@@ -90,8 +90,8 @@ const S = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '800', color: '#FFFFFF', marginBottom: 8 },
   subtitle: { fontSize: 13, lineHeight: 20, color: '#9CA3AF', textAlign: 'center' },
   codeLabel: { fontSize: 12, fontWeight: '600', color: '#9CA3AF', marginTop: 24, marginBottom: 8 },
-  codeBox: { backgroundColor: '#0D0D0D', borderWidth: 2, borderColor: '#F97316', borderRadius: 12, paddingHorizontal: 28, paddingVertical: 14, borderStyle: 'dashed' },
-  codeText: { fontSize: 22, fontWeight: '800', color: '#F97316', letterSpacing: 2 },
-  shareBtn: { height: 50, backgroundColor: '#F97316', borderRadius: 12, alignItems: 'center', justifyContent: 'center', width: '100%', marginTop: 24 },
+  codeBox: { backgroundColor: '#0D0D0D', borderWidth: 2, borderColor: '#22C55E', borderRadius: 12, paddingHorizontal: 28, paddingVertical: 14, borderStyle: 'dashed' },
+  codeText: { fontSize: 22, fontWeight: '800', color: '#22C55E', letterSpacing: 2 },
+  shareBtn: { height: 50, backgroundColor: '#22C55E', borderRadius: 12, alignItems: 'center', justifyContent: 'center', width: '100%', marginTop: 24 },
   infoCard: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 12, padding: 18, width: '100%' },
 });

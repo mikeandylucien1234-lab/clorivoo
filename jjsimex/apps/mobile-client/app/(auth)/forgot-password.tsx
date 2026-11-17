@@ -43,7 +43,7 @@ export default function ForgotPasswordScreen() {
         {/* Header */}
         <View className="items-center mb-10">
           <Text className="text-3xl font-bold text-white">
-            JJ&apos;s <Text className="text-[#F97316]">IMEX</Text>
+            JJ&apos;s <Text className="text-[#22C55E]">IMEX</Text>
           </Text>
         </View>
 
@@ -85,7 +85,7 @@ export default function ForgotPasswordScreen() {
               <TouchableOpacity
                 onPress={handleReset}
                 disabled={loading}
-                className="bg-[#F97316] rounded-xl py-3.5 items-center"
+                className="bg-[#22C55E] rounded-xl py-3.5 items-center"
                 style={{ opacity: loading ? 0.7 : 1 }}
               >
                 {loading ? (

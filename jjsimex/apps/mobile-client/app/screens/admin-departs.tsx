@@ -13,7 +13,7 @@ import { supabase } from '@/lib/supabase';
 import { sendPushToAll } from '@jjsimex/supabase/push';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 const TABS = [
   { key: 'upcoming', label: 'À venir' },
@@ -23,7 +23,7 @@ const TABS = [
 
 const STATUS_STYLE: Record<string, { label: string; bg: string; color: string }> = {
   open: { label: 'Ouvert', bg: 'rgba(34,197,94,0.14)', color: '#22C55E' },
-  closed: { label: 'Fermé', bg: 'rgba(249,115,22,0.14)', color: ACCENT },
+  closed: { label: 'Fermé', bg: 'rgba(34,197,94,0.14)', color: ACCENT },
   departed: { label: 'Parti', bg: 'rgba(59,130,246,0.14)', color: '#3B82F6' },
   arrived: { label: 'Arrivé', bg: 'rgba(168,85,247,0.14)', color: '#A855F7' },
 };

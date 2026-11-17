@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { blockUser, unblockUser } from '@jjsimex/supabase/users';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: 'Super Admin',
@@ -361,7 +361,7 @@ const s = StyleSheet.create({
     flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1,
     borderColor: '#2A2A2A', backgroundColor: '#0D0D0D', alignItems: 'center',
   },
-  roleOptionActive: { borderColor: ACCENT, backgroundColor: 'rgba(249,115,22,0.12)' },
+  roleOptionActive: { borderColor: ACCENT, backgroundColor: 'rgba(34,197,94,0.12)' },
   roleOptionText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
   roleOptionTextActive: { color: ACCENT },
   createBtn: {
@@ -390,7 +390,7 @@ const s = StyleSheet.create({
   },
   roleBadge: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(249,115,22,0.12)', paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: 'rgba(34,197,94,0.12)', paddingHorizontal: 12, paddingVertical: 8,
     borderRadius: 10,
   },
   roleBadgeText: { fontSize: 12, fontWeight: '600', color: ACCENT, flex: 1 },

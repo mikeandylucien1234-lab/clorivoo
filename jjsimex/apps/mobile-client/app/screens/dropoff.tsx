@@ -9,7 +9,7 @@ import { MapPin, Send, Lightbulb, MessageCircle } from 'lucide-react-native';
 import { getActiveBranches, isBranchOpen, getClosingTime } from '@jjsimex/supabase/branches';
 
 const { width } = Dimensions.get('window');
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
 const WA_NUMBER = '18097851234';
 
@@ -150,7 +150,7 @@ const s = StyleSheet.create({
     backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#1F1F1F',
     borderRadius: 16, padding: 14,
   },
-  branchCardNearest: { borderColor: 'rgba(249,115,22,0.4)' },
+  branchCardNearest: { borderColor: 'rgba(34,197,94,0.4)' },
 
   pinIcon: {
     width: 42, height: 42, borderRadius: 12, backgroundColor: '#2A2A2A',
@@ -162,7 +162,7 @@ const s = StyleSheet.create({
   branchAddr: { fontSize: 12, color: '#9CA3AF', marginTop: 4, lineHeight: 18 },
 
   nearestBadge: {
-    backgroundColor: 'rgba(249,115,22,0.14)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99,
+    backgroundColor: 'rgba(34,197,94,0.14)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99,
   },
   nearestText: { fontSize: 9.5, fontWeight: '700', color: ACCENT, letterSpacing: 0.3 },
 

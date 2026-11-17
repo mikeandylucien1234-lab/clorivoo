@@ -5,7 +5,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 export default function SplashScreen() {
   const router = useRouter();
@@ -96,7 +96,7 @@ const s = StyleSheet.create({
     width: 460,
     height: 460,
     borderRadius: 230,
-    backgroundColor: 'rgba(249,115,22,0.38)',
+    backgroundColor: 'rgba(34,197,94,0.38)',
   },
   logoBlock: {
     alignItems: 'center',

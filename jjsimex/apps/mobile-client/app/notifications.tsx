@@ -11,14 +11,14 @@ const S = StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
   listContainer: { padding: 16, paddingBottom: 40 },
   notificationCard: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#222', borderRadius: 12, padding: 14, marginBottom: 10 },
-  notificationCardUnread: { borderColor: '#F97316', backgroundColor: 'rgba(249,115,22,0.05)' },
+  notificationCardUnread: { borderColor: '#22C55E', backgroundColor: 'rgba(34,197,94,0.05)' },
   notifTitle: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 6 },
   notifBody: { fontSize: 13, color: '#D1D5DB', marginBottom: 8 },
   notifTime: { fontSize: 11, color: '#9CA3AF' },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
   emptyText: { fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
-  clearButton: { height: 44, backgroundColor: '#F97316', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginHorizontal: 16, marginBottom: 20 },
+  clearButton: { height: 44, backgroundColor: '#22C55E', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginHorizontal: 16, marginBottom: 20 },
   clearButtonText: { color: '#0D0D0D', fontWeight: '700', fontSize: 14 },
 });
 
@@ -140,7 +140,7 @@ export default function NotificationsScreen() {
 
       {loading ? (
         <View style={S.emptyState}>
-          <ActivityIndicator color="#F97316" size="large" />
+          <ActivityIndicator color="#22C55E" size="large" />
         </View>
       ) : notifications.length === 0 ? (
         <View style={S.emptyState}>

@@ -52,7 +52,7 @@ export default function ColisDetailScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color="#F97316" size="large" />
+        <ActivityIndicator color="#22C55E" size="large" />
       </View>
     );
   }
@@ -64,7 +64,7 @@ export default function ColisDetailScreen() {
           {error || 'Colis introuvable.'}
         </Text>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: '#F97316' }}>← Retour</Text>
+          <Text style={{ color: '#22C55E' }}>← Retour</Text>
         </TouchableOpacity>
       </View>
     );
@@ -156,7 +156,7 @@ export default function ColisDetailScreen() {
                     {done && <Text style={{ color: '#0D0D0D', fontSize: 9, fontWeight: '900' }}>✓</Text>}
                   </View>
                   {!isLast && (
-                    <View style={[styles.timelineLine, { backgroundColor: done && !isCurrent ? '#F97316' : '#2E2E2E' }]} />
+                    <View style={[styles.timelineLine, { backgroundColor: done && !isCurrent ? '#22C55E' : '#2E2E2E' }]} />
                   )}
                 </View>
                 <View style={styles.timelineContent}>
@@ -234,7 +234,7 @@ export default function ColisDetailScreen() {
         </TouchableOpacity>
         <TouchableOpacity style={styles.navBtn} onPress={() => router.push('/(tabs-client)/colis')}>
           <Text style={{ fontSize: 22 }}>📦</Text>
-          <Text style={[styles.navLabel, { color: '#F97316' }]}>Mes colis</Text>
+          <Text style={[styles.navLabel, { color: '#22C55E' }]}>Mes colis</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.navBtnCenter}>
           <View style={styles.navFAB}><Text style={{ fontSize: 22 }}>⬛</Text></View>
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
 
   // Hero
-  hero: { backgroundColor: '#F97316', borderRadius: 16, padding: 20, marginBottom: 28 },
+  hero: { backgroundColor: '#22C55E', borderRadius: 16, padding: 20, marginBottom: 28 },
   heroTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   heroTrackingLabel: { fontSize: 12, fontWeight: '500', color: 'rgba(26,13,2,0.6)' },
   heroTracking: { fontWeight: '800', fontSize: 20, letterSpacing: -0.3, marginTop: 2, color: '#1A0D02' },
@@ -299,13 +299,13 @@ const styles = StyleSheet.create({
   timelineRow: { flexDirection: 'row', gap: 14 },
   timelineLeft: { alignItems: 'center', width: 18 },
   timelineDot: {
-    width: 18, height: 18, borderRadius: 9, backgroundColor: '#F97316',
+    width: 18, height: 18, borderRadius: 9, backgroundColor: '#22C55E',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  timelineDotDone: { backgroundColor: '#F97316' },
+  timelineDotDone: { backgroundColor: '#22C55E' },
   timelineDotCurrent: {
-    backgroundColor: '#F97316',
-    shadowColor: '#F97316', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.45, shadowRadius: 6,
+    backgroundColor: '#22C55E',
+    shadowColor: '#22C55E', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.45, shadowRadius: 6,
   },
   timelineDotPending: { backgroundColor: 'transparent', borderWidth: 2, borderColor: '#3A3A3A' },
   timelineLine: { flex: 1, width: 2, minHeight: 20 },
@@ -344,11 +344,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 10,
     alignItems: 'center', justifyContent: 'center',
   },
-  insuranceBtnText: { color: '#F97316', fontWeight: '600', fontSize: 14 },
+  insuranceBtnText: { color: '#22C55E', fontWeight: '600', fontSize: 14 },
 
   // WhatsApp CTA
   whatsappBtn: {
-    width: '100%', height: 54, borderRadius: 14, backgroundColor: '#F97316',
+    width: '100%', height: 54, borderRadius: 14, backgroundColor: '#22C55E',
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
   },
   whatsappBtnText: { color: '#0D0D0D', fontWeight: '700', fontSize: 16 },
@@ -363,9 +363,9 @@ const styles = StyleSheet.create({
   navBtn: { width: 56, alignItems: 'center', gap: 5 },
   navBtnCenter: { width: 56, alignItems: 'center' },
   navFAB: {
-    width: 52, height: 52, borderRadius: 26, backgroundColor: '#F97316',
+    width: 52, height: 52, borderRadius: 26, backgroundColor: '#22C55E',
     alignItems: 'center', justifyContent: 'center', marginTop: -22,
-    shadowColor: '#F97316', shadowOffset: { width: 0, height: 6 },
+    shadowColor: '#22C55E', shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.45, shadowRadius: 18, borderWidth: 4, borderColor: '#111111',
   },
   navIcon: { fontSize: 22, color: '#666666' },

@@ -61,7 +61,7 @@ export default function FAQScreen() {
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text style={S.question}>{item.q}</Text>
-              <Text style={{ color: '#F97316', fontSize: 18, marginLeft: 12 }}>
+              <Text style={{ color: '#22C55E', fontSize: 18, marginLeft: 12 }}>
                 {expanded === i ? '−' : '+'}
               </Text>
             </View>

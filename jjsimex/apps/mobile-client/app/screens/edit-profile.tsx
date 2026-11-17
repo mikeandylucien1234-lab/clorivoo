@@ -71,7 +71,7 @@ export default function EditProfileScreen() {
   if (loading) {
     return (
       <View style={S.container}>
-        <ActivityIndicator color="#F97316" style={{ marginTop: 60 }} />
+        <ActivityIndicator color="#22C55E" style={{ marginTop: 60 }} />
       </View>
     );
   }
@@ -118,5 +118,5 @@ const S = StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
   label: { fontSize: 12, fontWeight: '600', color: '#9CA3AF', marginBottom: 6 },
   input: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, color: '#FFFFFF', fontSize: 14 },
-  saveBtn: { height: 50, backgroundColor: '#F97316', borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  saveBtn: { height: 50, backgroundColor: '#22C55E', borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
 });

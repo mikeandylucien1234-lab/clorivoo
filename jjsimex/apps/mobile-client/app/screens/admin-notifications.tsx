@@ -13,7 +13,7 @@ import { supabase } from '@/lib/supabase';
 import { sendBulkNotification } from '@jjsimex/supabase/push';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 interface Notification {
   id: string;
@@ -30,7 +30,7 @@ const TYPE_CONFIG: Record<string, { label: string; bg: string; color: string; ic
   package: { label: 'Colis', bg: 'rgba(59,130,246,0.14)', color: '#3B82F6', icon: Package },
   payment: { label: 'Paiement', bg: 'rgba(34,197,94,0.14)', color: '#22C55E', icon: CreditCard },
   personal_shopper: { label: 'Shopper', bg: 'rgba(168,85,247,0.14)', color: '#A855F7', icon: ShoppingCart },
-  system: { label: 'Système', bg: 'rgba(249,115,22,0.14)', color: ACCENT, icon: Settings },
+  system: { label: 'Système', bg: 'rgba(34,197,94,0.14)', color: ACCENT, icon: Settings },
   promo: { label: 'Promo', bg: 'rgba(236,72,153,0.14)', color: '#EC4899', icon: Megaphone },
 };
 
@@ -309,14 +309,14 @@ export default function AdminNotifications() {
                   const targetLabel = log.target_type === 'all' ? 'Tous' : log.target_type === 'haiti' ? 'Haïti' : 'Rép. Dom.';
                   return (
                     <View key={log.id} style={s.notifCard}>
-                      <View style={[s.notifIcon, { backgroundColor: 'rgba(249,115,22,0.14)' }]}>
+                      <View style={[s.notifIcon, { backgroundColor: 'rgba(34,197,94,0.14)' }]}>
                         <Megaphone size={16} color={ACCENT} strokeWidth={1.8} />
                       </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={s.notifTitle} numberOfLines={1}>{log.title}</Text>
                         <Text style={s.notifMessage} numberOfLines={2}>{log.message}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                          <View style={{ backgroundColor: 'rgba(249,115,22,0.12)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                          <View style={{ backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
                             <Text style={{ fontSize: 10, fontWeight: '700', color: ACCENT }}>{targetLabel}</Text>
                           </View>
                           <Text style={{ fontSize: 10, color: '#6B7280' }}>{log.sent_count} envoyé{log.sent_count > 1 ? 's' : ''}</Text>
@@ -444,8 +444,8 @@ const s = StyleSheet.create({
   markAllBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     marginHorizontal: 18, marginTop: 12, marginBottom: 6, paddingVertical: 10,
-    borderRadius: 10, backgroundColor: 'rgba(249,115,22,0.08)',
-    borderWidth: 1, borderColor: 'rgba(249,115,22,0.2)',
+    borderRadius: 10, backgroundColor: 'rgba(34,197,94,0.08)',
+    borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)',
   },
   markAllText: { fontSize: 12, fontWeight: '600', color: ACCENT },
 
@@ -461,7 +461,7 @@ const s = StyleSheet.create({
     backgroundColor: '#1A1A1A', borderRadius: 12, padding: 14,
     borderWidth: 1, borderColor: '#1F1F1F',
   },
-  notifCardUnread: { borderColor: 'rgba(249,115,22,0.3)', backgroundColor: '#1E1A16' },
+  notifCardUnread: { borderColor: 'rgba(34,197,94,0.3)', backgroundColor: '#1E1A16' },
   notifIcon: {
     width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
   },

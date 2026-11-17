@@ -13,12 +13,12 @@ import { Truck, MapPin, Calendar, Clock, Package, MessageCircle } from 'lucide-r
 import { QRCodeMini } from '@/components/ui/QRCodeDisplay';
 
 const { width } = Dimensions.get('window');
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
 const WA_NUMBER = '18097851234';
 
 const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  pending: { bg: 'rgba(249,115,22,0.14)', color: '#F97316', label: 'En attente' },
+  pending: { bg: 'rgba(34,197,94,0.14)', color: '#22C55E', label: 'En attente' },
   confirmed: { bg: 'rgba(59,130,246,0.16)', color: '#60A5FA', label: 'Confirmé' },
   collected: { bg: 'rgba(34,197,94,0.14)', color: '#22C55E', label: 'Collecté' },
   cancelled: { bg: '#2A2A2A', color: '#9CA3AF', label: 'Annulé' },
@@ -541,7 +541,7 @@ const s = StyleSheet.create({
     borderRadius: 16, padding: 14,
   },
   reqIcon: {
-    width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(249,115,22,0.10)',
+    width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(34,197,94,0.10)',
     alignItems: 'center', justifyContent: 'center',
   },
   reqAddr: { fontSize: 13.5, fontWeight: '700', color: '#FFFFFF' },

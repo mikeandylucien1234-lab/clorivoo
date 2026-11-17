@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import Svg, { Line, Polyline } from 'react-native-svg';
 
 const { width, height } = Dimensions.get('window');
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
 
 const IMAGE_W = width * 0.75;

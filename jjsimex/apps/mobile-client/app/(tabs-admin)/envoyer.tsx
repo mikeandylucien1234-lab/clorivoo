@@ -8,7 +8,7 @@ import { markPackageAsReceived } from '@jjsimex/supabase/packages';
 import { supabase } from '@/lib/supabase';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 const CATEGORIES: Record<string, { label: string; icon: string }> = {
   telephone: { label: 'Telephone', icon: '📱' },

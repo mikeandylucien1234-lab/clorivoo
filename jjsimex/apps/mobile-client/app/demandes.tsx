@@ -12,11 +12,11 @@ const S = StyleSheet.create({
   listContainer: { padding: 16, paddingBottom: 40 },
   card: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#222', borderRadius: 12, padding: 14, marginBottom: 12 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  cardTitle: { fontSize: 13, fontWeight: '700', color: '#F97316' },
+  cardTitle: { fontSize: 13, fontWeight: '700', color: '#22C55E' },
   cardDate: { fontSize: 11, color: '#9CA3AF' },
   cardInfo: { fontSize: 12, color: '#D1D5DB', marginBottom: 8 },
   status: { fontSize: 11, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 8, alignSelf: 'flex-start' },
-  statusPending: { backgroundColor: 'rgba(249,115,22,0.12)', color: '#F97316' },
+  statusPending: { backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' },
   statusQuoted: { backgroundColor: 'rgba(59,130,246,0.12)', color: '#3B82F6' },
   statusPurchased: { backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' },
   statusShipped: { backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' },
@@ -43,7 +43,7 @@ function getStatusLabel(status: string): string {
 
 function getStatusStyle(status: string) {
   const styles: Record<string, { backgroundColor: string; color: string }> = {
-    pending: { backgroundColor: 'rgba(249,115,22,0.12)', color: '#F97316' },
+    pending: { backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' },
     quoted: { backgroundColor: 'rgba(59,130,246,0.12)', color: '#3B82F6' },
     confirmed: { backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' },
     purchased: { backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' },
@@ -97,7 +97,7 @@ export default function DemandesScreen() {
 
       {loading ? (
         <View style={S.emptyState}>
-          <ActivityIndicator color="#F97316" size="large" />
+          <ActivityIndicator color="#22C55E" size="large" />
         </View>
       ) : requests.length === 0 ? (
         <View style={S.emptyState}>
@@ -120,7 +120,7 @@ export default function DemandesScreen() {
                   <Text style={S.cardInfo}>💰 ${req.final_price.toFixed(2)}</Text>
                 )}
                 {req.total_price && (
-                  <Text style={[S.cardInfo, { color: '#F97316', fontWeight: '600' }]}>
+                  <Text style={[S.cardInfo, { color: '#22C55E', fontWeight: '600' }]}>
                     Total: ${req.total_price.toFixed(2)}
                   </Text>
                 )}

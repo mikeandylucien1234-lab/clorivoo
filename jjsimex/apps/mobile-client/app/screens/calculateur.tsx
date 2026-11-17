@@ -232,8 +232,8 @@ export default function CalculateurScreen() {
             </View>
 
             {!session && (
-              <View style={{ backgroundColor: 'rgba(249,115,22,0.1)', borderRadius: 10, padding: 12, marginTop: 14, borderWidth: 1, borderColor: 'rgba(249,115,22,0.2)' }}>
-                <Text style={{ fontSize: 13, color: '#F97316', textAlign: 'center' }}>
+              <View style={{ backgroundColor: colors.accentLight, borderRadius: 10, padding: 12, marginTop: 14, borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)' }}>
+                <Text style={{ fontSize: 13, color: ACCENT, textAlign: 'center' }}>
                   Connectez-vous pour beneficier de vos reductions fidelite 🎁
                 </Text>
               </View>
@@ -254,19 +254,19 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#1A1A1A', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#2A2A2A' },
   fieldLabel: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
   modeBtn: { flex: 1, backgroundColor: '#0D0D0D', borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#2A2A2A' },
-  modeBtnActive: { backgroundColor: '#F97316', borderColor: '#F97316' },
+  modeBtnActive: { backgroundColor: '#22C55E', borderColor: '#22C55E' },
   countryChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#0D0D0D', borderWidth: 1, borderColor: '#2A2A2A' },
-  chipActive: { backgroundColor: '#F97316', borderColor: '#F97316' },
+  chipActive: { backgroundColor: '#22C55E', borderColor: '#22C55E' },
   dropdown: { flexDirection: 'row', alignItems: 'center', marginTop: 10, backgroundColor: '#0D0D0D', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#2A2A2A' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 30 },
   modalContent: { backgroundColor: '#1A1A1A', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#2A2A2A', width: '100%', maxHeight: '60%' },
   modalItem: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10 },
-  modalItemActive: { backgroundColor: '#F97316' },
-  disclaimer: { padding: 16, backgroundColor: 'rgba(249,115,22,0.06)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(249,115,22,0.15)' },
+  modalItemActive: { backgroundColor: '#22C55E' },
+  disclaimer: { padding: 16, backgroundColor: 'rgba(34,197,94,0.06)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(34,197,94,0.15)' },
   disclaimerText: { fontSize: 12, color: '#9CA3AF', fontStyle: 'italic' },
-  resultCard: { backgroundColor: '#1A1A1A', borderRadius: 20, padding: 22, borderWidth: 1, borderColor: 'rgba(249,115,22,0.3)', alignItems: 'center' },
+  resultCard: { backgroundColor: '#1A1A1A', borderRadius: 20, padding: 22, borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)', alignItems: 'center' },
   resultLabel: { fontSize: 13, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 },
-  resultPrice: { fontSize: 48, fontWeight: '800', color: '#F97316', letterSpacing: -1, marginVertical: 8 },
+  resultPrice: { fontSize: 48, fontWeight: '800', color: '#22C55E', letterSpacing: -1, marginVertical: 8 },
   resultRows: { width: '100%', gap: 8, marginTop: 4 },
   resultRow: { flexDirection: 'row', justifyContent: 'space-between' },
   resultRowLabel: { fontSize: 13, color: '#9CA3AF' },

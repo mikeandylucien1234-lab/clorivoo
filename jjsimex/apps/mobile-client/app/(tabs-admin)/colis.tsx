@@ -16,12 +16,12 @@ import {
 } from 'lucide-react-native';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 const STATUS_MAP: Record<string, { label: string; bg: string; color: string }> = {
   awaiting_arrival: { label: 'En attente', bg: 'rgba(239,68,68,0.14)', color: '#EF4444' },
   received_usa: { label: 'Reçu USA', bg: '#2A2A2A', color: '#C9CDD3' },
-  in_transit: { label: 'En transit', bg: 'rgba(249,115,22,0.14)', color: '#F97316' },
+  in_transit: { label: 'En transit', bg: 'rgba(34,197,94,0.14)', color: '#22C55E' },
   arrived: { label: 'Arrivé', bg: 'rgba(234,179,8,0.14)', color: '#EAB308' },
   ready_pickup: { label: 'Prêt retrait', bg: 'rgba(34,197,94,0.14)', color: '#22C55E' },
   delivered: { label: 'Livré ✓', bg: 'rgba(34,197,94,0.14)', color: '#22C55E' },
@@ -180,7 +180,7 @@ export default function AdminColis() {
           </View>
           <View style={s.pill}>
             <Text style={s.pillTextGrey}>Transit </Text>
-            <View style={[s.pillBadge, { backgroundColor: 'rgba(249,115,22,0.14)' }]}>
+            <View style={[s.pillBadge, { backgroundColor: 'rgba(34,197,94,0.14)' }]}>
               <Text style={[s.pillBadgeText, { color: ACCENT }]}>{transitCount}</Text>
             </View>
           </View>

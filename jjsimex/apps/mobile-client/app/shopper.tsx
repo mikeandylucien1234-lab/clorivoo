@@ -69,10 +69,10 @@ export default function PersonalShopperScreen() {
   const modeBtn = (m: Mode, label: string, sub: string) => ({
     style: {
       flex: 1, borderWidth: 1.5, borderRadius: 12, padding: 14,
-      backgroundColor: mode === m ? 'rgba(249,115,22,0.12)' : '#1A1A1A',
-      borderColor: mode === m ? '#F97316' : '#2A2A2A',
+      backgroundColor: mode === m ? 'rgba(34,197,94,0.12)' : '#1A1A1A',
+      borderColor: mode === m ? '#22C55E' : '#2A2A2A',
     } as const,
-    textColor: mode === m ? '#F97316' : '#9CA3AF',
+    textColor: mode === m ? '#22C55E' : '#9CA3AF',
   });
 
   return (
@@ -109,7 +109,7 @@ export default function PersonalShopperScreen() {
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {SITES.map(s => (
               <TouchableOpacity key={s} onPress={() => setSite(s)} activeOpacity={0.8}
-                style={{ height: 36, borderRadius: 99, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: site === s ? '#F97316' : '#1A1A1A', borderWidth: 1, borderColor: site === s ? '#F97316' : '#2A2A2A' }}>
+                style={{ height: 36, borderRadius: 99, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: site === s ? '#22C55E' : '#1A1A1A', borderWidth: 1, borderColor: site === s ? '#22C55E' : '#2A2A2A' }}>
                 <Text style={{ color: site === s ? '#0D0D0D' : '#9CA3AF', fontSize: 13, fontWeight: '600' }}>{s}</Text>
               </TouchableOpacity>
             ))}
@@ -143,7 +143,7 @@ export default function PersonalShopperScreen() {
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {DESTINATIONS.map(d => (
               <TouchableOpacity key={d} onPress={() => setDestination(d)} activeOpacity={0.8}
-                style={{ height: 36, borderRadius: 99, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: destination === d ? '#F97316' : '#1A1A1A', borderWidth: 1, borderColor: destination === d ? '#F97316' : '#2A2A2A' }}>
+                style={{ height: 36, borderRadius: 99, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: destination === d ? '#22C55E' : '#1A1A1A', borderWidth: 1, borderColor: destination === d ? '#22C55E' : '#2A2A2A' }}>
                 <Text style={{ color: destination === d ? '#0D0D0D' : '#9CA3AF', fontSize: 13, fontWeight: '600' }}>{d}</Text>
               </TouchableOpacity>
             ))}
@@ -155,8 +155,8 @@ export default function PersonalShopperScreen() {
         <View style={{ flexDirection: 'row', gap: 12, marginBottom: 18 }}>
           {([['avion', '✈️ Avion', '5-7 jours'], ['bateau', '🚢 Bateau', '3-4 semaines']] as [Mode, string, string][]).map(([m, label, sub]) => (
             <TouchableOpacity key={m} onPress={() => setMode(m)} activeOpacity={0.8}
-              style={[{ flex: 1, borderWidth: 1.5, borderRadius: 12, padding: 14 }, mode === m ? { backgroundColor: 'rgba(249,115,22,0.12)', borderColor: '#F97316' } : { backgroundColor: '#1A1A1A', borderColor: '#2A2A2A' }]}>
-              <Text style={{ fontWeight: '700', fontSize: 15, color: mode === m ? '#F97316' : '#FFFFFF' }}>{label}</Text>
+              style={[{ flex: 1, borderWidth: 1.5, borderRadius: 12, padding: 14 }, mode === m ? { backgroundColor: 'rgba(34,197,94,0.12)', borderColor: '#22C55E' } : { backgroundColor: '#1A1A1A', borderColor: '#2A2A2A' }]}>
+              <Text style={{ fontWeight: '700', fontSize: 15, color: mode === m ? '#22C55E' : '#FFFFFF' }}>{label}</Text>
               <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 4, opacity: 0.8 }}>{sub}</Text>
             </TouchableOpacity>
           ))}
@@ -173,7 +173,7 @@ export default function PersonalShopperScreen() {
         {/* Estimation */}
         <View style={S.estimationCard}>
           <Text style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center' }}>Frais de service</Text>
-          <Text style={{ fontSize: 28, fontWeight: '800', color: '#F97316', textAlign: 'center', marginTop: 4 }}>10%</Text>
+          <Text style={{ fontSize: 28, fontWeight: '800', color: '#22C55E', textAlign: 'center', marginTop: 4 }}>10%</Text>
           <Text style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', marginTop: 4 }}>du prix du produit + expédition</Text>
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
             <View style={{ flex: 1, backgroundColor: '#2A2A2A', borderRadius: 10, padding: 10, alignItems: 'center' }}>
@@ -188,7 +188,7 @@ export default function PersonalShopperScreen() {
         </View>
 
         <TouchableOpacity onPress={handleSubmit} disabled={loading} activeOpacity={0.9}
-          style={{ height: 54, backgroundColor: '#F97316', borderRadius: 12, alignItems: 'center', justifyContent: 'center', opacity: loading ? 0.7 : 1 }}>
+          style={{ height: 54, backgroundColor: '#22C55E', borderRadius: 12, alignItems: 'center', justifyContent: 'center', opacity: loading ? 0.7 : 1 }}>
           <Text style={{ color: '#0D0D0D', fontWeight: '700', fontSize: 16 }}>
             {loading ? 'Envoi en cours...' : 'Envoyer la demande'}
           </Text>
@@ -203,11 +203,11 @@ const S = StyleSheet.create({
   header: { height: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: '#1A1A1A', backgroundColor: '#0D0D0D' },
   backBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  banner: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#1F1F1F', borderLeftWidth: 4, borderLeftColor: '#F97316', borderRadius: 12, padding: 16, marginBottom: 26 },
+  banner: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#1F1F1F', borderLeftWidth: 4, borderLeftColor: '#22C55E', borderRadius: 12, padding: 16, marginBottom: 26 },
   bannerTitle: { fontSize: 14, fontWeight: '600', color: '#FFFFFF', marginBottom: 6 },
   bannerSub: { fontSize: 13, lineHeight: 20, color: '#9CA3AF' },
   formTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF', marginBottom: 22 },
   label: { fontSize: 13, fontWeight: '500', color: '#9CA3AF', marginBottom: 8 },
   input: { width: '100%', height: 50, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 8, color: '#FFFFFF', paddingHorizontal: 14, fontSize: 15, marginBottom: 18 },
-  estimationCard: { backgroundColor: '#1A1A1A', borderWidth: 1.5, borderColor: '#F97316', borderRadius: 16, padding: 20, marginBottom: 24 },
+  estimationCard: { backgroundColor: '#1A1A1A', borderWidth: 1.5, borderColor: '#22C55E', borderRadius: 16, padding: 20, marginBottom: 24 },
 });

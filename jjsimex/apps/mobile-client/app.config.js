@@ -38,7 +38,7 @@ module.exports = ({ config }) => ({
       'expo-notifications',
       {
         icon: './assets/icon.png',
-        color: '#F97316',
+        color: '#22C55E',
       },
     ],
   ],

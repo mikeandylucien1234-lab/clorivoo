@@ -9,7 +9,7 @@ module.exports = {
           bg: '#0D0D0D',
           card: '#1A1A1A',
           card2: '#2A2A2A',
-          orange: '#F97316',
+          orange: '#22C55E',
           'orange-dark': '#C2600A',
           green: '#22C55E',
           red: '#EF4444',

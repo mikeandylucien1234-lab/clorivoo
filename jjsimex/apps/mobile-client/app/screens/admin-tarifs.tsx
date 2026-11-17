@@ -9,7 +9,7 @@ import { ArrowLeft, Save } from 'lucide-react-native';
 import { getShippingRates, updateShippingRate } from '@jjsimex/supabase/shipping';
 
 const statusBarH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
-const ACCENT = '#F97316';
+const ACCENT = '#22C55E';
 
 interface ShippingRate {
   id: string;

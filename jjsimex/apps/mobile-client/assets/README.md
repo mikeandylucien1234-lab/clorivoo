@@ -4,7 +4,7 @@ Créez ces fichiers PNG avant de builder avec EAS :
 
 ## icon.png — 1024x1024px
 - Fond : #0D0D0D (noir)
-- Contenu : Logo "JJ's IMEX" en blanc + orange #F97316
+- Contenu : Logo "JJ's IMEX" en blanc + orange #22C55E
 - Format : PNG, carré, pas de transparence (Android)
 
 ## splash.png — 1284x2778px

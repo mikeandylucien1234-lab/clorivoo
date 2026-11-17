@@ -2,8 +2,7 @@ import React, { useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { Share, Download } from 'lucide-react-native';
-
-const ACCENT = '#F97316';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export type QRPayload = {
   app: 'jjsimex';
@@ -27,6 +26,7 @@ type Props = {
 
 export function QRCodeDisplay({ type, referenceNumber, id, size = 180, showActions = true, label }: Props) {
   const svgRef = useRef<any>(null);
+  const { colors } = useTheme();
 
   const value = buildQRValue({ app: 'jjsimex', type, ref: referenceNumber, id });
 
@@ -60,11 +60,11 @@ export function QRCodeDisplay({ type, referenceNumber, id, size = 180, showActio
         />
       </View>
       {label && <Text style={styles.label}>{label}</Text>}
-      <Text style={styles.ref}>{referenceNumber}</Text>
+      <Text style={[styles.ref, { color: colors.accent }]}>{referenceNumber}</Text>
       {showActions && (
-        <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.8}>
-          <Share size={15} color={ACCENT} strokeWidth={2} />
-          <Text style={styles.shareBtnText}>Partager le QR</Text>
+        <TouchableOpacity style={[styles.shareBtn, { backgroundColor: colors.accentLight }]} onPress={handleShare} activeOpacity={0.8}>
+          <Share size={15} color={colors.accent} strokeWidth={2} />
+          <Text style={[styles.shareBtnText, { color: colors.accent }]}>Partager le QR</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -73,10 +73,11 @@ export function QRCodeDisplay({ type, referenceNumber, id, size = 180, showActio
 
 export function QRCodeMini({ type, referenceNumber, id, onPress }: { type: QRPayload['type']; referenceNumber: string; id: string; onPress?: () => void }) {
   const value = buildQRValue({ app: 'jjsimex', type, ref: referenceNumber, id });
+  const { colors } = useTheme();
 
   return (
-    <TouchableOpacity style={styles.miniContainer} onPress={onPress} activeOpacity={0.8}>
-      <QRCode value={value} size={36} backgroundColor="transparent" color="#FFFFFF" />
+    <TouchableOpacity style={[styles.miniContainer, { backgroundColor: colors.accentLight }]} onPress={onPress} activeOpacity={0.8}>
+      <QRCode value={value} size={36} backgroundColor="transparent" color={colors.text} />
     </TouchableOpacity>
   );
 }
@@ -87,16 +88,15 @@ const styles = StyleSheet.create({
     padding: 12, backgroundColor: '#FFFFFF', borderRadius: 14,
   },
   label: { fontSize: 12, color: '#9CA3AF', marginTop: 4 },
-  ref: { fontSize: 16, fontWeight: '800', color: ACCENT },
+  ref: { fontSize: 16, fontWeight: '800' },
   shareBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 16, paddingVertical: 8,
-    borderRadius: 99, backgroundColor: 'rgba(249,115,22,0.12)',
+    borderRadius: 99,
   },
-  shareBtnText: { fontSize: 13, fontWeight: '600', color: ACCENT },
+  shareBtnText: { fontSize: 13, fontWeight: '600' },
   miniContainer: {
     width: 44, height: 44, borderRadius: 8,
-    backgroundColor: 'rgba(249,115,22,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
 });

@@ -41,7 +41,7 @@ export default function LoginScreen() {
         <View style={styles.logoBlock}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
             <Text style={[styles.logoText, { color: '#FFFFFF' }]}>JJ</Text>
-            <Text style={[styles.logoText, { color: '#F97316' }]}>'s</Text>
+            <Text style={[styles.logoText, { color: '#22C55E' }]}>'s</Text>
             <Text style={[styles.logoText, { color: '#FFFFFF' }]}> IMEX</Text>
           </View>
           <Text style={styles.tagline}>Bon retour 👋</Text>
@@ -132,8 +132,8 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600', color: '#9CA3AF' },
   input: { height: 50, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 12, color: '#FFFFFF', paddingHorizontal: 16, fontSize: 15 },
   eyeBtn: { position: 'absolute', right: 14, top: 0, height: 50, justifyContent: 'center' },
-  forgot: { fontSize: 13, color: '#F97316', fontWeight: '600' },
-  btnPrimary: { height: 52, backgroundColor: '#F97316', borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  forgot: { fontSize: 13, color: '#22C55E', fontWeight: '600' },
+  btnPrimary: { height: 52, backgroundColor: '#22C55E', borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   btnPrimaryText: { fontSize: 15, fontWeight: '700', color: '#0D0D0D' },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   dividerLine: { flex: 1, height: 1, backgroundColor: '#2A2A2A' },
@@ -142,5 +142,5 @@ const styles = StyleSheet.create({
   btnSocialText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
   footer: { flexDirection: 'row', justifyContent: 'center' },
   footerText: { fontSize: 14, color: '#9CA3AF' },
-  footerLink: { fontSize: 14, fontWeight: '700', color: '#F97316' },
+  footerLink: { fontSize: 14, fontWeight: '700', color: '#22C55E' },
 });

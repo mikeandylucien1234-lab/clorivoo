@@ -22,7 +22,7 @@ function CustomSlider({ min, max, step, value, onChange, colors }: {
         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>−</Text>
       </TouchableOpacity>
       <View style={{ flex: 1, height: 6, backgroundColor: colors.border, borderRadius: 3 }}>
-        <View style={{ width: `${pct}%`, height: 6, backgroundColor: '#F97316', borderRadius: 3 }} />
+        <View style={{ width: `${pct}%`, height: 6, backgroundColor: '#22C55E', borderRadius: 3 }} />
       </View>
       <TouchableOpacity onPress={() => adjust(step * 5)} activeOpacity={0.7}
         style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
@@ -150,7 +150,7 @@ export default function CalculateurScreen() {
           {([['air', t('air_plane'), t('air_days')], ['sea', t('sea_boat'), t('sea_weeks')]] as [TransportMode, string, string][]).map(([m, label, sub]) => (
             <TouchableOpacity key={m} onPress={() => handleModeChange(m)} activeOpacity={0.8}
               style={[S.modeBtn, { backgroundColor: colors.card, borderColor: colors.border }, mode === m && S.modeBtnActive]}>
-              <Text style={{ fontWeight: '700', fontSize: 15, color: mode === m ? '#F97316' : colors.text }}>{label}</Text>
+              <Text style={{ fontWeight: '700', fontSize: 15, color: mode === m ? '#22C55E' : colors.text }}>{label}</Text>
               <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 4 }}>{sub}</Text>
             </TouchableOpacity>
           ))}
@@ -162,7 +162,7 @@ export default function CalculateurScreen() {
           {(['haiti', 'dr'] as DestinationCountry[]).map(d => (
             <TouchableOpacity key={d} onPress={() => handleDestChange(d)} activeOpacity={0.8}
               style={[S.destBtn, { backgroundColor: colors.card, borderColor: colors.border }, dest === d && S.destBtnActive]}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: dest === d ? '#F97316' : colors.textSecondary }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: dest === d ? '#22C55E' : colors.textSecondary }}>
                 {d === 'haiti' ? '🇭🇹 Haïti' : '🇩🇴 Rép. Dominicaine'}
               </Text>
             </TouchableOpacity>
@@ -175,8 +175,8 @@ export default function CalculateurScreen() {
             {currentCities.map(c => (
               <TouchableOpacity key={c} onPress={() => setCity(c)} activeOpacity={0.8}
                 style={{ height: 36, borderRadius: 99, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: city === c ? '#F97316' : colors.card,
-                  borderWidth: 1, borderColor: city === c ? '#F97316' : colors.border }}>
+                  backgroundColor: city === c ? '#22C55E' : colors.card,
+                  borderWidth: 1, borderColor: city === c ? '#22C55E' : colors.border }}>
                 <Text style={{ color: city === c ? '#0D0D0D' : colors.textSecondary, fontSize: 13, fontWeight: '600' }}>{c}</Text>
               </TouchableOpacity>
             ))}
@@ -187,7 +187,7 @@ export default function CalculateurScreen() {
         <View style={{ marginBottom: 26 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
             <Text style={[S.label, { color: colors.textSecondary }]}>{t('package_weight')}</Text>
-            <Text style={{ fontSize: 24, fontWeight: '800', color: '#F97316', letterSpacing: -0.5 }}>{weight.toFixed(1)} lbs</Text>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: '#22C55E', letterSpacing: -0.5 }}>{weight.toFixed(1)} lbs</Text>
           </View>
           <CustomSlider min={0.5} max={150} step={0.5} value={weight} onChange={setWeight} colors={colors} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
@@ -201,7 +201,7 @@ export default function CalculateurScreen() {
         <View style={{ marginBottom: 26 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
             <Text style={[S.label, { color: colors.textSecondary }]}>{t('package_value')}</Text>
-            <Text style={{ fontSize: 24, fontWeight: '800', color: '#F97316', letterSpacing: -0.5 }}>${value}</Text>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: '#22C55E', letterSpacing: -0.5 }}>${value}</Text>
           </View>
           <CustomSlider min={0} max={500} step={5} value={value} onChange={setValue} colors={colors} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
@@ -220,7 +220,7 @@ export default function CalculateurScreen() {
 
           {loading ? (
             <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-              <ActivityIndicator color="#F97316" size="large" />
+              <ActivityIndicator color="#22C55E" size="large" />
             </View>
           ) : (
             <>
@@ -268,7 +268,7 @@ export default function CalculateurScreen() {
           <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 20 }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
-            <Text style={{ color: '#F97316', fontSize: 16 }}>📅</Text>
+            <Text style={{ color: '#22C55E', fontSize: 16 }}>📅</Text>
             <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>{t('delivery_approx')} {deliveryText}</Text>
           </View>
 
@@ -283,14 +283,14 @@ export default function CalculateurScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               {[t('departure'), t('transit'), t('arrival'), t('delivery')].map((step, i) => (
                 <View key={step} style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: i === 0 ? '#F97316' : colors.border }} />
+                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: i === 0 ? '#22C55E' : colors.border }} />
                   {i < 3 && <View style={{ flex: 1, height: 2, backgroundColor: colors.border }} />}
                 </View>
               ))}
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
               {[t('departure'), t('transit'), t('arrival'), t('delivery')].map((step, i) => (
-                <Text key={step} style={{ fontSize: 10, color: i === 0 ? '#F97316' : colors.textMuted, fontWeight: i === 0 ? '600' : '400', width: 50, textAlign: i === 0 ? 'left' : i === 3 ? 'right' : 'center' }}>{step}</Text>
+                <Text key={step} style={{ fontSize: 10, color: i === 0 ? '#22C55E' : colors.textMuted, fontWeight: i === 0 ? '600' : '400', width: 50, textAlign: i === 0 ? 'left' : i === 3 ? 'right' : 'center' }}>{step}</Text>
               ))}
             </View>
           </View>
@@ -309,11 +309,11 @@ export default function CalculateurScreen() {
             </View>
           </View>
         ) : (
-          <View style={{ backgroundColor: 'rgba(249,115,22,0.10)', borderWidth: 1, borderColor: 'rgba(249,115,22,0.25)', borderRadius: 12, padding: 14, marginTop: 14 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: '#F97316' }}>{t('value_exceeds')}</Text>
+          <View style={{ backgroundColor: 'rgba(34,197,94,0.10)', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)', borderRadius: 12, padding: 14, marginTop: 14 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#22C55E' }}>{t('value_exceeds')}</Text>
             <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{t('extra_coverage')} ${value - 100} {t('additional_coverage')}</Text>
             <TouchableOpacity activeOpacity={0.8} style={{ marginTop: 10 }}>
-              <Text style={{ fontSize: 12, color: '#F97316', fontWeight: '600', textDecorationLine: 'underline' }}>{t('add_coverage')}</Text>
+              <Text style={{ fontSize: 12, color: '#22C55E', fontWeight: '600', textDecorationLine: 'underline' }}>{t('add_coverage')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -331,19 +331,19 @@ export default function CalculateurScreen() {
           ].map(([k, v]) => (
             <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
               <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1 }}>{k}</Text>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: v.startsWith('−') ? '#F97316' : v === t('free') || v === t('included') ? '#22C55E' : colors.text }}>{v}</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: v.startsWith('−') ? '#22C55E' : v === t('free') || v === t('included') ? '#22C55E' : colors.text }}>{v}</Text>
             </View>
           ))}
           {result && result.loyalty_discount_percent > 0 && (
             <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', justifyContent: 'space-between' }}>
               <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{t('total')}</Text>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#F97316' }}>${result.final_price.toFixed(2)}</Text>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#22C55E' }}>${result.final_price.toFixed(2)}</Text>
             </View>
           )}
         </View>
 
         <TouchableOpacity onPress={() => router.push('/shopper')} activeOpacity={0.9}
-          style={{ marginTop: 22, height: 54, backgroundColor: '#F97316', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
+          style={{ marginTop: 22, height: 54, backgroundColor: '#22C55E', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: '#0D0D0D', fontWeight: '700', fontSize: 16 }}>{t('order_now')}</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -358,8 +358,8 @@ const S = StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
   label: { fontSize: 13, fontWeight: '500', color: '#9CA3AF', marginBottom: 8 },
   modeBtn: { flex: 1, borderWidth: 1.5, borderRadius: 12, padding: 14, backgroundColor: '#1A1A1A', borderColor: '#2A2A2A', marginBottom: 22 },
-  modeBtnActive: { backgroundColor: 'rgba(249,115,22,0.12)', borderColor: '#F97316' },
+  modeBtnActive: { backgroundColor: 'rgba(34,197,94,0.12)', borderColor: '#22C55E' },
   destBtn: { flex: 1, height: 46, borderRadius: 10, backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', alignItems: 'center', justifyContent: 'center' },
-  destBtnActive: { backgroundColor: 'rgba(249,115,22,0.12)', borderColor: '#F97316' },
-  resultCard: { backgroundColor: '#1A1A1A', borderWidth: 1.5, borderColor: '#F97316', borderRadius: 20, padding: 24, shadowColor: '#F97316', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 30, elevation: 8 },
+  destBtnActive: { backgroundColor: 'rgba(34,197,94,0.12)', borderColor: '#22C55E' },
+  resultCard: { backgroundColor: '#1A1A1A', borderWidth: 1.5, borderColor: '#22C55E', borderRadius: 20, padding: 24, shadowColor: '#22C55E', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 30, elevation: 8 },
 });
