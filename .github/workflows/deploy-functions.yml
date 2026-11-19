@@ -26,6 +26,6 @@ jobs:
           for dir in supabase/functions/*/; do
             fn=$(basename "$dir")
             echo "Deploying $fn..."
-            supabase functions deploy "$fn" --project-ref vcptpgmsxwynbobsmmdd
+            supabase functions deploy "$fn" --project-ref kpwebnoqsjlxxiamwsst
             echo "Done: $fn"
           done

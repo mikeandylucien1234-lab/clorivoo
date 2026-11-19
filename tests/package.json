@@ -4,21 +4,25 @@
   "description": "Suite de tests Playwright — Clorivo (acheteur, vendeur, admin)",
   "type": "module",
   "scripts": {
-    "test":             "playwright test",
-    "test:buyer":       "playwright test --project=buyer",
-    "test:seller":      "playwright test --project=seller",
-    "test:admin":       "playwright test --project=admin",
-    "test:e2e":         "playwright test --project=e2e",
-    "test:ui":          "playwright test --ui",
-    "test:headed":      "playwright test --headed",
-    "test:report":      "playwright show-report report",
-    "test:debug":       "playwright test --debug",
+    "test": "playwright test",
+    "test:buyer": "playwright test --project=buyer",
+    "test:seller": "playwright test --project=seller",
+    "test:admin": "playwright test --project=admin",
+    "test:e2e": "playwright test --project=e2e",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report report",
+    "test:debug": "playwright test --debug",
     "install:browsers": "playwright install chromium"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@playwright/test": "^1.60.0"
+    "@babel/standalone": "^7.29.0",
+    "@playwright/test": "^1.60.0",
+    "@supabase/supabase-js": "^2.117.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }

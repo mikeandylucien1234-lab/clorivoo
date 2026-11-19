@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures.js';
 import { goto, mockAuth } from '../../helpers/navigate.js';
 
 /**
@@ -6,27 +6,39 @@ import { goto, mockAuth } from '../../helpers/navigate.js';
  * Login → Dashboard → KYC → Approuver vendeur → Envoyer notification → Gérer bannières
  */
 test.describe('E2E — Parcours administrateur complet', () => {
+  // Same reasoning as the admin project's own viewport override: the admin
+  // console's sidebar only renders at >=900px (tokens.jsx DESKTOP_BP) — the
+  // e2e project's shared phone viewport would never show it.
+  test.use({ viewport: { width: 1280, height: 800 } });
 
   test('Admin : approuver un vendeur (KYC)', async ({ page }) => {
     await page.goto('/');
     await mockAuth(page, { role: 'admin', name: 'Admin Clorivo' });
-    await page.addInitScript(() => {
+    await page.evaluate(() => {
       window._MOCK_KYC = [
-        { id: 'k1', status: 'pending', seller_name: 'Lucie Martin', shop_name: 'LM Design', submitted_at: new Date().toISOString(), docs: [] },
+        { id: 'k1', status: 'pending', profiles: { full_name: 'Lucie Martin' }, shop_name: 'LM Design', submitted_at: new Date().toISOString(), doc_front_path: 'x', selfie_path: 'y', docs: [] },
       ];
-      window.sbUpdateKyc = async (id, status) => {
+      // AdminKycDetail's submitDecision() calls sbAdminReviewKyc — not
+      // "sbUpdateKyc", which is not a real exported function anywhere.
+      window.sbAdminReviewKyc = async (id, decision) => {
         const item = window._MOCK_KYC.find(k => k.id === id);
-        if (item) item.status = status;
+        if (item) item.status = decision;
         return { error: null };
       };
     });
 
-    await goto(page, 'admin-kyc');
-    await expect(page.locator('text=Lucie Martin').or(page.locator('text=LM Design')).first()).toBeVisible({ timeout: 5000 });
+    await goto(page, 'admin', { section: 'sellers' });
+    const row = page.locator('text=Lucie Martin').or(page.locator('text=LM Design')).first();
+    await expect(row).toBeVisible({ timeout: 5000 });
 
-    const approveBtn = page.locator('button').filter({ hasText: /approuver|approve/i }).first();
+    // The Approve button (screen-admin.jsx AdminKycDetail) only renders
+    // once the application's detail view is open — click the row first,
+    // then confirm the approval (confirm:true shows a "Confirm" step).
+    await row.click();
+    const approveBtn = page.getByRole('button', { name: 'Approve' });
     if (await approveBtn.isVisible()) {
       await approveBtn.click();
+      await page.getByRole('button', { name: 'Confirm' }).click();
       await page.waitForTimeout(500);
       // KYC item should now show approved or disappear from pending
       await expect(page.locator('body')).toBeVisible();
@@ -36,7 +48,7 @@ test.describe('E2E — Parcours administrateur complet', () => {
   test('Admin : envoyer une notification broadcast', async ({ page }) => {
     await page.goto('/');
     await mockAuth(page, { role: 'admin', name: 'Admin Clorivo' });
-    await page.addInitScript(() => {
+    await page.evaluate(() => {
       // Mock the direct Expo Push fetch
       window._BROADCAST_SENT = null;
       const originalFetch = window.fetch;
@@ -79,12 +91,12 @@ test.describe('E2E — Parcours administrateur complet', () => {
   test('Admin : créer une bannière homepage', async ({ page }) => {
     await page.goto('/');
     await mockAuth(page, { role: 'admin', name: 'Admin Clorivo' });
-    await page.addInitScript(() => {
+    await page.evaluate(() => {
       window._MOCK_BANNERS = [];
       window.sbUpsertBanner = async (b) => { window._MOCK_BANNERS.push({ ...b, id: 'new-b' }); return { data: b, error: null }; };
     });
 
-    await goto(page, 'admin-banners');
+    await goto(page, 'admin', { section: 'banners' });
     const addBtn = page.locator('button').filter({ hasText: /ajouter|nouvelle|add/i }).first();
     if (await addBtn.isVisible()) {
       await addBtn.click();
@@ -107,7 +119,7 @@ test.describe('E2E — Parcours administrateur complet', () => {
   test('Admin : envoyer notification individuelle', async ({ page }) => {
     await page.goto('/');
     await mockAuth(page, { role: 'admin', name: 'Admin Clorivo' });
-    await page.addInitScript(() => {
+    await page.evaluate(() => {
       // Mock searchUsers result
       window._MOCK_SEARCH_USERS = [
         { id: 'u1', full_name: 'Alice Dupont', email: 'alice@test.io', role: 'buyer', avatar_url: null },

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures.js';
 import { goto, mockAuth } from '../../helpers/navigate.js';
 
 const MOCK_SELLER_STATS = {
@@ -13,7 +13,7 @@ test.describe('Seller — Dashboard', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await mockAuth(page, { role: 'seller', name: 'Marc Vendeur', email: 'marc@boutique.io' });
-    await page.addInitScript((stats) => { window._MOCK_SELLER_STATS = stats; }, MOCK_SELLER_STATS);
+    await page.evaluate((stats) => { window._MOCK_SELLER_STATS = stats; }, MOCK_SELLER_STATS);
     await goto(page, 'seller-home');
   });
 
@@ -36,31 +36,39 @@ test.describe('Seller — Dashboard', () => {
   });
 
   test('Bouton Ajouter un produit visible', async ({ page }) => {
+    // Real button text (screen-seller.jsx SellerDashboardScreen) is the
+    // hero header's "+ Product" quick action — no French label exists.
     await expect(
-      page.locator('button').filter({ hasText: /ajouter|nouveau|produit|add/i }).first()
+      page.locator('button').filter({ hasText: /\+ ?product|add product/i }).first()
     ).toBeVisible({ timeout: 5000 });
   });
 
+  // Was a dead button (no onClick at all) — now navigates to the real
+  // Add Product form (SellerProductFormScreen). Full submit flow with
+  // ownership/validation/permission coverage lives in
+  // seller/05-add-product.spec.js; this just checks the button works.
   test('Clic Ajouter produit → formulaire', async ({ page }) => {
-    const btn = page.locator('button').filter({ hasText: /ajouter|nouveau produit|add/i }).first();
-    if (await btn.isVisible()) {
-      await btn.click();
-      await page.waitForTimeout(400);
-      await expect(page.locator('input, textarea').first()).toBeVisible({ timeout: 5000 });
-    }
+    const btn = page.locator('button').filter({ hasText: /\+ ?product|add product/i }).first();
+    await btn.click();
+    await page.waitForTimeout(400);
+    await expect(page.getByText('Add Product').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Product title')).toBeVisible();
   });
 
   test('Navigation vers commandes vendeur', async ({ page }) => {
+    // Real screen title is "My Shipments" (screen-seller.jsx
+    // SellerOrdersScreen) — no French "commande" text exists there, and
+    // with no shipments seeded it shows "No shipments yet", not "order".
     await goto(page, 'seller-orders');
     await expect(
-      page.locator('text=commande').or(page.locator('text=order')).first()
+      page.getByText('My Shipments').or(page.getByText('No shipments yet')).first()
     ).toBeVisible({ timeout: 5000 });
   });
 
   test('Navigation vers personnalisation boutique', async ({ page }) => {
     await goto(page, 'shop-customize');
     await expect(
-      page.locator('text=boutique').or(page.locator('text=shop')).or(page.locator('input').first())
+      page.locator('text=boutique').or(page.locator('text=shop')).or(page.locator('input')).first()
     ).toBeVisible({ timeout: 5000 });
   });
 

@@ -16,6 +16,7 @@ const FROM         = 'Clorivo <onboarding@resend.dev>';
 const authHeader = () => ({
   'Authorization': `Bearer ${SERVICE_KEY}`,
   'Content-Type': 'application/json',
+  'x-internal-secret': Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '',
 });
 
 async function sendEmail(to: string, subject: string, html: string) {

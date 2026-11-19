@@ -41,17 +41,10 @@ export default function CheckoutScreen({ route, navigation }) {
     if (!address || !city || !zip) { Alert.alert('Erreur', 'Remplissez tous les champs.'); return; }
     setLoading(true);
     try {
-      const orderItems = items.map(i => ({
-        product_id: i.product_id,
-        quantity: i.quantity ?? 1,
-        unit_price: i.unit_price,
-        variant: i.variant ?? {},
-        title: i.products?.title ?? 'Produit',
-      }));
-      const order = await createOrder(session.user.id, orderItems, total, {
+      const order = await createOrder(session.user.id, {
         line1: address, city, zip, country: 'FR',
       }, method);
-      await sendLocalNotification('Commande confirmée 🎉', `Votre commande #${order?.id?.slice(0, 8) ?? '...'} a été passée.`);
+      await sendLocalNotification('Commande passée', `Votre commande #${order?.id?.slice(0, 8) ?? '...'} est en attente de confirmation du paiement.`);
       navigation.replace('Tracking', { orderId: order?.id });
     } catch (e) {
       Alert.alert('Erreur', e.message ?? 'Impossible de passer la commande.');

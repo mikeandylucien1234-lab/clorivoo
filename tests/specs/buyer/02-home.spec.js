@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { goto, mockAuth, seedProducts, MOCK_PRODUCTS } from '../../helpers/navigate.js';
+import { test, expect } from '../../fixtures.js';
+import { goto, mockAuth, seedProducts, seedCategories, MOCK_PRODUCTS, MOCK_CATEGORIES } from '../../helpers/navigate.js';
 
 test.describe('Buyer — Homepage', () => {
 
@@ -7,6 +7,7 @@ test.describe('Buyer — Homepage', () => {
     await page.goto('/');
     await mockAuth(page, { role: 'buyer', name: 'Alice Dupont' });
     await seedProducts(page, MOCK_PRODUCTS);
+    await seedCategories(page, MOCK_CATEGORIES);
     await goto(page, 'home');
   });
 
@@ -22,11 +23,17 @@ test.describe('Buyer — Homepage', () => {
   });
 
   test('Barre de recherche visible', async ({ page }) => {
-    await expect(page.locator('input[placeholder*="earch"], input[placeholder*="hercher"]').first()).toBeVisible();
+    // The search bar is a clickable <div> labeled "Search on Clorivo…" that
+    // opens the search screen — not a real <input> (confirmed in
+    // screen-home.jsx) — so a role/text-based selector is the correct match,
+    // not an input[placeholder] one.
+    await expect(page.getByText('Search on Clorivo', { exact: false })).toBeVisible();
   });
 
   test('Chips de catégories affichées', async ({ page }) => {
-    await expect(page.locator('text=Maison').or(page.locator('text=Tech')).or(page.locator('text=Tout')).first()).toBeVisible();
+    // Nav category chips come from sbGetCategoryTree(), seeded above with
+    // MOCK_CATEGORIES (English names, matching the current UI).
+    await expect(page.getByText('Tech', { exact: true }).or(page.getByText('All', { exact: true })).first()).toBeVisible();
   });
 
   test('Flash deals section visible', async ({ page }) => {
@@ -56,9 +63,13 @@ test.describe('Buyer — Homepage', () => {
   });
 
   test('Navigation bottom bar → Catégories', async ({ page }) => {
-    await page.evaluate(() => window.__navigate('category'));
+    // The bottom nav's Categories button calls navigate('categories') (the
+    // hub screen), confirmed in screen-home.jsx — not 'category' (singular,
+    // the single-category product-listing screen, which needs a specific
+    // category param the bottom nav never passes).
+    await page.evaluate(() => window.__navigate('categories'));
     await page.waitForTimeout(350);
-    await expect(page.locator('text=Catégorie').or(page.locator('text=Tout')).first()).toBeVisible();
+    await expect(page.getByText('All Categories').or(page.getByText('Discover Top Categories')).first()).toBeVisible();
   });
 
   test('Navigation bottom bar → Profil', async ({ page }) => {

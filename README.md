@@ -84,9 +84,63 @@ supabase login
 supabase link --project-ref VOTRE-PROJECT-REF
 
 supabase functions deploy send-notification
+supabase functions deploy send-broadcast
+supabase functions deploy send-individual-notification
 supabase functions deploy on-new-order
+supabase functions deploy on-order-status
+supabase functions deploy on-shipment-status
 supabase functions deploy on-new-message
 ```
+
+### Phase 6 deployment checklist — `INTERNAL_FUNCTION_SECRET`
+
+`send-notification` is the only entry point for system-generated
+(order/payment/KYC/shipping/message) notifications and is called
+server-to-server by the four webhook functions below, with no "acting
+user" to run `has_permission()` against. It is instead gated by a shared
+secret, `INTERNAL_FUNCTION_SECRET`, compared with a constant-time check
+and **no fallback**: a missing or incorrectly configured secret on either
+side fails the request closed (`401 Unauthorized`), it never falls back to
+accepting the request anyway. Get the order below right or transactional
+notifications will stop working until it's fixed — which is the intended,
+safe failure mode, not a bug to work around with a fallback.
+
+1. **Generate one secret value** (e.g. `openssl rand -hex 32`). Treat it
+   like any other credential — never commit it, never put it in a
+   `.jsx`/`.js` file read by the web app or the mobile app.
+2. **Set it as a Supabase Function secret, project-wide, before deploying
+   any of the functions below**:
+   ```bash
+   supabase secrets set INTERNAL_FUNCTION_SECRET=<your-generated-value>
+   ```
+   Function secrets set this way are available to every deployed Edge
+   Function in the project, so this one `secrets set` covers
+   `send-notification` and all four webhook functions — there is nothing
+   function-specific to configure beyond this single step.
+3. **Deploy `send-notification` first**, then the four webhook functions
+   (`on-new-order`, `on-order-status`, `on-shipment-status`,
+   `on-new-message`) — all five already read `INTERNAL_FUNCTION_SECRET`
+   from this same project secret via `Deno.env.get('INTERNAL_FUNCTION_SECRET')`,
+   so no per-function configuration step is needed once step 2 is done.
+4. **Verify before relying on it in production**:
+   - Call `send-notification` directly with no `x-internal-secret` header,
+     and again with a wrong value → both must return `401`.
+   - Trigger one real event of each kind (place a test order, change an
+     order/shipment status, send a chat message) and confirm the
+     recipient's `notifications` row and push notification arrive —
+     this is the only way to confirm the secret is actually configured
+     correctly end-to-end; a passing deploy does not by itself prove the
+     secret matches on both sides.
+5. **If you ever rotate the secret**, update the Supabase Function secret
+   first, then redeploy `send-notification` and the four webhook functions
+   together — a mismatched secret between them fails closed (401), it
+   does not silently keep working with the old value.
+
+This checklist exists because of a second-pass audit finding: the
+fail-closed behavior above is correct, but it means a deploy that skips
+step 2, or runs the functions in a different order, silently breaks every
+transactional notification until the secret is set everywhere it's read
+from — there is deliberately no insecure fallback to mask that mistake.
 
 Puis dans Supabase Dashboard → **Database → Webhooks** → créer 2 webhooks :
 

@@ -441,7 +441,18 @@ select _create_policy_if_not_exists('Participants can send messages','messages',
 -- notifications
 select _create_policy_if_not_exists('Users see their notifications','notifications','select','user_id = auth.uid()');
 select _create_policy_if_not_exists('Users can update their notifications','notifications','update','user_id = auth.uid()');
-select _create_policy_if_not_exists('Service role can insert notifications','notifications','insert',null,'true');
+-- PHASE 6 SECURITY FIX: no client-facing INSERT policy on notifications.
+-- All inserts go through admin_send_broadcast()/admin_send_notification()
+-- (SECURITY DEFINER, permission-checked) or the service-role client inside
+-- send-notification (internal-secret-gated). An unrestricted INSERT policy
+-- ('Service role can insert notifications', using WITH CHECK (true) and no
+-- TO clause) used to live here and applied to PUBLIC, including anon — see
+-- phase6_notifications_security_migration.sql. Do not recreate it: this
+-- schema file is documented as safe to re-run, and _create_policy_if_not_exists
+-- would silently restore the open policy on any database where it had been
+-- dropped. If a policy by this exact name still exists on a database being
+-- brought up to date, drop it explicitly:
+drop policy if exists "Service role can insert notifications" on public.notifications;
 
 -- kyc_requests
 select _create_policy_if_not_exists('Sellers see their KYC','kyc_requests','select','seller_id = auth.uid()');
