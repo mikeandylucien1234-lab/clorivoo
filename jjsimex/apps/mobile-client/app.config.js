@@ -19,12 +19,12 @@ module.exports = ({ config }) => ({
     googleServicesFile: './google-services.json',
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#0D0D0D',
+      backgroundColor: '#F8FAF9',
     },
     permissions: ['CAMERA', 'RECEIVE_BOOT_COMPLETED', 'VIBRATE'],
   },
   splash: {
-    backgroundColor: '#0D0D0D',
+    backgroundColor: '#F8FAF9',
   },
   plugins: [
     'expo-router',
