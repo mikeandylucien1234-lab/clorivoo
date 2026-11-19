@@ -1,0 +1,587 @@
+// screen-home.jsx — Homepage A : deals feed
+
+// Real Supabase product rows don't carry a display-ready `oldPrice`/`discount`
+// (that's `compare_price`, numeric — sometimes returned as a string by
+// PostgREST) or a `tint` placeholder color index the way the old fictitious
+// PRODUCTS demo objects did. This derives them from the real columns instead
+// of inventing numbers.
+// Resolves a banner's real cta_url (banners.cta_url — already existed
+// in the schema, just never set by the admin form or read here before
+// now) into real navigation: a full external link opens in a new tab,
+// "screen" or "screen?key=value&key2=value2" navigates in-app, and an
+// empty/unrecognized value falls back to the previous hardcoded
+// behavior (search) so existing banners with no destination set keep
+// working exactly as before.
+function _goToBannerDestination(ctaUrl, navigate) {
+  const raw = (ctaUrl || '').trim();
+  if (!raw) { navigate('search'); return; }
+  if (/^https?:\/\//i.test(raw)) { window.open(raw, '_blank', 'noopener'); return; }
+  const [screen, query] = raw.split('?');
+  const params = {};
+  if (query) {
+    for (const pair of query.split('&')) {
+      const [k, v] = pair.split('=');
+      if (k) params[decodeURIComponent(k)] = v !== undefined ? decodeURIComponent(v) : '';
+    }
+  }
+  navigate(screen || 'search', params);
+}
+
+function _withCardFields(p, i) {
+  const price = Number(p.price);
+  const comparePrice = p.compare_price != null ? Number(p.compare_price) : null;
+  const discount = comparePrice && comparePrice > price ? Math.round((1 - price / comparePrice) * 100) : null;
+  return { ...p, tint: i % 5, price, oldPrice: comparePrice, discount };
+}
+
+function HomeScreen() {
+  const { navigate } = useNav();
+  const isDesktop = useIsDesktop();
+  const [activeTab, setActiveTab]           = React.useState(0);
+  const [activeCategory, setActiveCategory] = React.useState(0);
+  const [cartCount, setCartCount]           = React.useState(window.CART_ITEMS.length);
+  // null = loading, [] = Supabase returned zero products (real empty state),
+  // 'error' = the fetch itself failed. Never falls back to the fictitious
+  // PRODUCTS demo array once a real Supabase connection exists.
+  const [products, setProducts]             = React.useState(null);
+  const [productsState, setProductsState]   = React.useState('loading'); // loading | error | success
+  const [featuredProducts, setFeaturedProducts] = React.useState(null);
+  const [shops, setShops]                   = React.useState(null);
+  const [banners, setBanners]               = React.useState(null);
+  const [user, setUser]                     = React.useState(null);
+  const [activeBanner, setActiveBanner]     = React.useState(0);
+  const [navCategories, setNavCategories]   = React.useState([]); // real top-level categories (show_in_navigation)
+  const [featuredCategories, setFeaturedCategories] = React.useState([]);
+  const [flashDealsReal, setFlashDealsReal] = React.useState(null); // null = loading, [] = none active
+  // Real, persisted config (platform_settings key='homepage' via the
+  // public get_homepage_config() RPC) — replaces window._HOME_SECTIONS,
+  // which never reached this screen's own real visitors either (same
+  // window global, never backed by anything server-side). Defaults to
+  // the exact same values as before while the real config loads, so
+  // there's no flash of an empty page.
+  const [homeSections, setHomeSections] = React.useState({ hero:true, shops:true, deals:true, categories:true, featured:true, videos:true });
+  const announcement = window._ANNOUNCEMENT;
+  const defaultAddress = (window._ADDRESSES || []).find(a => a.isDefault) || (window._ADDRESSES || [])[0] || null;
+  const categories = [{ id:'all', name:'All', slug:'' }, ...navCategories];
+
+  React.useEffect(() => {
+    sbGetUser().then(u => setUser(u));
+    sbGetProducts({ limit: 12 }).then(({ data, error }) => {
+      if (error) { setProductsState('error'); setProducts([]); return; }
+      setProducts((data || []).map(_withCardFields));
+      setProductsState('success');
+    }).catch(() => { setProductsState('error'); setProducts([]); });
+    sbGetProducts({ limit: 8, featured: true }).then(({ data }) => {
+      setFeaturedProducts((data || []).map(_withCardFields));
+    });
+    sbGetHomepageConfig().then(setHomeSections);
+    // Real admin curation first (Admin → Homepage → Popular Shops);
+    // falls back to the existing followers-ordered query when nothing
+    // has been curated yet — never a behavior change for a site with
+    // no curation set up, never a fabricated list either way.
+    sbGetHomepageFeaturedShops(8).then(curated => {
+      if (curated?.length) { setShops(curated); return; }
+      sbGetShops({ limit: 8 }).then(({ data }) => { if (data?.length) setShops(data); });
+    });
+    sbGetBanners().then(({ data }) => { if (data?.length) setBanners(data); });
+    sbGetCategoryTree().then(tree => setNavCategories(tree.filter(c => c.show_in_navigation !== false)));
+    sbGetFeaturedCategories(4).then(setFeaturedCategories);
+    // Flash deals show the real flash_price (not the regular price) as the
+    // current price, with the regular price crossed out — computed from the
+    // same two real columns the admin set, never a fabricated discount.
+    sbGetActiveFlashDeals(4).then(({ data }) => setFlashDealsReal((data || []).map((p, i) => {
+      const regularPrice = Number(p.price);
+      const flashPrice = Number(p.flash_price);
+      const discount = flashPrice > 0 && regularPrice > flashPrice ? Math.round((1 - flashPrice / regularPrice) * 100) : null;
+      return { ...p, tint: i % 5, price: flashPrice, oldPrice: regularPrice, discount };
+    }))).catch(() => setFlashDealsReal([]));
+    if (window._supabase) {
+      sbGetUser().then(async u => {
+        if (u) {
+          const { data } = await sbGetCart(u.id);
+          setCartCount(data?.length ?? 0);
+        }
+      });
+    }
+  }, []);
+
+  const heroBanners = (banners && banners.length) ? banners : [
+    { id:'default', title:'Up to 70% off\nHome & Kitchen', subtitle:'Spring sale', cta_text:'Shop now', bg_color:C.primary },
+  ];
+  const heroBannerRaw = heroBanners[activeBanner % heroBanners.length] || heroBanners[0];
+  const heroBanner = { ...heroBannerRaw, title: (heroBannerRaw.title || '').split('\n').flatMap((line, i) => i === 0 ? [line] : [<br key={i} />, line]) };
+
+  React.useEffect(() => {
+    if (heroBanners.length <= 1) return;
+    const id = setInterval(() => setActiveBanner(i => (i + 1) % heroBanners.length), 4500);
+    return () => clearInterval(id);
+  }, [heroBanners.length]);
+
+  const safeProducts = products || [];
+  const discountedProducts = safeProducts.filter(p => p.discount);
+  // Real, admin-curated Flash Deals (products.is_flash_deal, within their real
+  // start/end window) — falls back to nothing shown if none are active,
+  // never to a fabricated promotion. Super Deals stays general real-discount
+  // products, unchanged.
+  const flashDeals = (flashDealsReal || []).slice(0, 2);
+  const superDeals = discountedProducts.slice(0, 2);
+  const superDealsMaxDiscount = superDeals.reduce((max, p) => Math.max(max, p.discount || 0), 0);
+  const forYou     = safeProducts.slice(2, 8);
+  const displayShops = shops ?? [];
+  const userName  = user?.user_metadata?.full_name?.split(' ')[0] ?? window._PROFILE?.name?.split(' ')[0] ?? 'there';
+  const userInitials = user?.user_metadata?.full_name?.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() ?? (window._PROFILE?.name || '').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() ?? '';
+
+  function goTab(i) {
+    if (i === 1) navigate('categories');
+    else if (i === 2) navigate('cart');
+    else if (i === 3) navigate('tracking');
+    else if (i === 4) navigate('profile');
+    else setActiveTab(i);
+  }
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: C.paper, display: 'flex', flexDirection: 'column' }}>
+      <StatusBar />
+
+      {/* Announcement bar — admin-managed (Admin Console › Content › Announcement Bar) */}
+      {announcement?.enabled && announcement?.text && (
+        <div style={{ background:`linear-gradient(90deg, ${C.primary} 0%, #8A6BFF 100%)`, padding:'7px 16px', textAlign:'center', flexShrink:0 }}>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:600, color:'#fff' }}>{announcement.text}</span>
+        </div>
+      )}
+
+      {/* Top bar */}
+      {!isDesktop && (
+      <div style={{ paddingTop: STATUS_H, background: C.white, borderBottom: `1px solid ${C.hairline}`, flexShrink: 0 }}>
+        <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Greeting + name */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Avatar size={42} initials={userInitials} />
+            <div>
+              <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: C.mute, lineHeight: 1.2 }}>Hello 👋</div>
+              <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 17, color: C.ink, letterSpacing: '-0.03em', lineHeight: 1.2 }}>{userName}</div>
+            </div>
+          </div>
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <button onClick={() => navigate('cart')} style={{ width: 40, height: 40, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              <Icon name="cart" size={22} color={C.ink} />
+              {cartCount > 0 && <Badge count={cartCount} />}
+            </button>
+            <button onClick={() => navigate('messages-list')} style={{ width: 40, height: 40, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              <Icon name="messageSquare" size={22} color={C.ink} />
+              <Badge count={(window._CONVERSATIONS || []).filter(c => c.unread > 0).length} />
+            </button>
+            <button onClick={() => navigate('notifications')} style={{ width: 40, height: 40, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              <Icon name="bell" size={22} color={C.ink} />
+              <Badge count={(window._NOTIFICATIONS || []).filter(n => n.unread).length} />
+            </button>
+          </div>
+        </div>
+
+        {/* Delivery address strip */}
+        <div onClick={() => navigate('addresses')} style={{ margin: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 8, background: C.primarySoft, borderRadius: 10, padding: '8px 12px', cursor: 'pointer' }}>
+          <Icon name="mapPin" size={15} color={C.primary} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {defaultAddress ? (
+              <>
+                <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: C.mute }}>Deliver to · </span>
+                <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 600, color: C.primaryDeep }}>{defaultAddress.line1}, {defaultAddress.city}</span>
+              </>
+            ) : (
+              <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 600, color: C.primaryDeep }}>Add a delivery address</span>
+            )}
+          </div>
+          <Icon name="chevronRight" size={14} color={C.primary} />
+        </div>
+
+        {/* Search bar */}
+        <div onClick={() => navigate('search')} style={{ margin: '10px 20px', display: 'flex', alignItems: 'center', gap: 10, background: C.paper, border: `1.5px solid ${C.hairline}`, borderRadius: 12, padding: '11px 14px', cursor: 'text' }}>
+          <Icon name="search" size={18} color={C.mute} />
+          <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, color: C.mute, flex: 1 }}>Search on Clorivo…</span>
+          <div style={{ width: 1, height: 16, background: C.hairline }} />
+          <Icon name="camera" size={18} color={C.mute} />
+        </div>
+
+        {/* Category chips */}
+        <div style={{ display: 'flex', gap: 8, padding: '4px 20px 12px', overflowX: 'auto' }}>
+          {categories.map((c, i) =>
+          <Chip key={c.id} active={activeCategory === i} onClick={() => { setActiveCategory(i); navigate('category', c.slug ? { category: c.slug } : {}); }}>{c.name}</Chip>
+          )}
+        </div>
+      </div>
+      )}
+
+      {isDesktop && (
+        <div style={{ background: C.white, borderBottom: `1px solid ${C.hairline}`, flexShrink: 0 }}>
+          <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', gap: 8, padding: '14px 32px', overflowX: 'auto' }}>
+            {categories.map((c, i) =>
+            <Chip key={c.id} active={activeCategory === i} onClick={() => { setActiveCategory(i); navigate('category', c.slug ? { category: c.slug } : {}); }}>{c.name}</Chip>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Scrollable content */}
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: NAV_H + HOME_H }}>
+        <div style={{ maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? '0 auto' : undefined }}>
+
+        {/* Hero banner — admin-managed (Admin Console › Banners › Homepage Banners) */}
+        {homeSections.hero && (
+        <div style={{ padding: '16px 20px 0' }}>
+          <div style={{ borderRadius: 16, position: 'relative', overflow: 'hidden', minHeight: 150, background: heroBanner.image_url ? '#1A1630' : `linear-gradient(135deg, ${heroBanner.bg_color || heroBanner.color || C.primary} 0%, ${C.primaryDeep} 100%)` }}>
+            {heroBanner.image_url ? (
+              <>
+                <img src={heroBanner.image_url} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.5) 100%)' }} />
+              </>
+            ) : (
+              <>
+                <div style={{ position: 'absolute', right: -20, top: -20, width: 140, height: 140, borderRadius: 9999, background: 'rgba(255,255,255,0.07)' }} />
+                <div style={{ position: 'absolute', right: 20, bottom: -30, width: 90, height: 90, borderRadius: 9999, background: 'rgba(255,255,255,0.05)' }} />
+              </>
+            )}
+            <div style={{ position: 'relative', padding: '18px 20px' }}>
+              {heroBanner.subtitle && (
+                <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.8)', marginBottom: 4, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{heroBanner.subtitle}</div>
+              )}
+              <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.03em', lineHeight: 1.15, marginBottom: 12 }}>{heroBanner.title}</div>
+              <button onClick={() => _goToBannerDestination(heroBannerRaw.cta_url, navigate)} style={{ background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(8px)', border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: 9999, padding: '8px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, color: '#fff' }}>
+                <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600 }}>{heroBanner.cta_text || 'Shop now'}</span>
+                <Icon name="arrowLeft" size={14} color="#fff" style={{ transform: 'rotate(180deg)' }} />
+              </button>
+            </div>
+          </div>
+          {/* Banner dots */}
+          {heroBanners.length > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginTop: 8 }}>
+              {heroBanners.map((b, i) => (
+                <button key={b.id ?? i} onClick={() => setActiveBanner(i)} style={{ width: i === activeBanner ? 16 : 5, height: 5, borderRadius: 9999, background: i === activeBanner ? C.primary : C.hairline, transition: 'all 0.3s', border: 'none', padding: 0, cursor: 'pointer' }} />
+              ))}
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* clori+ promo strip + shortcuts */}
+        <div style={{ padding: '14px 20px 0' }}>
+          {/* Promo banner */}
+          <div onClick={() => {}} style={{ display:'flex', alignItems:'center', gap:10, background:`linear-gradient(90deg, ${C.primarySoft} 0%, #E4DCFF 100%)`, borderRadius:12, padding:'10px 14px', marginBottom:16, cursor:'pointer' }}>
+            <div style={{ background:C.primary, borderRadius:9999, padding:'4px 10px', flexShrink:0 }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, color:'#fff', letterSpacing:'-0.02em' }}>clori+</span>
+            </div>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.primaryDeep, flex:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>Try 1 month: free express shipping</span>
+            <Icon name="chevronRight" size={16} color={C.primaryDeep} style={{ flexShrink:0 }} />
+          </div>
+
+          {/* Shortcuts strip */}
+          <div style={{ display:'flex', gap:20, overflowX:'auto', paddingBottom:4 }}>
+            {[
+              { icon:'tag',        label:'Deals',       ic:'#D97706', badge:null,      badgeBg:null       },
+              { icon:'share',      label:'Referrals',   ic:'#059669', badge:'EARN $',  badgeBg:C.success  },
+              { icon:'zap',        label:'Flash Live',  ic:C.primary, badge:'LIVE',     badgeBg:C.danger   },
+              { icon:'star',       label:'Coupons',     ic:'#2563EB', badge:null,       badgeBg:null       },
+              { icon:'store',      label:'Shops',       ic:'#DB2777', badge:null,       badgeBg:null,      nav:'shop' },
+              { icon:'package',    label:'Tracking',    ic:'#EA580C', badge:null,       badgeBg:null       },
+              { icon:'creditCard', label:'Payments',    ic:'#16A34A', badge:'NEW',      badgeBg:'#2563EB'  },
+            ].map((s, i) => (
+              <div key={i} onClick={() => s.nav && navigate(s.nav)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0, cursor:'pointer', width:52 }}>
+                <div style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', height:34 }}>
+                  <Icon name={s.icon} size={28} color={s.ic} sw={1.5} />
+                  {s.badge && (
+                    <div style={{ position:'absolute', bottom:-7, left:'50%', transform:'translateX(-50%)', background:s.badgeBg, borderRadius:9999, padding:'2px 6px', whiteSpace:'nowrap', boxShadow:'0 1px 4px rgba(0,0,0,0.15)' }}>
+                      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:8, fontWeight:800, color:'#fff', letterSpacing:'0.02em' }}>{s.badge}</span>
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:500, color:C.ink, textAlign:'center', lineHeight:1.2, marginTop: s.badge ? 6 : 0 }}>{s.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Featured Shops */}
+        {homeSections.shops && displayShops.length > 0 && (
+        <div style={{ padding: '20px 20px 0' }}>
+          <SectionHeader title="Popular Shops" onSeeAll={() => navigate('shop')} style={{ marginBottom: 14 }} />
+          <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 4 }}>
+            {displayShops.map((shop, i) => {
+              const initial = shop.initial ?? shop.name?.[0]?.toUpperCase() ?? 'S';
+              const color   = shop.brand_color ?? '#6C4DFF';
+              return (
+                <div key={shop.id ?? i} onClick={() => {}} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0, cursor:'pointer', width:60 }}>
+                  <div style={{ position:'relative' }}>
+                    {shop.logo_url ? (
+                      <img src={shop.logo_url} style={{ width:54, height:54, borderRadius:9999, objectFit:'cover', border:`2px solid ${C.hairline}` }} />
+                    ) : (
+                      <div style={{ width:54, height:54, borderRadius:9999, background:color, display:'flex', alignItems:'center', justifyContent:'center', border:`2px solid ${C.hairline}` }}>
+                        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:22, color:'#fff', letterSpacing:'-0.03em' }}>{initial}</span>
+                      </div>
+                    )}
+                    {shop.is_verified && (
+                      <div style={{ position:'absolute', bottom:1, right:1, width:17, height:17, borderRadius:9999, background:C.primary, border:`2px solid ${C.white}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        <Icon name="check" size={9} color="#fff" sw={3} />
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:500, color:C.ink, textAlign:'center', lineHeight:1.2, width:60, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{shop.name}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        )}
+
+        {/* Flash Deals (admin-curated, products.is_flash_deal within its real
+            start/end window) + Super Deals (any product with a real discount).
+            Hidden entirely when neither has anything to show — never
+            backfilled with fictitious items. */}
+        {homeSections.deals && (flashDeals.length > 0 || superDeals.length > 0) && (
+        <div style={{ padding: '20px 20px 0' }}>
+          <div style={{ display:'flex', gap:10, background:C.white, borderRadius:16, padding:12, boxShadow:'0 2px 12px rgba(14,11,31,0.05)' }}>
+
+            {/* Flash Deals */}
+            {flashDeals.length > 0 && (
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                  <Icon name="zap" size={13} color={C.primary} />
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:C.ink }}>Flash Deals</span>
+                </div>
+                {/* Real end date only — shown only when the admin actually set one for at least one of these deals. */}
+                {flashDeals.some(p => p.flash_ends_at) && (
+                  <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, fontWeight:600, color:C.primary }}>
+                    Ends {new Date(flashDeals.find(p => p.flash_ends_at).flash_ends_at).toLocaleDateString('en-US', { month:'short', day:'numeric' })}
+                  </span>
+                )}
+              </div>
+              <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+                {flashDeals.map((p,i) => (
+                  <div key={p.id} onClick={() => navigate('pdp',{product:p})} style={{ flex:1, borderRadius:10, background:C.paper, overflow:'hidden', cursor:'pointer' }}>
+                    <div style={{ position:'relative' }}>
+                      <Img label="" src={p.image_url} tint={i} style={{ width:'100%', height:80, borderRadius:0 }} />
+                      {p.discount && <div style={{ position:'absolute', top:4, left:4, background:C.primarySoft, color:C.primaryDeep, fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:9999 }}>-{p.discount}%</div>}
+                    </div>
+                    <div style={{ padding:'5px 6px' }}>
+                      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.mute, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis', marginBottom:2 }}>{p.title}</div>
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:700, color:C.primary }}>${p.price.toFixed(2)}</div>
+                      {p.oldPrice && <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:C.mute, textDecoration:'line-through' }}>${p.oldPrice.toFixed(2)}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => {}} style={{ width:'100%', height:30, border:`1.5px solid ${C.primary}`, borderRadius:9999, background:'transparent', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:C.primary }}>See all →</button>
+            </div>
+            )}
+
+            {/* Divider */}
+            {flashDeals.length > 0 && superDeals.length > 0 && <div style={{ width:1, background:C.hairline, flexShrink:0 }} />}
+
+            {/* Super Deals */}
+            {superDeals.length > 0 && (
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                  <Icon name="tag" size={13} color={'#D97706'} />
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:C.ink }}>Super Deals</span>
+                </div>
+                {/* Real figure: the best discount actually among these items, not a fixed "-70%". */}
+                {superDealsMaxDiscount > 0 && (
+                  <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, fontWeight:600, color:'#D97706', background:'#FEF3C7', borderRadius:9999, padding:'2px 6px' }}>Up to -{superDealsMaxDiscount}%</span>
+                )}
+              </div>
+              <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+                {superDeals.map((p,i) => (
+                  <div key={p.id} onClick={() => navigate('pdp',{product:p})} style={{ flex:1, borderRadius:10, background:C.paper, overflow:'hidden', cursor:'pointer' }}>
+                    <div style={{ position:'relative' }}>
+                      <Img label="" src={p.image_url} tint={i+2} style={{ width:'100%', height:80, borderRadius:0 }} />
+                      {p.discount && <div style={{ position:'absolute', top:4, left:4, background:'#FEF3C7', color:'#D97706', fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:9999 }}>-{p.discount}%</div>}
+                    </div>
+                    <div style={{ padding:'5px 6px' }}>
+                      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.mute, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis', marginBottom:2 }}>{p.title}</div>
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:700, color:'#D97706' }}>${p.price.toFixed(2)}</div>
+                      {p.oldPrice && <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:C.mute, textDecoration:'line-through' }}>${p.oldPrice.toFixed(2)}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => {}} style={{ width:'100%', height:30, border:'1.5px solid #D97706', borderRadius:9999, background:'transparent', cursor:'pointer', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, color:'#D97706' }}>See all →</button>
+            </div>
+            )}
+
+          </div>
+        </div>
+        )}
+
+        {/* Category Tiles — admin-chosen Featured Categories (Categories page → Display → Featured) */}
+        {homeSections.categories && (() => {
+          const tiles = featuredCategories.length > 0 ? featuredCategories : navCategories.slice(0, 4);
+          if (tiles.length === 0) return null;
+          return (
+          <div style={{ padding: '20px 20px 0' }}>
+            <SectionHeader title="Popular Categories" style={{ marginBottom: 12 }} />
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(4, 1fr)' : '1fr 1fr', gap: 10 }}>
+              {tiles.map((cat, i) =>
+              <div key={cat.id} onClick={() => navigate('category', { category: cat.slug })} style={{ borderRadius: 14, overflow: 'hidden', cursor: 'pointer', boxShadow: '0 2px 12px rgba(14,11,31,0.06)', position: 'relative', height: 110 }}>
+                  {cat.image_url ? <img src={cat.image_url} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} /> : <Img label="" tint={i % 5} style={{ position: 'absolute', inset: 0, borderRadius: 0 }} />}
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(14,11,31,0.55) 0%, rgba(14,11,31,0.1) 60%)' }} />
+                  <div style={{ position: 'absolute', bottom: 10, left: 12, right: 12 }}>
+                    <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 700, color: '#fff', letterSpacing: '-0.01em' }}>{cat.name}</div>
+                    {cat.short_description && <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{cat.short_description}</div>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          );
+        })()}
+
+        {/* Promo Banners — real discounted products only */}
+        {discountedProducts.length > 0 && (
+        <div style={{ padding: '20px 20px 0' }}>
+          <SectionHeader title="Exclusive Offers" onSeeAll={() => {}} style={{ marginBottom: 12 }} />
+          <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:4 }}>
+            {discountedProducts.slice(0, 4).map((p, i) => (
+              <div key={p.id} onClick={() => navigate('pdp',{ product: p })} style={{ width:268, height:112, borderRadius:14, background:['#059669','#6C4DFF','#D97706','#DC2626'][i % 4], display:'flex', alignItems:'center', padding:'12px 14px', cursor:'pointer', flexShrink:0, position:'relative', overflow:'hidden' }}>
+                {/* bg circle decoration */}
+                <div style={{ position:'absolute', right:-20, top:-20, width:110, height:110, borderRadius:9999, background:'rgba(255,255,255,0.08)' }} />
+                <div style={{ position:'absolute', right:50, bottom:-30, width:70, height:70, borderRadius:9999, background:'rgba(255,255,255,0.06)' }} />
+                {/* Text */}
+                <div style={{ flex:1, zIndex:1 }}>
+                  <div style={{ background:'rgba(255,255,255,0.22)', borderRadius:9999, padding:'3px 8px', display:'inline-block', marginBottom:5 }}>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, color:'#fff' }}>-{p.discount}% off</span>
+                  </div>
+                  {p.oldPrice && (
+                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'rgba(255,255,255,0.75)', marginBottom:1 }}>
+                      Before: <span style={{ textDecoration:'line-through' }}>${p.oldPrice.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', lineHeight:1.1, marginBottom:3 }}>${p.price.toFixed(2)}</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'rgba(255,255,255,0.85)', lineHeight:1.2 }}>{p.title}</div>
+                </div>
+                {/* Product image */}
+                <div style={{ width:78, height:88, flexShrink:0, borderRadius:10, overflow:'hidden', zIndex:1 }}>
+                  <Img label="" src={p.image_url} tint={i % 5} style={{ width:78, height:88 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        )}
+
+        {/* Featured — real products flagged is_featured by the admin (Admin
+            Console › Products), fetched separately via sbGetProducts({featured:true}).
+            Hidden while loading or when none are flagged — never backfilled
+            with the fictitious PRODUCTS array. */}
+        {homeSections.featured && featuredProducts && featuredProducts.length > 0 && (
+        <div style={{ padding: '20px 20px 0' }}>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:12 }}>
+            <div>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:700, color:C.ink, letterSpacing:'-0.02em' }}>Featured</span>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:2 }}>Highlighted picks from our sellers</div>
+            </div>
+            <button style={{ border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:2 }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:500, color:C.primary }}>See all</span>
+              <Icon name="chevronRight" size={14} color={C.primary} />
+            </button>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns: isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap:12 }}>
+            {featuredProducts.map((p, i) => (
+              <div key={p.id} style={{ position:'relative' }}>
+                <ProductCard product={p} size="md" tint={i % 5} onPress={() => navigate('pdp', { product: p })} />
+                <div style={{ position:'absolute', top:8, left:8, background:'rgba(14,11,31,0.55)', backdropFilter:'blur(4px)', borderRadius:9999, padding:'2px 8px', pointerEvents:'none' }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:600, color:'rgba(255,255,255,0.92)', letterSpacing:'0.02em' }}>Featured</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        )}
+
+        {/* Product Videos */}
+        {homeSections.videos && safeProducts.length > 0 && (
+        <div style={{ padding:'20px 20px 0' }}>
+          <div style={{ marginBottom:12 }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:700, color:C.ink, letterSpacing:'-0.02em' }}>Product Videos</span>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:C.mute, marginTop:2 }}>See the products in action</div>
+          </div>
+          <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:4 }}>
+            {safeProducts.slice(0, 6).map((p, i) => (
+              <div key={p.id} onClick={() => navigate('pdp',{ product:p })} style={{ width:148, height:228, borderRadius:14, overflow:'hidden', cursor:'pointer', flexShrink:0, position:'relative', background:'#1a1a2e', boxShadow:'0 4px 16px rgba(14,11,31,0.12)' }}>
+                {/* BG placeholder */}
+                <Img label="" src={p.image_url} tint={i % 5} style={{ position:'absolute', inset:0, width:148, height:228, borderRadius:0 }} />
+                {/* Gradient overlay */}
+                <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, rgba(0,0,0,0.28) 0%, transparent 35%, transparent 50%, rgba(0,0,0,0.72) 100%)' }} />
+                {/* Top: play icon */}
+                <div style={{ position:'absolute', top:10, left:10, display:'flex', alignItems:'center', gap:5 }}>
+                  <div style={{ width:22, height:22, borderRadius:9999, background:'rgba(255,255,255,0.22)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <svg width="7" height="9" viewBox="0 0 7 9" fill="white"><path d="M0.5 0.5l6 4-6 4V0.5z"/></svg>
+                  </div>
+                </div>
+                {/* Product bar */}
+                <div style={{ position:'absolute', bottom:0, left:0, right:0, background:'rgba(255,255,255,0.96)', backdropFilter:'blur(6px)', padding:'7px 8px', display:'flex', alignItems:'center', gap:6 }}>
+                  <div style={{ width:34, height:34, borderRadius:8, overflow:'hidden', flexShrink:0 }}>
+                    <Img label="" src={p.image_url} tint={i % 5} style={{ width:34, height:34 }} />
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:3 }}>{p.title}</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                      <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:700, color:C.ink }}>${p.price.toFixed(2)}</span>
+                      {p.discount && (
+                        <span style={{ background:C.success, color:'#fff', fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:800, padding:'1px 5px', borderRadius:4, letterSpacing:'0.02em' }}>{p.discount}% OFF</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        )}
+
+        {/* For You — Loading / Error / Empty / Success, never backfilled
+            with the fictitious PRODUCTS demo array. */}
+        <div style={{ padding: '20px 20px 16px' }}>
+          <SectionHeader title="Just For You" onSeeAll={() => {}} style={{ marginBottom: 12 }} />
+          {productsState === 'loading' && (
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap: 12 }}>
+              {[0,1,2,3].map(i => (
+                <div key={i} style={{ borderRadius:12, overflow:'hidden', background:C.white }}>
+                  <div style={{ width:'100%', height:170, background:'linear-gradient(90deg, #EFEDF5 25%, #F6F5FA 37%, #EFEDF5 63%)', backgroundSize:'400% 100%', animation:'shimmer 1.4s ease infinite' }} />
+                  <div style={{ padding:10, display:'flex', flexDirection:'column', gap:8 }}>
+                    <div style={{ height:12, width:'80%', background:'#EFEDF5', borderRadius:6 }} />
+                    <div style={{ height:12, width:'40%', background:'#EFEDF5', borderRadius:6 }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {productsState === 'error' && (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:'30px 20px', textAlign:'center' }}>
+              <Icon name="alertTriangle" size={28} color={C.mute} />
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>Couldn't load products right now. Pull to refresh or try again shortly.</span>
+            </div>
+          )}
+          {productsState === 'success' && forYou.length === 0 && (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:'30px 20px', textAlign:'center' }}>
+              <Icon name="package" size={28} color={C.mute} />
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:C.mute }}>No products available yet.</span>
+            </div>
+          )}
+          {productsState === 'success' && forYou.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(auto-fill, minmax(190px, 1fr))' : '1fr 1fr', gap: 12 }}>
+              {forYou.map((p, i) =>
+              <ProductCard key={p.id} product={p} size="md" tint={i + 2} onPress={() => navigate('pdp', { product: p })} />
+              )}
+            </div>
+          )}
+        </div>
+        </div>
+      </div>
+
+      <BottomNav active={activeTab} onTab={goTab} />
+    </div>);
+
+}
+
+Object.assign(window, { HomeScreen });
