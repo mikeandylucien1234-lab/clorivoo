@@ -1,0 +1,6 @@
+mobile/
+tests/
+scripts/
+supabase/
+.github/
+test-emails.ps1
